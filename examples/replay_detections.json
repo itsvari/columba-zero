@@ -1,0 +1,8 @@
+{
+  "frames": {
+    "0": [{"label": "pigeon", "confidence": 0.81, "bbox": [250, 250, 310, 320]}],
+    "1": [{"label": "pigeon", "confidence": 0.84, "bbox": [252, 249, 312, 319]}],
+    "2": [{"label": "pigeon", "confidence": 0.88, "bbox": [254, 248, 314, 318]}],
+    "3": [{"label": "person", "confidence": 0.92, "bbox": [50, 80, 180, 450]}]
+  }
+}

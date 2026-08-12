@@ -1,0 +1,23 @@
+[Unit]
+Description=Columba Zero supervised prototype
+After=network.target
+
+[Service]
+Type=simple
+User=columba
+Group=columba
+WorkingDirectory=/opt/columba-zero
+ExecStart=/opt/columba-zero/.venv/bin/columba-zero --config /etc/columba-zero/config.yaml --hardware
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/columba-zero
+
+[Install]
+WantedBy=multi-user.target
+
