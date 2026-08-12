@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "columba-zero"
+version = "0.1.0"
+description = "Fail-safe Raspberry Pi pigeon detection and enclosed-bench deterrent prototype"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+vision = ["opencv-python-headless>=4.9", "ultralytics>=8.3"]
+pi = ["gpiozero>=2.0"]
+metrics = ["psutil>=5.9"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+columba-zero = "app.main:cli"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
