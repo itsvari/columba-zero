@@ -1,0 +1,16 @@
+{
+  "images": 63,
+  "failures": 0,
+  "image_size": 640,
+  "confidence": 0.5,
+  "device": "cpu",
+  "rect": false,
+  "iou": 0.7,
+  "min_iou": 0.8,
+  "max_confidence_delta": 0.05,
+  "matched_boxes": 159,
+  "min_matched_iou": 0.9999948220755677,
+  "max_matched_confidence_delta": 1.1324882507324219e-06,
+  "platform": "Windows 11, Intel Core i7-13700K, CPU",
+  "model_manifest": "deploy/model_manifest.json"
+}

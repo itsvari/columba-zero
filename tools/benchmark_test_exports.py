@@ -1,4 +1,5 @@
 """Compare held-out accuracy and CPU validation timings at matched input settings."""
+import argparse
 import json
 import platform
 from pathlib import Path
@@ -7,15 +8,20 @@ from ultralytics import YOLO
 
 
 def main():
-    run = Path('runs/detect/pigeon_detector/pigeon_baseline_v1-2')
-    output = run / 'pc_benchmark'
-    output.mkdir(exist_ok=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('data_yaml')
+    parser.add_argument('--models', default='models/pigeon_baseline_v1-2')
+    parser.add_argument('--output', default='outputs/pc_benchmark')
+    args = parser.parse_args()
+    run = Path(args.models)
+    output = Path(args.output).resolve()
+    output.mkdir(parents=True, exist_ok=True)
     report = {'platform': platform.platform(), 'imgsz': 640, 'device': 'cpu',
               'batch': 1, 'conf': 0.001, 'iou': 0.7, 'rect': False, 'results': {}}
-    for label, model_path in [('pytorch', run / 'weights/best.pt'),
-                              ('ncnn', run / 'weights/best_ncnn_model')]:
+    for label, model_path in [('pytorch', run / 'best.pt'),
+                              ('ncnn', run / 'best_ncnn_model')]:
         metrics = YOLO(str(model_path), task='detect').val(
-            data='C:/Users/reksh/Documents/datasets/pigeons-source/data.yaml',
+            data=args.data_yaml,
             split='test', imgsz=640, device='cpu', batch=1, workers=0,
             conf=0.001, iou=0.7, rect=False, plots=True,
             project=str(output), name=label, verbose=False)

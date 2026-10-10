@@ -6,12 +6,12 @@ from pathlib import Path
 
 import yaml
 
-REQUIRED_CLASSES = {"pigeon", "other_bird", "person"}
+REQUIRED_CLASSES = {"pigeon"}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Train the explicit-class deployment detector and evaluate its test split"
+        description="Train the pigeon detector and evaluate its test split"
     )
     parser.add_argument("data_yaml")
     parser.add_argument("--base-model", default="yolo11n.pt")
@@ -19,16 +19,15 @@ def main() -> None:
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--project", default="pigeon_detector")
-    parser.add_argument("--name", default="deployment_v1")
+    parser.add_argument("--name", default="pigeon_experiment")
     args = parser.parse_args()
 
     data = yaml.safe_load(Path(args.data_yaml).read_text(encoding="utf-8"))
     names_value = data.get("names", [])
     names = list(names_value.values()) if isinstance(names_value, dict) else list(names_value)
     normalized = {str(name).lower() for name in names}
-    if not REQUIRED_CLASSES <= normalized:
-        missing = ", ".join(sorted(REQUIRED_CLASSES - normalized))
-        raise SystemExit(f"refusing to train: data.yaml is missing explicit classes: {missing}")
+    if normalized != REQUIRED_CLASSES:
+        raise SystemExit("refusing to train: expected the single class pigeon")
     if not data.get("test"):
         raise SystemExit("refusing to train: data.yaml has no held-out test split")
 
