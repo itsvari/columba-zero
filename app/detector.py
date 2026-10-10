@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -30,6 +31,18 @@ class UltralyticsDetector(Detector):
         self._model = YOLO(str(path), task="detect")
         self.image_size = image_size
         self.confidence = confidence
+
+    def warmup(self, width: int, height: int) -> None:
+        """Initialize lazy inference backends before acquiring timestamped frames."""
+        import numpy as np
+
+        self.detect(
+            FramePacket(
+                sequence=-1,
+                captured_at=time.monotonic(),
+                frame=np.zeros((height, width, 3), dtype=np.uint8),
+            )
+        )
 
     def detect(self, packet: FramePacket) -> list[Detection]:
         try:

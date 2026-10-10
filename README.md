@@ -56,6 +56,11 @@ The live camera runtime loads the configured YOLO/NCNN model:
 columba-zero --config app/config.yaml
 ```
 
+The runtime warms up the detector before starting capture or opening GPIO outputs,
+so lazy NCNN initialization does not make the first camera frame stale. Startup logs
+report the warm-up duration. The configured frame freshness limit still applies to
+every real frame; persistent `stale_frame` faults require measuring inference latency.
+
 Replay a recording through the real detector:
 
 ```bash

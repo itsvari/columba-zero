@@ -67,6 +67,12 @@ def run(args: argparse.Namespace) -> int:
             min(config.model.confidence, config.model.safety_confidence),
         )
     )
+    if isinstance(detector, UltralyticsDetector):
+        logging.info("Warming up detector before camera startup")
+        started = time.monotonic()
+        detector.warmup(config.camera.width, config.camera.height)
+        logging.info("Detector warm-up complete in %.3f seconds", time.monotonic() - started)
+
     capture = (
         VideoFileCapture(args.video, realtime=True)
         if args.video
