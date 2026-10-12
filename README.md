@@ -155,5 +155,10 @@ and recall are Ultralytics' curve-selected metrics, not necessarily the deployme
 threshold 0.5. Review continuous negative and positive footage before tuning that
 threshold. Dataset metrics and desktop timing cannot establish Pi performance.
 
+`tools/benchmark_detector.py` warms up each input size on the first decoded frame,
+then reopens the video to measure every frame from the beginning. The requested
+frame limit must be positive. Empty videos and decoder failures before the
+declared end cause a nonzero exit instead of a successful benchmark report.
+
 [Local validation results](deploy/VALIDATION.md) separate completed software/model
 checks from pending Pi camera and one-hour endurance acceptance.

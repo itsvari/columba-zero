@@ -9,6 +9,8 @@ from unittest.mock import Mock, patch
 
 import numpy
 
+from app.capture import CaptureError
+from app.json_data import JsonValue
 from app.main import finalize_output
 from app.models import Frame
 from tools.benchmark_detector import benchmark_video
@@ -19,6 +21,8 @@ from tools.train_model import main as train_main
 TEST_FRAME_SIZE_PX = 32
 COLOUR_CHANNEL_COUNT = 3
 SUMMARY_FRAME_COUNT = 1005
+BENCHMARK_WARMUP_DURATION_S = 100.0
+BENCHMARK_FRAME_DURATION_S = 1.0
 
 
 class ToolTests(unittest.TestCase):
@@ -154,6 +158,7 @@ class ToolTests(unittest.TestCase):
             with self.subTest(opened=opened):
                 capture = Mock()
                 capture.isOpened.return_value = opened
+                capture.get.return_value = 1
                 capture.read.return_value = (True, frame)
                 model = Mock()
                 model.predict.side_effect = RuntimeError("inference failed")
@@ -168,3 +173,66 @@ class ToolTests(unittest.TestCase):
         with patch("app.main.health_snapshot", return_value={}):
             self.assertFalse(finalize_output(output, "max_frames", None, 1, 0, None))
         output.close.assert_called_once()
+
+    def test_benchmark_rejects_empty_and_truncated_videos(self) -> None:
+        import cv2
+
+        frame: Frame = numpy.zeros(
+            (TEST_FRAME_SIZE_PX, TEST_FRAME_SIZE_PX, COLOUR_CHANNEL_COUNT), numpy.uint8
+        )
+        for decoded_frames in ([], [(True, frame)]):
+            with self.subTest(decoded_frames=len(decoded_frames)):
+                captures = [Mock(), Mock()]
+                for capture in captures:
+                    capture.isOpened.return_value = True
+                    capture.get.side_effect = lambda prop: 30 if prop == cv2.CAP_PROP_FPS else 3
+                    capture.read.side_effect = [*decoded_frames, (False, None)]
+                with patch.object(cv2, "VideoCapture", side_effect=captures):
+                    with self.assertRaisesRegex(CaptureError, "decoder failed"):
+                        benchmark_video(Mock(), "broken.avi", 640, 3, 0.5)
+                captures[0].release.assert_called_once()
+                if decoded_frames:
+                    captures[1].release.assert_called_once()
+
+    def test_benchmark_excludes_warmup_and_processes_every_frame(self) -> None:
+        import cv2
+
+        frame: Frame = numpy.zeros(
+            (TEST_FRAME_SIZE_PX, TEST_FRAME_SIZE_PX, COLOUR_CHANNEL_COUNT), numpy.uint8
+        )
+        captures = [Mock(), Mock()]
+        for capture in captures:
+            capture.isOpened.return_value = True
+            capture.get.side_effect = lambda prop: 30 if prop == cv2.CAP_PROP_FPS else 2
+            capture.read.side_effect = [(True, frame), (True, frame), (False, None)]
+        current_time_s = 0.0
+        inference_calls = 0
+
+        def predict(_frame: Frame, **_settings: JsonValue) -> None:
+            nonlocal current_time_s, inference_calls
+            current_time_s += (
+                BENCHMARK_WARMUP_DURATION_S if inference_calls == 0 else BENCHMARK_FRAME_DURATION_S
+            )
+            inference_calls += 1
+
+        model = Mock()
+        model.predict.side_effect = predict
+        with (
+            patch.object(cv2, "VideoCapture", side_effect=captures),
+            patch("tools.benchmark_detector.time.monotonic", side_effect=lambda: current_time_s),
+        ):
+            report = benchmark_video(model, "example.avi", 640, 3, 0.5)
+        self.assertEqual(report["frames"], 2)
+        self.assertEqual(report["elapsed_s"], 2.0)
+        self.assertEqual(report["latency_mean_ms"], 1000.0)
+        self.assertEqual(model.predict.call_count, 3)
+        for capture in captures:
+            capture.release.assert_called_once()
+
+    def test_benchmark_requires_a_positive_frame_limit(self) -> None:
+        for frame_limit in (0, -1):
+            with (
+                self.subTest(frame_limit=frame_limit),
+                self.assertRaisesRegex(ValueError, "positive"),
+            ):
+                benchmark_video(Mock(), "unused.avi", 640, frame_limit, 0.5)

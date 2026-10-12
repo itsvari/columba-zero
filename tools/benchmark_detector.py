@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import cast
 
+from app.capture import CaptureError, EndOfStream, VideoFileCapture
 from app.inference import NMS_INTERSECTION_OVER_UNION, PredictionModel
 from app.json_data import JsonValue
 from app.models import Frame
@@ -15,6 +16,7 @@ from app.output import health_snapshot
 
 MILLISECONDS_PER_SECOND = 1000
 LATENCY_PERCENTILE = 0.95
+VIDEO_FRAME_TIMEOUT_S = 2.0
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -29,33 +31,41 @@ def benchmark_video(
     frame_limit: int,
     confidence: float,
 ) -> dict[str, JsonValue]:
-    import cv2
+    if frame_limit <= 0:
+        raise ValueError("frame limit must be positive")
     import psutil
 
-    capture = cv2.VideoCapture(video)
+    def predict_frame(frame: Frame) -> None:
+        model.predict(
+            frame,
+            imgsz=image_size_px,
+            conf=confidence,
+            verbose=False,
+            device="cpu",
+            rect=False,
+            iou=NMS_INTERSECTION_OVER_UNION,
+        )
+
+    source = VideoFileCapture(video)
     try:
-        if not capture.isOpened():
-            raise SystemExit(f"cannot open {video}")
+        source.start()
+        predict_frame(source.get(VIDEO_FRAME_TIMEOUT_S).frame)
+        source.close()
+        source = VideoFileCapture(video)
+        source.start()
         latencies_s: list[float] = []
-        started_at_monotonic_s = time.monotonic()
         process = psutil.Process()
         initial_memory_bytes = process.memory_info().rss
         initial_cpu_times = process.cpu_times()
         processed_frames = 0
+        started_at_monotonic_s = time.monotonic()
         while processed_frames < frame_limit:
             read_started_at_monotonic_s = time.monotonic()
-            decoded, frame = capture.read()
-            if not decoded:
+            try:
+                packet = source.get(VIDEO_FRAME_TIMEOUT_S)
+            except EndOfStream:
                 break
-            model.predict(
-                cast(Frame, frame),
-                imgsz=image_size_px,
-                conf=confidence,
-                verbose=False,
-                device="cpu",
-                rect=False,
-                iou=NMS_INTERSECTION_OVER_UNION,
-            )
+            predict_frame(packet.frame)
             latencies_s.append(time.monotonic() - read_started_at_monotonic_s)
             processed_frames += 1
         elapsed_s = time.monotonic() - started_at_monotonic_s
@@ -88,7 +98,7 @@ def benchmark_video(
             result["temperature_c"] = temperature_c
         return result
     finally:
-        capture.release()
+        source.close()
 
 
 def main() -> None:
@@ -100,21 +110,24 @@ def main() -> None:
     parser.add_argument("--confidence", type=float, default=0.55)
     parser.add_argument("--output", default="benchmark.json")
     arguments = parser.parse_args()
-    if arguments.frames < 0:
-        parser.error("--frames must be non-negative")
+    if arguments.frames <= 0:
+        parser.error("--frames must be positive")
 
     from ultralytics import YOLO
 
     model = cast(PredictionModel, YOLO(arguments.model, task="detect"))
     results: list[dict[str, JsonValue]] = []
     for image_size_px in arguments.sizes:
-        result = benchmark_video(
-            model,
-            arguments.video,
-            image_size_px,
-            arguments.frames,
-            arguments.confidence,
-        )
+        try:
+            result = benchmark_video(
+                model,
+                arguments.video,
+                image_size_px,
+                arguments.frames,
+                arguments.confidence,
+            )
+        except CaptureError as error:
+            raise SystemExit(f"benchmark failed: {error}") from error
         results.append(result)
         print(json.dumps(result))
     output = Path(arguments.output)
