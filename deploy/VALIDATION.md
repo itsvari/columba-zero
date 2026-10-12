@@ -89,6 +89,41 @@ python -m mypy
 python tools/prepare_models.py
 ```
 
+## Review fixes verified on 12 October 2026
+
+- All 41 unittest cases passed. New regression cases reproduced the failures
+  before the fixes: an incorrect post-training checkpoint path, an autofocus
+  request on a camera without that control, order-dependent export matching,
+  decoder failures reported as successful benchmarks, warm-up included in
+  measured latency, and output cleanup failures missing from `run_end`.
+- Training evaluation now reads the actual trainer checkpoint path, including
+  incremented run names. The regression uses a simulated training run; training
+  was not repeated and original weights were unchanged.
+- Camera configuration tests cover advertised and absent autofocus support.
+  These checks use mocks and do not establish physical camera compatibility.
+- Export matching uses maximum-cardinality bipartite matching over same-class
+  pairs meeting both configured tolerances. Regression checks cover detection
+  permutations, reassignment of earlier matches, confidence constraints, and
+  custom tolerances.
+- Benchmarks warm up before timing and reopen the video to measure all decoded
+  frames. Deterministic timing tests exclude a simulated 100-second warm-up.
+  Real NCNN benchmarking processed the five-frame diagnostic AVI. A deliberately
+  truncated copy exited nonzero at frame 2 of 5 and wrote no benchmark report.
+- Recording and display cleanup failures now produce `cleanup_error` records,
+  retain any previous failure, and leave summaries with `completed_cleanly: false`.
+  Both resources are released once, and log closure is still attempted.
+- Real NCNN replay processed and recorded five frames in order, with counts
+  `0, 1, 0, 1, 0`, zero drops, and clean EOF completion. The recorded AVI decoded
+  to five frames. Real CPU PT and NCNN predictions passed comparison on the
+  three existing smoke images.
+- Ruff lint and formatting checks and strict mypy passed. The desktop environment
+  is the same as the earlier 12 October checks. New smoke outputs are in ignored
+  `outputs/validation/review-fixes/`.
+
+These smoke clips reuse existing derived imagery. They do not add independent
+accuracy evidence or establish Pi performance. Reproduce automated checks with
+the commands above; hardware and field-footage acceptance remains pending below.
+
 ## Pending on physical Pi 5
 
 Pi OS installation and ARM dependency compatibility, CSI colors and box alignment,
