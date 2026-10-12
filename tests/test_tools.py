@@ -3,16 +3,19 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from itertools import permutations
+from dataclasses import replace
+from itertools import permutations, product
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import numpy
 
 from app.capture import CaptureError
+from app.config import AppConfig, DisplayConfig, OutputConfig
 from app.json_data import JsonValue
 from app.main import finalize_output
 from app.models import Frame
+from app.output import RunOutput
 from tools.benchmark_detector import benchmark_video
 from tools.compare_exports import ExportPrediction, intersection_over_union, match_predictions
 from tools.summarize_run import summarize_log
@@ -236,3 +239,45 @@ class ToolTests(unittest.TestCase):
                 self.assertRaisesRegex(ValueError, "positive"),
             ):
                 benchmark_video(Mock(), "unused.avi", 640, frame_limit, 0.5)
+
+    def test_final_record_reports_recording_and_display_cleanup_failures(self) -> None:
+        import cv2
+
+        for resource, original_failure in product(
+            ("recording", "display"), (None, "inference failed")
+        ):
+            with (
+                self.subTest(resource=resource, failure=original_failure),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                config = replace(
+                    AppConfig(),
+                    display=DisplayConfig(False),
+                    output=OutputConfig(directory=directory),
+                )
+                output = RunOutput(config)
+                writer = Mock()
+                output._writer = writer
+                output._window_open = True
+                if resource == "recording":
+                    writer.release.side_effect = OSError("recording release failed")
+                display_failure = (
+                    OSError("display release failed") if resource == "display" else None
+                )
+                with (
+                    patch.object(cv2, "destroyAllWindows", side_effect=display_failure) as destroy,
+                    patch("app.main.health_snapshot", return_value={}),
+                ):
+                    self.assertFalse(
+                        finalize_output(output, "video_complete", original_failure, 1, 0, None)
+                    )
+                summary = summarize_log(output.directory / "detections.jsonl")
+                self.assertFalse(summary["completed_cleanly"])
+                final_record = json.loads((output.directory / "detections.jsonl").read_text())
+                self.assertEqual(final_record["reason"], "cleanup_error")
+                if original_failure:
+                    self.assertIn(original_failure, final_record["error"])
+                self.assertIn(f"{resource} release failed", final_record["error"])
+                writer.release.assert_called_once()
+                destroy.assert_called_once()
+                self.assertTrue(output._log.closed)

@@ -210,17 +210,20 @@ class RunOutput:
         key = cv2.waitKey(WINDOW_EVENT_DELAY_MS) & WINDOW_KEY_MASK
         return key != ord("q") and cv2.getWindowProperty(self.window, cv2.WND_PROP_VISIBLE) >= 1
 
+    def close_recording_and_display(self) -> None:
+        writer, self._writer = self._writer, None
+        window_open, self._window_open = self._window_open, False
+        try:
+            if writer is not None:
+                writer.release()
+        finally:
+            if window_open:
+                import cv2
+
+                cv2.destroyAllWindows()
+
     def close(self) -> None:
         try:
-            if self._writer is not None:
-                self._writer.release()
-                self._writer = None
+            self.close_recording_and_display()
         finally:
-            try:
-                if self._window_open:
-                    import cv2
-
-                    cv2.destroyAllWindows()
-                    self._window_open = False
-            finally:
-                self._log.close()
+            self._log.close()

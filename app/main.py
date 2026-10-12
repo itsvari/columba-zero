@@ -56,6 +56,14 @@ def finalize_output(
 ) -> bool:
     successful = True
     try:
+        output.close_recording_and_display()
+    except Exception as error:
+        successful = False
+        reason = "cleanup_error"
+        cleanup_failure = f"output cleanup failed: {error}"
+        failure = f"{failure}; {cleanup_failure}" if failure else cleanup_failure
+        print(f"output cleanup error: {error}", file=sys.stderr)
+    try:
         elapsed_s = (
             time.monotonic() - started_at_monotonic_s if started_at_monotonic_s is not None else 0.0
         )

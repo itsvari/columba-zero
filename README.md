@@ -113,6 +113,9 @@ original capture time. Health samples include RSS, CPU use, and Pi temperature
 when available. `run_end` records completion or failure; a forcibly killed process
 may have no final record.
 
+Recording and display cleanup finishes before `run_end` is written. Cleanup
+failures appear in that record and cause a nonzero exit.
+
 Recording writes **only processed frames** at `output.recording_fps` (default 15).
 It is diagnostic, not a timing-faithful camera recording. It may speed up or slow
 down playback and adds processing/storage overhead. Files grow for the duration
