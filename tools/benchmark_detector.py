@@ -17,7 +17,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark end-to-end YOLO video inference")
     parser.add_argument("model")
     parser.add_argument("video")
-    parser.add_argument("--sizes", type=int, nargs="+", default=[416, 512, 640])
+    parser.add_argument("--sizes", type=int, nargs="+", default=[640])
     parser.add_argument("--frames", type=int, default=300)
     parser.add_argument("--confidence", type=float, default=0.55)
     parser.add_argument("--output", default="benchmark.json")
@@ -44,7 +44,7 @@ def main() -> None:
             ok, frame = capture.read()
             if not ok:
                 break
-            model.predict(frame, imgsz=size, conf=args.confidence, verbose=False)
+            model.predict(frame, imgsz=size, conf=args.confidence, verbose=False, device="cpu", rect=False)
             latencies.append(time.monotonic() - read_started)
             count += 1
         elapsed = time.monotonic() - started

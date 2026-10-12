@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import json
-from abc import ABC, abstractmethod
 from pathlib import Path
+
+import yaml
 
 from .models import Detection, FramePacket
 
@@ -11,83 +11,71 @@ class DetectorError(RuntimeError):
     pass
 
 
-class Detector(ABC):
-    @abstractmethod
-    def detect(self, packet: FramePacket) -> list[Detection]: ...
-
-
-class UltralyticsDetector(Detector):
-    def __init__(self, model_path: str, image_size: int, confidence: float) -> None:
+def check_model(path: str, image_size: int) -> Path:
+    model = Path(path)
+    if not model.exists():
+        raise DetectorError(f"model does not exist: {model}; see deploy/model_manifest.json")
+    if model.is_dir():
+        for name in ("model.ncnn.param", "model.ncnn.bin", "metadata.yaml"):
+            if not (model / name).is_file() or (model / name).stat().st_size == 0:
+                raise DetectorError(f"incomplete NCNN export: missing or empty {model / name}")
         try:
-            from ultralytics import YOLO
-        except ImportError as exc:
-            raise DetectorError(
-                "Ultralytics is unavailable; install the 'vision' dependency group"
-            ) from exc
-        path = Path(model_path)
-        if not path.exists():
-            raise DetectorError(f"model does not exist: {path}")
-        self._model = YOLO(str(path), task="detect")
+            metadata = yaml.safe_load((model / "metadata.yaml").read_text(encoding="utf-8"))
+            if not isinstance(metadata, dict) or metadata.get("task") != "detect":
+                raise ValueError("metadata must describe a detection model")
+            validate_names(metadata.get("names", {}))
+            if metadata.get("imgsz") != [image_size, image_size]:
+                raise ValueError(f"export size {metadata.get('imgsz')} differs from {image_size}; "
+                                 "export a separate model for this size")
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            raise DetectorError(f"invalid NCNN metadata: {exc}") from exc
+    elif model.suffix.lower() != ".pt" or model.stat().st_size == 0:
+        raise DetectorError("model must be a non-empty .pt checkpoint or complete NCNN directory")
+    return model
+
+
+def validate_names(names: object) -> None:
+    labels = list(names.values()) if isinstance(names, dict) else names
+    if not isinstance(labels, (list, tuple)) or [str(n).lower() for n in labels] != ["pigeon"]:
+        raise DetectorError("expected a single-class model with class 0 named 'pigeon'")
+    if isinstance(names, dict) and set(names) not in ({0}, {"0"}):
+        raise DetectorError("pigeon must have class index 0")
+
+
+class UltralyticsDetector:
+    def __init__(self, model_path: str, image_size: int, confidence: float) -> None:
+        path = check_model(model_path, image_size)
         self.image_size = image_size
         self.confidence = confidence
+        try:
+            from ultralytics import YOLO
+            self._model = YOLO(str(path), task="detect")
+            validate_names(self._model.names)
+        except DetectorError:
+            raise
+        except Exception as exc:
+            raise DetectorError(f"cannot load model: {exc}; install the vision dependencies") from exc
+
+    def warmup(self, width: int, height: int) -> None:
+        import numpy as np
+        self.detect(FramePacket(-1, 0.0, np.zeros((height, width, 3), dtype=np.uint8)))
 
     def detect(self, packet: FramePacket) -> list[Detection]:
         try:
-            results = self._model.predict(
-                source=packet.frame,
-                imgsz=self.image_size,
-                conf=self.confidence,
-                verbose=False,
-                stream=False,
-            )
+            results = self._model.predict(source=packet.frame, imgsz=self.image_size,
+                                          conf=self.confidence, device="cpu", rect=False,
+                                          iou=0.7, verbose=False, stream=False)
             if not results:
                 return []
             result = results[0]
-            names = result.names
-            detections: list[Detection] = []
+            validate_names(result.names)
+            detections = []
             for box in result.boxes:
-                class_id = int(box.cls.item())
-                label = str(names[class_id]).lower()
+                label = str(result.names[int(box.cls.item())]).lower()
                 confidence = float(box.conf.item())
-                x1, y1, x2, y2 = (float(value) for value in box.xyxy[0].tolist())
-                detections.append(Detection(label, confidence, x1, y1, x2, y2))
+                if label == "pigeon" and confidence >= self.confidence:
+                    coords = [float(value) for value in box.xyxy[0].tolist()]
+                    detections.append(Detection(label, confidence, *coords))
             return detections
         except Exception as exc:
             raise DetectorError(f"model inference failed: {exc}") from exc
-
-
-class ReplayDetector(Detector):
-    """Deterministic frame-indexed detections for recorded closed-loop tests."""
-
-    def __init__(self, detections_by_frame: dict[int, list[Detection]]) -> None:
-        self.detections_by_frame = detections_by_frame
-
-    @classmethod
-    def from_json(cls, path: str | Path) -> ReplayDetector:
-        with Path(path).open("r", encoding="utf-8") as handle:
-            raw = json.load(handle)
-        frames = raw.get("frames", raw)
-        if not isinstance(frames, dict):
-            raise DetectorError("replay detections must be a frame-indexed mapping")
-        parsed: dict[int, list[Detection]] = {}
-        for frame_number, items in frames.items():
-            parsed[int(frame_number)] = [
-                Detection(
-                    label=str(item["label"]).lower(),
-                    confidence=float(item["confidence"]),
-                    x1=float(item["bbox"][0]),
-                    y1=float(item["bbox"][1]),
-                    x2=float(item["bbox"][2]),
-                    y2=float(item["bbox"][3]),
-                )
-                for item in items
-            ]
-        return cls(parsed)
-
-    def detect(self, packet: FramePacket) -> list[Detection]:
-        return list(self.detections_by_frame.get(packet.sequence, []))
-
-
-class NullDetector(Detector):
-    def detect(self, packet: FramePacket) -> list[Detection]:
-        return []

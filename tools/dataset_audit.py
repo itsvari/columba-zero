@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-REQUIRED_CLASSES = {"pigeon", "other_bird", "person"}
+REQUIRED_CLASSES = {"pigeon"}
 
 
 def label_directory(image_directory: Path) -> Path:
@@ -26,10 +26,10 @@ def main() -> None:
     names_value = data.get("names", [])
     names = list(names_value.values()) if isinstance(names_value, dict) else list(names_value)
     normalized = {str(name).lower() for name in names}
-    missing = REQUIRED_CLASSES - normalized
+    missing = normalized != REQUIRED_CLASSES
     problems: list[str] = []
     if missing:
-        problems.append(f"missing explicit classes: {', '.join(sorted(missing))}")
+        problems.append("expected the single class pigeon")
     roots: dict[str, set[str]] = {}
     for split in ("train", "val", "test"):
         value = data.get(split)

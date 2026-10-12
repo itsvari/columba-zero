@@ -1,149 +1,142 @@
 # Columba Zero
 
-Columba Zero is a safe-by-default Raspberry Pi 4 prototype for detecting pigeons and
-driving a mechanically bounded, two-axis bench deterrent. It implements the runtime
-described in `RASPBERRY_PI_PROTOTYPE_PLAN.md`; it does **not** make outdoor or live-animal
-laser use safe or approved.
+Detection-only pigeon prototype for **Raspberry Pi 5, 64-bit Raspberry Pi OS,
+CSI camera, and a connected monitor**. It displays pigeon boxes, confidence,
+current-frame count, capture FPS, and processing FPS. There is no GPIO or
+actuation code, calibration, tracking, or unique-bird counting.
 
-The default configuration uses a simulated turret, an in-memory indicator output, and an
-uncalibrated identity transform. It cannot energise a laser. Real laser output additionally
-requires an enclosed bench rig, explicit configuration, `--hardware`, a physical E-stop,
-and a closed hardware interlock. A normally-closed physical shutter and hardwired power
-cutoff remain mandatory; software is not the primary safety barrier.
+The runtime uses the existing `pigeon_baseline_v1-2` YOLO11n single-class model.
+The original training notebook, results, and weights remain intact. The notebook
+and `GEN2002Y Report.md` describe historical work; the current application is
+specified here and in [the acceptance guide](RASPBERRY_PI_PROTOTYPE_PLAN.md).
 
-## What is implemented
+## Model preparation
 
-- bounded latest-frame Picamera2 acquisition and recorded-video replay;
-- YOLO/NCNN inference plus deterministic frame-indexed replay detections;
-- permitted-ROI filtering, 3-of-5 temporal confirmation, target clustering, and release
-  hysteresis;
-- person, vehicle, bicycle, and pet blocking, stale-frame checks, E-stop and interlock
-  inputs, activation-rate limiting, cooldown, and fault-to-`SAFE` behavior;
-- homography-based pixel-to-plane conversion and yaw/pitch geometry;
-- speed-limited, clamped, stale-command-rejecting simulation and GPIO Zero turret drivers;
-- bounded indicator/laser pulses with output and shutter forced off in every exit path;
-- structured JSONL event and health logging;
-- held-out evaluation, dataset auditing, NCNN export comparison, calibration, and Pi
-  performance benchmark tools;
-- a hardened systemd service template and automated safety-logic tests.
-
-## Development setup
+From the repository root:
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -e '.[dev,vision,metrics]'
-pytest
+python tools/prepare_models.py
 ```
 
-On Raspberry Pi OS, install Picamera2 through the OS packages so it matches libcamera:
+This copies `best.pt` and the complete `best_ncnn_model` directory from
+`runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/` into ignored
+`models/pigeon_baseline_v1-2/`, checking SHA-256 against
+[the tracked manifest](deploy/model_manifest.json). Original artifacts are never
+modified. When transferring to the Pi, copy `models/pigeon_baseline_v1-2/` as
+well as the application; ignored model binaries do not arrive via Git alone.
+Keep original training artifacts backed up separately.
+
+## Pi setup
+
+Use Raspberry Pi OS Desktop **64-bit**, Python 3.11 or newer, with a local desktop
+session and CSI camera enabled and connected. Run manually in a terminal on the
+Pi monitor. The old hardware systemd unit has been removed; disable any previously
+installed `columba-zero` service before running this application.
+
+Install camera and GUI-capable OpenCV through the OS, then use the system Python:
 
 ```bash
 sudo apt update
-sudo apt install python3-picamera2 python3-opencv
-python -m pip install -e '.[pi,metrics]'
+sudo apt install python3-venv python3-picamera2 python3-opencv python3-numpy python3-yaml
+python3 -m venv --system-site-packages .venv
+. .venv/bin/activate
+mkdir -p outputs/setup
+python -c "import numpy; print('numpy==' + numpy.__version__)" > outputs/setup/pi-constraints.txt
+python -m pip install -c outputs/setup/pi-constraints.txt torch torchvision matplotlib requests psutil polars nvidia-ml-py 'ultralytics-thop>=2.2.2' 'ultralytics-platform>=0.1.45' 'ncnn==1.0.20260526'
+python -m pip install --no-deps 'ultralytics==8.4.175'
+python -m pip install --no-deps -e .
+python -c "import cv2, picamera2, ncnn, ultralytics; print(cv2.__file__); print(cv2.getBuildInformation())"
+python -m pip freeze > outputs/setup/installed.txt
 ```
 
-Do not copy the example config into real operation unchanged. In particular, survey the
-ROI, install mechanical stops, calibrate servo pulse widths, and verify the full beam
-envelope against a matte beam dump.
+This Pi-specific install intentionally retains OS NumPy, OpenCV, and libcamera
+bindings. Ultralytics is installed without dependency resolution to avoid replacing
+OS OpenCV. Its remaining runtime dependencies are explicitly installed above.
+`pip check` may report the OS OpenCV distribution as missing or too old even when
+`cv2` works: verify imports, GUI build information, and actual predictions.
+Do not install `opencv-python-headless` or combine multiple pip OpenCV variants.
+If OS NumPy is older than 1.24, use a newer supported Pi OS image. Resolve any
+missing ARM wheels before proceeding; this setup has not yet been verified on a Pi.
 
-## Run modes
+The model was exported with Ultralytics 8.4.175; that version and the locally tested
+NCNN version are pinned. Camera format `RGB888` provides BGR bytes for OpenCV
+(despite its name). See the [official Picamera2 manual](https://datasheets.raspberrypi.com/camera/picamera2-manual.pdf)
+for OS packages, virtual environments, and pixel formats, and the
+[Ultralytics Pi guide](https://docs.ultralytics.com/guides/raspberry-pi/) for NCNN support.
 
-The live camera runtime loads the configured YOLO/NCNN model:
+## Run
+
+Launch from the repository root; configuration paths are relative to the current
+working directory. Default live settings: 640x480 capture, requested 15 FPS,
+640x640 model input, confidence 0.5, recording off.
 
 ```bash
-columba-zero --config app/config.yaml
+columba-zero
+columba-zero --confidence 0.6 --record
+columba-zero --video sample.mp4 --max-frames 300
+columba-zero --model models/pigeon_baseline_v1-2/best.pt --video sample.mp4
 ```
 
-Replay a recording through the real detector:
+Press **q**, close the window, or press **Ctrl+C** to stop. SIGTERM also requests
+shutdown. Capture timeouts and inference failures exit nonzero after cleanup.
+A termination request waits for the current capture/inference call to return;
+there is no hard watchdog for a hung native backend.
+
+`--config` selects a YAML file. [app/config.yaml](app/config.yaml) contains all
+settings. CLI model/confidence values override YAML; `--record` enables recording.
+Set `display.enabled: false` for headless replay or tests. Old actuation config
+sections and CLI switches are rejected with migration guidance.
+
+The NCNN export is fixed at 640x640. To benchmark a different inference size,
+export a separate model with `tools/export_ncnn.py` and use a matching
+`model.image_size`. Camera FPS is not inference FPS. Live capture discards old
+buffered frames when inference falls behind; video replay processes every decoded
+frame sequentially, without real-time pacing or frame dropping.
+
+## Outputs
+
+Each run creates `outputs/<UTC timestamp>-<unique suffix>/` with
+`detections.jsonl` and optional `annotated.avi` (MJPEG). Frame records include
+zero-based source frame number, Unix frame-delivery timestamp, inference seconds,
+pigeon count, confidence and original-frame pixel boxes, cumulative live buffer
+drops, and capture/processing FPS. Drops measure this application's buffer, not
+camera driver losses. Replay timestamps reflect decoding time, not the recording's
+original capture time. Health samples include RSS, CPU use, and Pi temperature
+when available. `run_end` records completion or failure; a forcibly killed process
+may have no final record.
+
+Recording writes **only processed frames** at `output.recording_fps` (default 15).
+It is diagnostic, not a timing-faithful camera recording. It may speed up or slow
+down playback and adds processing/storage overhead. Files grow for the duration
+of a run; monitor available disk space and stop recording when evidence is sufficient.
 
 ```bash
-columba-zero --config app/config.yaml --video test.mp4
+python tools/summarize_run.py outputs/<run>/detections.jsonl
 ```
 
-Replay known detections without a model (useful for closed-loop fault testing):
+## Desktop development and validation
 
 ```bash
-columba-zero --config config.deployment.yaml \
-  --video test.mp4 --detections examples/replay_detections.json
+python -m venv .venv
+# Activate .venv using your shell's activation script.
+python -m pip install -e '.[vision,metrics,dev]'
+python -m unittest discover -s tests -v
+python tools/prepare_models.py
+python tools/compare_exports.py models/pigeon_baseline_v1-2/best.pt models/pigeon_baseline_v1-2/best_ncnn_model /path/to/test/images --output outputs/validation/export_comparison.json
+python tools/evaluate_model.py models/pigeon_baseline_v1-2/best.pt /path/to/data.yaml --output outputs/validation/pt_test_metrics.json
 ```
 
-`geometry.calibrated` must be true before the controller will aim. Laser mode also forces
-`geometry.aim_mode: fixed_safe_surface`, which points only at the surveyed
-`approved_target_plane_m`; it never follows the animal coordinate. The calibration tool
-intentionally emits `calibrated: false`; set it to true only after physically measuring
-pointing error across the whole ROI with the laser disconnected or replaced by an LED.
+For clean desktop environments use GUI-capable `opencv-python`. The Pi-specific
+installation above deliberately uses OS OpenCV instead of the desktop extra.
+The runtime CLI is also available as `python -m app.main`.
 
-GPIO is never touched unless `--hardware` is supplied. An enabled laser configuration is
-rejected unless physical E-stop and interlock pins are configured. Start hardware tests
-with `actuator.mode: indicator` and the laser driver physically disconnected.
+Export comparison uses matching CPU, 640-square preprocessing, confidence 0.5,
+and NMS IoU 0.7. It records counts, boxes, matched IoUs, and confidence deltas;
+acceptance defaults are IoU >=0.8, confidence delta <=0.05, and equal counts.
+Test-set evaluation uses confidence floor 0.001 for AP curves; reported precision
+and recall are Ultralytics' curve-selected metrics, not necessarily the deployment
+threshold 0.5. Review continuous negative and positive footage before tuning that
+threshold. Dataset metrics and desktop timing cannot establish Pi performance.
 
-## Dataset and model workflow
-
-The saved notebook is retained as a baseline, but its general COCO bird boxes must not be
-relabeled as pigeons for deployment training. Build a dataset with explicit `pigeon`,
-`other_bird`, and `person` classes, background-only images, and splits grouped by recording
-session/location. Then run:
-
-```bash
-python tools/dataset_audit.py /data/pigeons/data.yaml
-python tools/train_model.py /data/pigeons/data.yaml
-python tools/evaluate_model.py best.pt /data/pigeons/data.yaml --confidence 0.55
-python tools/export_ncnn.py best.pt --imgsz 416
-python tools/compare_exports.py best.pt best_ncnn_model /data/fixed-export-check
-python tools/benchmark_detector.py best_ncnn_model sustained-test.mp4
-python tools/summarize_events.py logs/events.jsonl
-```
-
-The structural audit cannot prove that adjacent frames were kept in the same split; keep a
-session manifest and review it. For threshold selection, supplement detector metrics with
-false positives per hour and false negatives per complete pigeon event on continuous held-
-out recordings.
-
-## Calibration
-
-Measure at least four non-collinear image points and corresponding target-plane positions
-in metres:
-
-```json
-{
-  "image_points": [[100, 100], [500, 100], [500, 400], [100, 400]],
-  "plane_points": [[1.0, -0.5], [1.0, 0.5], [2.0, 0.5], [2.0, -0.5]]
-}
-```
-
-Fit the transform with:
-
-```bash
-python tools/calibrate_homography.py measured_points.json
-```
-
-Merge the emitted `geometry` values into a private deployment config, add the measured
-turret origin and servo offsets, then verify actual pointing error with inert targets at
-multiple interior and boundary points. Camera distortion should be corrected before the
-homography is fitted.
-
-## State machine and fault behavior
-
-The runtime follows `SAFE → IDLE → VERIFYING → AIMING → ACTIVE → COOLDOWN → IDLE`.
-Aiming consumes one confirmed event. Activation requires a later, fresh frame after the
-turret settles; the target must still be present and near its original location. A person
-or other blocked object rejects the event. E-stop, stale camera data, interlock loss,
-calibration errors, detector exceptions, servo timeouts, and actuator exceptions force
-`SAFE`, close outputs, and stop servo commands.
-
-The JSONL log defaults to `logs/events.jsonl`. It includes state transitions, rejected
-activations, faults, target/angle data, activation durations, inference latency, dropped
-frames, memory use, CPU use, and temperature where available.
-
-## Deployment
-
-`deploy/columba-zero.service` is a template. Create the service account and deployment
-directories, place the reviewed configuration under `/etc/columba-zero`, write logs to
-`/var/log/columba-zero`, and install the unit only after indicator-only bench acceptance.
-The service stops outputs on `SIGTERM` and restarts only after a process failure.
-
-Before any field trial, complete every acceptance criterion in the prototype plan and the
-qualified laser-safety/site/agency reviews. Never aim the beam at an animal, person,
-vehicle, aircraft, reflective surface, or open sky.
+[Local validation results](deploy/VALIDATION.md) separate completed software/model
+checks from pending Pi camera and one-hour endurance acceptance.

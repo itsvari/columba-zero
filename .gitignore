@@ -10,3 +10,9 @@ logs/
 models/
 calibration.local.yaml
 
+
+outputs/
+
+# Local deployment bundles; keep out of upstream pull requests.
+/columba-zero-pi.tar.gz
+/columba@columba-pi

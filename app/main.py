@@ -1,183 +1,140 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import signal
 import sys
 import time
+from dataclasses import asdict, replace
 
-from .actuators import build_actuator
-from .capture import (
-    CaptureError,
-    EndOfStream,
-    LatestFrameStream,
-    Picamera2Capture,
-    VideoFileCapture,
-)
+from .capture import EndOfStream, LatestFrameStream, Picamera2Capture, VideoFileCapture
 from .config import AppConfig, ConfigError
-from .controller import RuntimeController
-from .detector import DetectorError, ReplayDetector, UltralyticsDetector
-from .geometry import TargetGeometry
-from .logger import EventLogger, health_snapshot
-from .safety import GPIOInputs, SafetyGate
-from .turret import build_turret
-from .watchdog import SoftwareWatchdog
+from .detector import UltralyticsDetector
+from .output import RunOutput, health_snapshot
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Columba Zero safe prototype runtime")
-    parser.add_argument("--config", default="app/config.yaml", help="YAML configuration path")
-    parser.add_argument("--video", help="replay a video instead of using Picamera2")
-    parser.add_argument(
-        "--detections", help="frame-indexed JSON detections for deterministic replay"
-    )
-    parser.add_argument(
-        "--hardware",
-        action="store_true",
-        help="enable configured GPIO inputs/outputs; omitted means simulation outputs",
-    )
-    parser.add_argument(
-        "--max-frames", type=int, default=0, help="stop after N frames (0=unlimited)"
-    )
-    parser.add_argument("--verbose", action="store_true")
+    parser = argparse.ArgumentParser(description="Pi 5 pigeon detection (no actuation)")
+    parser.add_argument("--config", default="app/config.yaml")
+    parser.add_argument("--model", help=".pt checkpoint or NCNN directory")
+    parser.add_argument("--video", help="process all frames of a recorded video")
+    parser.add_argument("--confidence", type=float)
+    parser.add_argument("--record", action="store_true", help="save diagnostic annotated AVI")
+    parser.add_argument("--max-frames", type=int, default=0, help="0 means unlimited")
     return parser
 
 
 def run(args: argparse.Namespace) -> int:
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-    )
     config = AppConfig.load(args.config)
-    logger = EventLogger(config.logging.path)
-
-    if config.actuator.mode == "laser" and config.actuator.laser_enabled:
-        if not args.hardware:
-            raise ConfigError("enabled laser mode requires --hardware")
-        if config.safety.emergency_stop_pin is None or config.safety.interlock_pin is None:
-            raise ConfigError("enabled laser mode requires physical E-stop and interlock pins")
-
-    # Load fallible vision resources before opening any GPIO outputs.
-    detector = (
-        ReplayDetector.from_json(args.detections)
-        if args.detections
-        else UltralyticsDetector(
-            config.model.path,
-            config.model.image_size,
-            min(config.model.confidence, config.model.safety_confidence),
-        )
-    )
-    capture = (
-        VideoFileCapture(args.video, realtime=True)
-        if args.video
-        else Picamera2Capture(
-            config.camera.width, config.camera.height, config.camera.fps, config.camera.rotation
-        )
-    )
-
-    gpio_inputs = (
-        GPIOInputs(
-            config.safety.emergency_stop_pin,
-            config.safety.interlock_pin,
-            config.safety.interlock_active_high,
-        )
-        if args.hardware
-        else None
-    )
-    emergency_stop = gpio_inputs.emergency_pressed if gpio_inputs else lambda: False
-    interlock_closed = gpio_inputs.interlock_closed if gpio_inputs else lambda: True
-
-    safety = SafetyGate(
-        config.safety,
-        config.model,
-        config.camera.stale_after_s,
-        emergency_stop=emergency_stop,
-        interlock_closed=interlock_closed,
-        require_hardware_interlock=config.actuator.mode == "laser",
-    )
-    turret = build_turret(config.turret)
-
-    def output_permitted() -> bool:
-        return interlock_closed() and not emergency_stop()
-
-    actuator = build_actuator(config.actuator, args.hardware, output_permitted)
-    geometry = TargetGeometry(config.geometry)
-    controller = RuntimeController(config, safety, geometry, turret, actuator, logger)
-
-    stream = LatestFrameStream(capture)
-    watchdog = SoftwareWatchdog(
-        timeout_s=config.safety.watchdog_timeout_s,
-        on_timeout=lambda: controller.fail_safe("software_watchdog_timeout"),
-    )
+    model = replace(config.model,
+                    path=args.model if args.model is not None else config.model.path,
+                    confidence=args.confidence if args.confidence is not None else config.model.confidence)
+    config = replace(config, model=model,
+                     output=replace(config.output, record=args.record or config.output.record))
+    config.validate()
+    if args.max_frames < 0:
+        raise ConfigError("--max-frames must be non-negative")
     stopping = False
+    handlers = {}
+    source = None
+    output = None
+    processed = 0
+    dropped = 0
+    started = None
+    status = 0
+    reason = "stopped"
+    failure = None
 
     def request_stop(_signum: int, _frame: object) -> None:
         nonlocal stopping
         stopping = True
 
-    signal.signal(signal.SIGINT, request_stop)
-    signal.signal(signal.SIGTERM, request_stop)
-    frames = 0
-    last_health = time.monotonic()
     try:
-        if not controller.arm():
-            return 2
-        stream.start()
-        watchdog.start()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            handlers[sig] = signal.signal(sig, request_stop)
+        detector = UltralyticsDetector(model.path, model.image_size, model.confidence)
+        detector.warmup(config.camera.width, config.camera.height)
+        if stopping:
+            return 0
+        output = RunOutput(config)
+        print(f"Run output: {output.directory}", flush=True)
+        output.event("run_start", config=asdict(config), source=args.video or "csi_camera",
+                     timestamp_semantics="Unix seconds at frame delivery; replay is not source time")
+        output.start()
+        source = (VideoFileCapture(args.video) if args.video else
+                  LatestFrameStream(Picamera2Capture(config.camera.width, config.camera.height,
+                                                     config.camera.fps)))
+        source.start()
+        started = time.monotonic()
+        last_health = started
+        output.event("health", processed_frames=0, dropped_frames=0, **health_snapshot())
         while not stopping:
-            watchdog.beat()
-            packet = stream.get(config.camera.frame_timeout_s)
-            started = time.monotonic()
+            packet = source.get(config.camera.frame_timeout_s)
+            inference_started = time.monotonic()
             detections = detector.detect(packet)
-            inference_s = time.monotonic() - started
-            controller.process(packet, detections)
-            watchdog.beat()
-            if controller.state.value == "SAFE":
-                return 1
-            frames += 1
-            if time.monotonic() - last_health >= config.logging.health_interval_s:
-                health = health_snapshot(stream.dropped_frames)
-                logger.event(
-                    "health",
-                    state=controller.state.value,
-                    inference_s=inference_s,
-                    **health,
-                )
-                if health.get("cpu_temperature_c", 0) >= config.safety.max_cpu_temperature_c:
-                    controller.fail_safe("over_temperature")
-                    return 1
-                last_health = time.monotonic()
-            if args.max_frames and frames >= args.max_frames:
+            inference_s = time.monotonic() - inference_started
+            dropped = source.dropped_frames
+            next_count = processed + 1
+            elapsed = time.monotonic() - started
+            fps = next_count / elapsed if elapsed else 0.0
+            capture_fps = source.capture_fps if isinstance(source, LatestFrameStream) else None
+            keep_running = output.render(packet.frame, detections, fps, capture_fps)
+            processed = next_count
+            output.event("frame", frame_number=packet.sequence, captured_at=packet.captured_at,
+                         inference_s=inference_s, pigeon_count=len(detections),
+                         detections=[d.as_dict() for d in detections],
+                         dropped_frames=dropped, processing_fps=fps, capture_fps=capture_fps)
+            now = time.monotonic()
+            if now - last_health >= config.output.health_interval_s:
+                output.event("health", processed_frames=processed, dropped_frames=dropped,
+                             **health_snapshot())
+                last_health = now
+            if not keep_running:
+                reason = "window_closed_or_q"
+                break
+            if args.max_frames and processed >= args.max_frames:
+                reason = "max_frames"
                 break
     except EndOfStream:
-        logger.event("replay_complete", frames=frames)
-    except (CaptureError, DetectorError) as exc:
-        controller.fail_safe("runtime_fault", exc)
-        return 1
+        reason = "video_complete"
     except Exception as exc:
-        controller.fail_safe("unhandled_exception", exc)
-        return 1
+        status, reason, failure = 1, "error", str(exc)
+        print(f"error: {exc}", file=sys.stderr)
     finally:
-        watchdog.close()
-        controller.shutdown()
-        stream.close()
-        actuator.close()
-        turret.close()
-        if gpio_inputs is not None:
-            gpio_inputs.close()
-    return 0
+        if source is not None:
+            try:
+                source.close()
+            except Exception as exc:
+                status, reason, failure = 1, "cleanup_error", str(exc)
+                print(f"capture cleanup error: {exc}", file=sys.stderr)
+        if output is not None:
+            try:
+                elapsed = time.monotonic() - started if started is not None else 0.0
+                output.event("run_end", reason=reason, error=failure, processed_frames=processed,
+                             dropped_frames=dropped, elapsed_s=elapsed,
+                             processing_fps=processed / elapsed if elapsed else 0.0,
+                             **health_snapshot())
+            except Exception as exc:
+                status = 1
+                print(f"log finalization error: {exc}", file=sys.stderr)
+            finally:
+                try:
+                    output.close()
+                except Exception as exc:
+                    status = 1
+                    print(f"output cleanup error: {exc}", file=sys.stderr)
+        for sig, handler in handlers.items():
+            signal.signal(sig, handler)
+    return status
 
 
 def cli() -> None:
-    parser = build_parser()
-    args = parser.parse_args()
-    if args.detections and not args.video:
-        parser.error("--detections requires --video")
+    args = build_parser().parse_args()
     try:
-        raise SystemExit(run(args))
-    except (ConfigError, DetectorError, CaptureError, RuntimeError) as exc:
+        status = run(args)
+    except (ConfigError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
-        raise SystemExit(2) from exc
+        status = 2
+    raise SystemExit(status)
 
 
 if __name__ == "__main__":

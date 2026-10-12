@@ -1,0 +1,19 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "split": "test",
+  "device": "cpu",
+  "rect": false,
+  "iou": 0.7,
+  "speed_ms_per_image": {
+    "preprocess": 3.6255888900043267,
+    "inference": 200.0106380954902,
+    "loss": 0.001638095007307591,
+    "postprocess": 1.7294238108055044
+  },
+  "precision": 0.9048877670699882,
+  "recall": 0.8318215446212788,
+  "map50": 0.9047827430665776,
+  "map50_95": 0.5727682201011229,
+  "confidence": 0.001,
+  "image_size": 640
+}
