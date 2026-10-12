@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from itertools import permutations
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -60,6 +61,48 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(matches[0]["box_delta_px"], [0, 0, 0, 0])
         self.assertEqual(match_predictions([expected], [{**actual, "label": "bird"}]), [])
         self.assertEqual(intersection_over_union([0, 0, 0, 0], [0, 0, 0, 0]), 0)
+
+    def test_export_matching_finds_a_valid_assignment_in_every_order(self) -> None:
+        expected: list[ExportPrediction] = [
+            {"label": "pigeon", "confidence": 0.8, "box": [20, 0, 120, 100]},
+            {"label": "pigeon", "confidence": 0.8, "box": [38, 0, 138, 100]},
+        ]
+        actual: list[ExportPrediction] = [
+            {"label": "pigeon", "confidence": 0.8, "box": [28, 0, 128, 100]},
+            {"label": "pigeon", "confidence": 0.8, "box": [10, 0, 110, 100]},
+        ]
+        for expected_order in permutations(expected):
+            for actual_order in permutations(actual):
+                matches = match_predictions(expected_order, actual_order)
+                self.assertEqual(len(matches), 2)
+                self.assertTrue(all(match["iou"] >= 0.8 for match in matches))
+
+    def test_export_matching_uses_confidence_and_custom_tolerances(self) -> None:
+        expected: list[ExportPrediction] = [
+            {"label": "pigeon", "confidence": 0.9, "box": [0, 0, 100, 100]},
+            {"label": "pigeon", "confidence": 0.8, "box": [0, 0, 100, 100]},
+        ]
+        matches = match_predictions(expected, expected)
+        self.assertEqual(len(matches), 2)
+        self.assertTrue(all(match["confidence_delta"] <= 0.05 for match in matches))
+        shifted: ExportPrediction = {"label": "pigeon", "confidence": 0.7, "box": [10, 0, 110, 100]}
+        self.assertEqual(match_predictions(expected[:1], [shifted]), [])
+        matches = match_predictions(
+            expected[:1],
+            [shifted],
+            minimum_intersection_over_union=0.8,
+            maximum_confidence_delta=0.25,
+        )
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(
+            match_predictions(
+                expected[:1],
+                [shifted],
+                minimum_intersection_over_union=0.9,
+                maximum_confidence_delta=0.25,
+            ),
+            [],
+        )
 
     def test_summary_preserves_fields_over_recent_frame_limit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

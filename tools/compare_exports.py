@@ -11,6 +11,8 @@ from typing import TypedDict, cast
 from app.inference import NMS_INTERSECTION_OVER_UNION, PredictionModel
 
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png"})
+MINIMUM_MATCH_INTERSECTION_OVER_UNION = 0.8
+MAXIMUM_MATCH_CONFIDENCE_DELTA = 0.05
 
 
 class ExportPrediction(TypedDict):
@@ -85,28 +87,61 @@ def predictions(
 def match_predictions(
     expected: Sequence[ExportPrediction],
     actual: Sequence[ExportPrediction],
+    *,
+    minimum_intersection_over_union: float = MINIMUM_MATCH_INTERSECTION_OVER_UNION,
+    maximum_confidence_delta: float = MAXIMUM_MATCH_CONFIDENCE_DELTA,
 ) -> list[MatchedDetection]:
-    unmatched_indices = set(range(len(actual)))
-    matches: list[MatchedDetection] = []
-    for expected_index, expected_detection in enumerate(expected):
-        candidates = [
-            (
-                intersection_over_union(expected_detection["box"], actual[actual_index]["box"]),
-                actual_index,
+    candidates: list[list[int]] = []
+    for expected_detection in expected:
+        eligible: list[tuple[float, int]] = []
+        for actual_index, actual_detection in enumerate(actual):
+            confidence_delta = abs(
+                expected_detection["confidence"] - actual_detection["confidence"]
             )
-            for actual_index in unmatched_indices
-            if expected_detection["label"] == actual[actual_index]["label"]
-        ]
-        overlap, matched_index = max(candidates, default=(0.0, -1))
-        if matched_index < 0 or overlap == 0:
-            continue
-        unmatched_indices.remove(matched_index)
+            if (
+                expected_detection["label"] != actual_detection["label"]
+                or confidence_delta > maximum_confidence_delta
+            ):
+                continue
+            overlap = intersection_over_union(expected_detection["box"], actual_detection["box"])
+            if overlap > 0 and overlap >= minimum_intersection_over_union:
+                eligible.append((overlap, actual_index))
+        candidates.append(
+            [
+                index
+                for _, index in sorted(
+                    eligible, key=lambda candidate: (-candidate[0], candidate[1])
+                )
+            ]
+        )
+
+    assignments: dict[int, int] = {}
+
+    def assign_prediction(expected_index: int, visited: set[int]) -> bool:
+        for actual_index in candidates[expected_index]:
+            if actual_index in visited:
+                continue
+            visited.add(actual_index)
+            previous_expected_index = assignments.get(actual_index)
+            if previous_expected_index is None or assign_prediction(
+                previous_expected_index, visited
+            ):
+                assignments[actual_index] = expected_index
+                return True
+        return False
+
+    for expected_index in range(len(expected)):
+        assign_prediction(expected_index, set())
+
+    matches: list[MatchedDetection] = []
+    for matched_index, expected_index in sorted(assignments.items(), key=lambda pair: pair[1]):
+        expected_detection = expected[expected_index]
         matched_detection = actual[matched_index]
         matches.append(
             {
                 "pt_index": expected_index,
                 "ncnn_index": matched_index,
-                "iou": overlap,
+                "iou": intersection_over_union(expected_detection["box"], matched_detection["box"]),
                 "confidence_delta": abs(
                     expected_detection["confidence"] - matched_detection["confidence"]
                 ),
@@ -130,8 +165,10 @@ def main() -> None:
     parser.add_argument("images")
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--confidence", type=float, default=0.5)
-    parser.add_argument("--min-iou", type=float, default=0.8)
-    parser.add_argument("--max-confidence-delta", type=float, default=0.05)
+    parser.add_argument("--min-iou", type=float, default=MINIMUM_MATCH_INTERSECTION_OVER_UNION)
+    parser.add_argument(
+        "--max-confidence-delta", type=float, default=MAXIMUM_MATCH_CONFIDENCE_DELTA
+    )
     parser.add_argument("--output", default="export_comparison.json")
     arguments = parser.parse_args()
     from ultralytics import YOLO
@@ -149,12 +186,13 @@ def main() -> None:
     for image in images:
         expected = predictions(checkpoint_model, image, arguments.imgsz, arguments.confidence)
         actual = predictions(exported_model, image, arguments.imgsz, arguments.confidence)
-        matches = match_predictions(expected, actual)
-        passed = len(matches) == len(expected) == len(actual) and all(
-            match["iou"] >= arguments.min_iou
-            and match["confidence_delta"] <= arguments.max_confidence_delta
-            for match in matches
+        matches = match_predictions(
+            expected,
+            actual,
+            minimum_intersection_over_union=arguments.min_iou,
+            maximum_confidence_delta=arguments.max_confidence_delta,
         )
+        passed = len(matches) == len(expected) == len(actual)
         comparisons.append(
             {
                 "image": str(image),

@@ -148,6 +148,8 @@ explicit prediction protocols, and camera imports remain deferred until use.
 Export comparison uses matching CPU, 640-square preprocessing, confidence 0.5,
 and NMS IoU 0.7. It records counts, boxes, matched IoUs, and confidence deltas;
 acceptance defaults are IoU >=0.8, confidence delta <=0.05, and equal counts.
+Matching finds the maximum number of one-to-one, same-class assignments that meet
+both tolerances, so detection ordering cannot change acceptance.
 Test-set evaluation uses confidence floor 0.001 for AP curves; reported precision
 and recall are Ultralytics' curve-selected metrics, not necessarily the deployment
 threshold 0.5. Review continuous negative and positive footage before tuning that
