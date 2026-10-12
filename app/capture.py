@@ -42,9 +42,12 @@ class Picamera2Capture:
             from picamera2 import Picamera2
 
             self._camera = Picamera2()
+            requested_controls = {"FrameRate": self.fps}
+            if "AfMode" in self._camera.camera_controls:
+                requested_controls["AfMode"] = controls.AfModeEnum.Continuous
             config = self._camera.create_video_configuration(
                 main={"size": (self.width, self.height), "format": "RGB888"},
-                controls={"FrameRate": self.fps, "AfMode": controls.AfModeEnum.Continuous},
+                controls=requested_controls,
                 buffer_count=CAMERA_BUFFER_COUNT,
                 queue=False,
             )

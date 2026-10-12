@@ -214,6 +214,7 @@ class CaptureTests(unittest.TestCase):
 
     def test_picamera_bgr_format_and_cleanup(self) -> None:
         camera = Mock()
+        camera.camera_controls = {"AfMode": ()}
         fake_module = Mock(Picamera2=Mock(return_value=camera))
         fake_controls = Mock()
         with patch.dict(
@@ -231,6 +232,21 @@ class CaptureTests(unittest.TestCase):
             source.close()
         camera.stop.assert_called_once()
         camera.close.assert_called_once()
+
+    def test_picamera_without_autofocus_omits_autofocus_control(self) -> None:
+        camera = Mock()
+        camera.camera_controls = {"FrameDurationLimits": ()}
+        with patch.dict(
+            "sys.modules",
+            {"picamera2": Mock(Picamera2=Mock(return_value=camera)), "libcamera": Mock()},
+        ):
+            source = Picamera2Capture(640, 480, 15)
+            try:
+                source.start()
+                requested_controls = camera.create_video_configuration.call_args.kwargs["controls"]
+                self.assertEqual(requested_controls, {"FrameRate": 15})
+            finally:
+                source.close()
 
 
 class OutputTests(unittest.TestCase):

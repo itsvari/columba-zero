@@ -98,6 +98,9 @@ export a separate model with `tools/export_ncnn.py` and use a matching
 buffered frames when inference falls behind; video replay processes every decoded
 frame sequentially, without real-time pacing or frame dropping.
 
+Continuous autofocus is enabled only when the camera advertises `AfMode`.
+Fixed-focus cameras retain the frame-rate setting without an autofocus request.
+
 ## Outputs
 
 Each run creates `outputs/<UTC timestamp>-<unique suffix>/` with
