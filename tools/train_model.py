@@ -43,7 +43,7 @@ def main() -> None:
         patience=EARLY_STOPPING_PATIENCE_EPOCHS,
         plots=True,
     )
-    best_model = Path(arguments.project) / arguments.name / "weights" / "best.pt"
+    best_model = Path(model.trainer.best)
     YOLO(str(best_model), task="detect").val(
         data=arguments.data_yaml, split="test", imgsz=arguments.imgsz, plots=True
     )

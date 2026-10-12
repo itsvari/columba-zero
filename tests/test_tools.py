@@ -13,6 +13,7 @@ from app.models import Frame
 from tools.benchmark_detector import benchmark_video
 from tools.compare_exports import ExportPrediction, intersection_over_union, match_predictions
 from tools.summarize_run import summarize_log
+from tools.train_model import main as train_main
 
 TEST_FRAME_SIZE_PX = 32
 COLOUR_CHANNEL_COUNT = 3
@@ -20,6 +21,27 @@ SUMMARY_FRAME_COUNT = 1005
 
 
 class ToolTests(unittest.TestCase):
+    def test_training_evaluates_the_checkpoint_from_the_actual_run(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            dataset = Path(directory) / "data.yaml"
+            dataset.write_text("names: [pigeon]\ntest: test/images\n", encoding="utf-8")
+            checkpoint = (
+                Path(directory) / "runs/detect/pigeon_detector/pigeon_experiment2/weights/best.pt"
+            )
+            training_model = Mock()
+            training_model.trainer.best = checkpoint
+            evaluation_model = Mock()
+            factory = Mock(side_effect=[training_model, evaluation_model])
+            with (
+                patch("sys.argv", ["train_model.py", str(dataset)]),
+                patch.dict("sys.modules", {"ultralytics": Mock(YOLO=factory)}),
+            ):
+                train_main()
+            self.assertEqual(factory.call_args.args, (str(checkpoint),))
+            evaluation_model.val.assert_called_once_with(
+                data=str(dataset), split="test", imgsz=640, plots=True
+            )
+
     def test_export_matching_is_one_to_one_and_class_aware(self) -> None:
         expected: ExportPrediction = {
             "label": "pigeon",
