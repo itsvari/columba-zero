@@ -15,7 +15,7 @@ dependencies = [
 [project.optional-dependencies]
 vision = ["opencv-python>=4.6", "ultralytics==8.4.175", "ncnn==1.0.20260526"]
 metrics = ["psutil>=5.9"]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11", "types-PyYAML", "types-psutil"]
 
 [project.scripts]
 columba-zero = "app.main:cli"
@@ -34,3 +34,14 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+explicit_package_bases = true
+files = ["app", "tests/test_runtime.py", "tests/test_model_manifest.py"]
+
+[[tool.mypy.overrides]]
+module = ["ultralytics", "ultralytics.*", "picamera2", "libcamera"]
+follow_imports = "skip"
+ignore_missing_imports = true

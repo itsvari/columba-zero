@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import yaml
 
+from .inference import COLOUR_CHANNEL_COUNT, NMS_INTERSECTION_OVER_UNION, PredictionModel
+from .json_data import JsonValue
 from .models import Detection, FramePacket
 
 
@@ -25,18 +28,22 @@ def check_model(path: str, image_size: int) -> Path:
                 raise ValueError("metadata must describe a detection model")
             validate_names(metadata.get("names", {}))
             if metadata.get("imgsz") != [image_size, image_size]:
-                raise ValueError(f"export size {metadata.get('imgsz')} differs from {image_size}; "
-                                 "export a separate model for this size")
-        except (OSError, ValueError, yaml.YAMLError) as exc:
-            raise DetectorError(f"invalid NCNN metadata: {exc}") from exc
+                raise ValueError(
+                    f"export size {metadata.get('imgsz')} differs from {image_size}; "
+                    "export a separate model for this size"
+                )
+        except (OSError, ValueError, yaml.YAMLError) as error:
+            raise DetectorError(f"invalid NCNN metadata: {error}") from error
     elif model.suffix.lower() != ".pt" or model.stat().st_size == 0:
         raise DetectorError("model must be a non-empty .pt checkpoint or complete NCNN directory")
     return model
 
 
-def validate_names(names: object) -> None:
+def validate_names(names: JsonValue | dict[int, str] | tuple[str, ...]) -> None:
     labels = list(names.values()) if isinstance(names, dict) else names
-    if not isinstance(labels, (list, tuple)) or [str(n).lower() for n in labels] != ["pigeon"]:
+    if not isinstance(labels, (list, tuple)) or [str(label).lower() for label in labels] != [
+        "pigeon"
+    ]:
         raise DetectorError("expected a single-class model with class 0 named 'pigeon'")
     if isinstance(names, dict) and set(names) not in ({0}, {"0"}):
         raise DetectorError("pigeon must have class index 0")
@@ -49,33 +56,50 @@ class UltralyticsDetector:
         self.confidence = confidence
         try:
             from ultralytics import YOLO
-            self._model = YOLO(str(path), task="detect")
+
+            self._model = cast(PredictionModel, YOLO(str(path), task="detect"))
             validate_names(self._model.names)
         except DetectorError:
             raise
-        except Exception as exc:
-            raise DetectorError(f"cannot load model: {exc}; install the vision dependencies") from exc
+        except Exception as error:
+            raise DetectorError(
+                f"cannot load model: {error}; install the vision dependencies"
+            ) from error
 
     def warmup(self, width: int, height: int) -> None:
-        import numpy as np
-        self.detect(FramePacket(-1, 0.0, np.zeros((height, width, 3), dtype=np.uint8)))
+        import numpy
+
+        self.detect(
+            FramePacket(
+                -1, 0.0, numpy.zeros((height, width, COLOUR_CHANNEL_COUNT), dtype=numpy.uint8)
+            )
+        )
 
     def detect(self, packet: FramePacket) -> list[Detection]:
         try:
-            results = self._model.predict(source=packet.frame, imgsz=self.image_size,
-                                          conf=self.confidence, device="cpu", rect=False,
-                                          iou=0.7, verbose=False, stream=False)
+            results = self._model.predict(
+                source=packet.frame,
+                imgsz=self.image_size,
+                conf=self.confidence,
+                device="cpu",
+                rect=False,
+                iou=NMS_INTERSECTION_OVER_UNION,
+                verbose=False,
+                stream=False,
+            )
             if not results:
                 return []
             result = results[0]
             validate_names(result.names)
-            detections = []
-            for box in result.boxes:
+            detections: list[Detection] = []
+            for box in result.boxes or ():
                 label = str(result.names[int(box.cls.item())]).lower()
                 confidence = float(box.conf.item())
                 if label == "pigeon" and confidence >= self.confidence:
-                    coords = [float(value) for value in box.xyxy[0].tolist()]
-                    detections.append(Detection(label, confidence, *coords))
+                    left_px, top_px, right_px, bottom_px = box.xyxy[0].tolist()
+                    detections.append(
+                        Detection(label, confidence, left_px, top_px, right_px, bottom_px)
+                    )
             return detections
-        except Exception as exc:
-            raise DetectorError(f"model inference failed: {exc}") from exc
+        except Exception as error:
+            raise DetectorError(f"model inference failed: {error}") from error

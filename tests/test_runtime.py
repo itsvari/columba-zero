@@ -4,101 +4,130 @@ import json
 import tempfile
 import threading
 import unittest
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
+from types import FrameType
 from unittest.mock import Mock, patch
 
-import numpy as np
+import numpy as numpy
 import yaml
 
-from app.capture import CaptureError, EndOfStream, LatestFrameStream, Picamera2Capture, VideoFileCapture
+from app.capture import (
+    CaptureError,
+    EndOfStream,
+    LatestFrameStream,
+    Picamera2Capture,
+    VideoFileCapture,
+)
 from app.config import AppConfig, ConfigError, DisplayConfig, OutputConfig
 from app.detector import DetectorError, UltralyticsDetector, check_model, validate_names
+from app.json_data import JsonValue
 from app.main import build_parser, run
-from app.models import Detection, FramePacket
+from app.models import Detection, Frame, FramePacket
 from app.output import RunOutput
 
+TEST_FRAME_SIZE_PX = 32
+COLOUR_CHANNEL_COUNT = 3
+THREAD_TEST_TIMEOUT_S = 2.0
 
-Path("outputs/test-tmp").mkdir(parents=True, exist_ok=True)
+
+def create_test_frame() -> Frame:
+    return numpy.zeros((TEST_FRAME_SIZE_PX, TEST_FRAME_SIZE_PX, COLOUR_CHANNEL_COUNT), numpy.uint8)
 
 
 class ConfigTests(unittest.TestCase):
-    def test_default_config(self):
+    def test_default_config(self) -> None:
         config = AppConfig.load("app/config.yaml")
         self.assertEqual(config.model.image_size, 640)
         self.assertEqual(config.model.confidence, 0.5)
         self.assertTrue(config.display.enabled)
 
-    def test_obsolete_and_malformed_config_rejected(self):
-        with tempfile.TemporaryDirectory(dir="outputs/test-tmp") as directory:
+    def test_obsolete_and_malformed_config_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.yaml"
-            for value in ({"actuator": {}}, {"unknown": {}}, {"camera": {"oops": 1}},
-                          {"display": {"enabled": "false"}}, {"model": {"confidence": float("nan")}},
-                          {"camera": {"fps": 0}}, {"model": {"image_size": 641}}, []):
+            invalid_configurations: tuple[JsonValue, ...] = (
+                {"actuator": {}},
+                {"unknown": {}},
+                {"camera": {"oops": 1}},
+                {"display": {"enabled": "false"}},
+                {"model": {"confidence": float("nan")}},
+                {"camera": {"fps": 0}},
+                {"model": {"image_size": 641}},
+                [],
+            )
+            for value in invalid_configurations:
                 path.write_text(yaml.safe_dump(value))
                 with self.subTest(value=value), self.assertRaises(ConfigError):
                     AppConfig.load(path)
 
-    def test_old_cli_rejected(self):
+    def test_old_cli_rejected(self) -> None:
         with self.assertRaises(SystemExit):
             build_parser().parse_args(["--hardware"])
 
 
 class DetectorTests(unittest.TestCase):
-    def test_missing_model_checked_before_import(self):
+    def test_missing_model_checked_before_import(self) -> None:
         with self.assertRaisesRegex(DetectorError, "does not exist"):
             UltralyticsDetector("not-present.pt", 640, 0.5)
 
-    def test_export_size_and_files(self):
-        with tempfile.TemporaryDirectory(dir="outputs/test-tmp") as directory:
+    def test_export_size_and_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             with self.assertRaisesRegex(DetectorError, "incomplete"):
                 check_model(str(path), 640)
             for name in ("model.ncnn.bin", "model.ncnn.param"):
                 (path / name).write_bytes(b"test")
-            (path / "metadata.yaml").write_text(yaml.safe_dump(
-                {"task": "detect", "names": {0: "pigeon"}, "imgsz": [640, 640]}))
+            (path / "metadata.yaml").write_text(
+                yaml.safe_dump({"task": "detect", "names": {0: "pigeon"}, "imgsz": [640, 640]})
+            )
             self.assertEqual(check_model(str(path), 640), path)
             with self.assertRaisesRegex(DetectorError, "export size"):
                 check_model(str(path), 416)
 
-    def test_class_mapping(self):
+    def test_class_mapping(self) -> None:
         validate_names({0: "pigeon"})
         for names in ({0: "bird"}, {0: "pigeon", 1: "person"}, {1: "pigeon"}, None):
             with self.subTest(names=names), self.assertRaises(DetectorError):
                 validate_names(names)
 
-    def test_filter_and_warmup(self):
+    def test_filter_and_warmup(self) -> None:
         detector = UltralyticsDetector.__new__(UltralyticsDetector)
         detector.image_size, detector.confidence = 640, 0.5
-        detector._model = Mock()
-        def box(conf):
+        prediction_model = Mock()
+        detector._model = prediction_model
+
+        def prediction_box(confidence: float) -> Mock:
             result = Mock()
             result.cls = Mock(item=lambda: 0)
-            result.conf = Mock(item=lambda: conf)
+            result.conf = Mock(item=lambda: confidence)
             result.xyxy = [Mock(tolist=lambda: [1, 2, 3, 4])]
             return result
-        detector._model.predict.return_value = [Mock(names={0: "pigeon"}, boxes=[box(0.4), box(0.8)])]
-        result = detector.detect(FramePacket(0, 0, np.zeros((480, 640, 3), np.uint8)))
+
+        prediction_model.predict.return_value = [
+            Mock(names={0: "pigeon"}, boxes=[prediction_box(0.4), prediction_box(0.8)])
+        ]
+        result = detector.detect(FramePacket(0, 0, numpy.zeros((480, 640, 3), numpy.uint8)))
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].confidence, 0.8)
         detector.warmup(640, 480)
-        kwargs = detector._model.predict.call_args.kwargs
-        self.assertEqual(kwargs["source"].shape, (480, 640, 3))
-        self.assertFalse(kwargs["rect"])
-        self.assertEqual(kwargs["device"], "cpu")
-        detector._model.predict.side_effect = RuntimeError("bad inference")
+        prediction_arguments = prediction_model.predict.call_args.kwargs
+        self.assertEqual(prediction_arguments["source"].shape, (480, 640, 3))
+        self.assertFalse(prediction_arguments["rect"])
+        self.assertEqual(prediction_arguments["device"], "cpu")
+        prediction_model.predict.side_effect = RuntimeError("bad inference")
         with self.assertRaisesRegex(DetectorError, "bad inference"):
             detector.warmup(640, 480)
 
 
 class CaptureTests(unittest.TestCase):
-    def test_video_sequential_completion_and_release(self):
+    def test_video_sequential_completion_and_release(self) -> None:
         import cv2
+
         capture = Mock()
         capture.isOpened.return_value = True
         capture.get.side_effect = lambda prop: 30 if prop == cv2.CAP_PROP_FPS else 2
-        frame = np.zeros((32, 32, 3), np.uint8)
+        frame = create_test_frame()
         capture.read.side_effect = [(True, frame), (True, frame), (False, None)]
         source = VideoFileCapture("example.avi")
         with patch.object(cv2, "VideoCapture", return_value=capture):
@@ -110,8 +139,9 @@ class CaptureTests(unittest.TestCase):
         capture.release.assert_called_once()
         self.assertEqual(source.dropped_frames, 0)
 
-    def test_video_decode_failure_is_not_completion(self):
+    def test_video_decode_failure_is_not_completion(self) -> None:
         import cv2
+
         capture = Mock()
         capture.isOpened.return_value = True
         capture.get.return_value = 10
@@ -123,8 +153,9 @@ class CaptureTests(unittest.TestCase):
                 source.get(1)
             source.close()
 
-    def test_video_open_failure_cleanup(self):
+    def test_video_open_failure_cleanup(self) -> None:
         import cv2
+
         capture = Mock()
         capture.isOpened.return_value = False
         source = VideoFileCapture("missing.avi")
@@ -134,33 +165,39 @@ class CaptureTests(unittest.TestCase):
             source.close()
         capture.release.assert_called_once()
 
-    def test_latest_buffer_and_shutdown(self):
+    def test_latest_buffer_and_shutdown(self) -> None:
         reached = threading.Event()
         released = threading.Event()
+
         class Camera:
             count = 0
-            def start(self):
+
+            def start(self) -> None:
                 pass
-            def read(self):
+
+            def read(self) -> Frame:
                 self.count += 1
                 if self.count == 4:
                     reached.set()
-                    released.wait(2)
-                return self.count
-            def close(self):
+                    released.wait(THREAD_TEST_TIMEOUT_S)
+                return create_test_frame()
+
+            def close(self) -> None:
                 released.set()
+
         source = LatestFrameStream(Camera())
         source.start()
         try:
-            self.assertTrue(reached.wait(2))
+            self.assertTrue(reached.wait(THREAD_TEST_TIMEOUT_S))
             packet = source.get(1)
             self.assertEqual(packet.sequence, 2)
             self.assertEqual(source.dropped_frames, 2)
         finally:
             source.close()
+        assert source._thread is not None
         self.assertFalse(source._thread.is_alive())
 
-    def test_capture_failure_and_timeout(self):
+    def test_capture_failure_and_timeout(self) -> None:
         source = LatestFrameStream(Mock())
         with self.assertRaisesRegex(CaptureError, "no camera frame"):
             source.get(0.001)
@@ -175,72 +212,102 @@ class CaptureTests(unittest.TestCase):
             source.close()
         camera.close.assert_called_once()
 
-    def test_picamera_bgr_format_and_cleanup(self):
+    def test_picamera_bgr_format_and_cleanup(self) -> None:
         camera = Mock()
         fake_module = Mock(Picamera2=Mock(return_value=camera))
         fake_controls = Mock()
-        with patch.dict("sys.modules", {"picamera2": fake_module,
-                                        "libcamera": Mock(controls=fake_controls)}):
+        with patch.dict(
+            "sys.modules", {"picamera2": fake_module, "libcamera": Mock(controls=fake_controls)}
+        ):
             source = Picamera2Capture(640, 480, 15)
             source.start()
-            self.assertEqual(camera.create_video_configuration.call_args.kwargs["main"]["format"], "RGB888")
+            self.assertEqual(
+                camera.create_video_configuration.call_args.kwargs["main"]["format"], "RGB888"
+            )
             self.assertEqual(
                 camera.create_video_configuration.call_args.kwargs["controls"]["AfMode"],
-                fake_controls.AfModeEnum.Continuous)
+                fake_controls.AfModeEnum.Continuous,
+            )
             source.close()
         camera.stop.assert_called_once()
         camera.close.assert_called_once()
 
 
 class OutputTests(unittest.TestCase):
-    def test_logs_and_unique_directories(self):
-        with tempfile.TemporaryDirectory(dir="outputs/test-tmp") as directory:
-            config = replace(AppConfig(), display=DisplayConfig(False),
-                             output=OutputConfig(directory=directory))
+    def test_logs_and_unique_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = replace(
+                AppConfig(), display=DisplayConfig(False), output=OutputConfig(directory=directory)
+            )
             first, second = RunOutput(config), RunOutput(config)
             self.assertNotEqual(first.directory, second.directory)
-            first.event("frame", frame_number=7, captured_at=12.5, inference_s=0.02,
-                        detections=[Detection("pigeon", 0.8, 1, 2, 3, 4).as_dict()], dropped_frames=2)
+            first.event(
+                "frame",
+                frame_number=7,
+                captured_at=12.5,
+                inference_s=0.02,
+                detections=[Detection("pigeon", 0.8, 1, 2, 3, 4).as_dict()],
+                dropped_frames=2,
+            )
             first.close()
             second.close()
             record = json.loads((first.directory / "detections.jsonl").read_text())
             self.assertEqual(record["detections"][0]["bbox"], [1, 2, 3, 4])
             self.assertEqual(record["dropped_frames"], 2)
 
-    def test_recording_failure_releases_writer(self):
+    def test_recording_failure_releases_writer(self) -> None:
         import cv2
-        with tempfile.TemporaryDirectory(dir="outputs/test-tmp") as directory:
-            config = replace(AppConfig(), display=DisplayConfig(False),
-                             output=OutputConfig(directory=directory, record=True))
+
+        with tempfile.TemporaryDirectory() as directory:
+            config = replace(
+                AppConfig(),
+                display=DisplayConfig(False),
+                output=OutputConfig(directory=directory, record=True),
+            )
             output = RunOutput(config)
             writer = Mock()
             writer.isOpened.return_value = False
             with patch.object(cv2, "VideoWriter", return_value=writer):
                 with self.assertRaisesRegex(RuntimeError, "video writer"):
-                    output.render(np.zeros((32, 32, 3), np.uint8), [], 1, None)
+                    output.render(create_test_frame(), [], 1, None)
                 output.close()
             writer.release.assert_called_once()
 
-    def test_q_and_window_close(self):
+    def test_q_and_window_close(self) -> None:
         import cv2
-        with tempfile.TemporaryDirectory(dir="outputs/test-tmp") as directory:
+
+        with tempfile.TemporaryDirectory() as directory:
             output = RunOutput(replace(AppConfig(), output=OutputConfig(directory=directory)))
-            with (patch.object(cv2, "namedWindow"), patch.object(cv2, "imshow"),
-                  patch.object(cv2, "destroyAllWindows") as destroy,
-                  patch.object(cv2, "waitKey", return_value=ord("q")),
-                  patch.object(cv2, "getWindowProperty", return_value=1)):
+            with (
+                patch.object(cv2, "namedWindow"),
+                patch.object(cv2, "imshow"),
+                patch.object(cv2, "destroyAllWindows") as destroy,
+                patch.object(cv2, "waitKey", return_value=ord("q")),
+                patch.object(cv2, "getWindowProperty", return_value=1),
+            ):
                 output.start()
-                self.assertFalse(output.render(np.zeros((32, 32, 3), np.uint8), [], 1, 15))
-                with patch.object(cv2, "waitKey", return_value=0), patch.object(cv2, "getWindowProperty", return_value=0):
-                    self.assertFalse(output.render(np.zeros((32, 32, 3), np.uint8), [], 1, 15))
+                self.assertFalse(output.render(create_test_frame(), [], 1, 15))
+                with (
+                    patch.object(cv2, "waitKey", return_value=0),
+                    patch.object(cv2, "getWindowProperty", return_value=0),
+                ):
+                    self.assertFalse(output.render(create_test_frame(), [], 1, 15))
                 output.close()
                 destroy.assert_called_once()
 
 
 class RuntimeTests(unittest.TestCase):
-    def exercise(self, packets, failure=None, output_failure=False, max_frames=0):
+    def exercise(
+        self,
+        packets: Sequence[FramePacket | Exception],
+        failure: Exception | None = None,
+        output_failure: bool = False,
+        max_frames: int = 0,
+    ) -> tuple[int, Mock, Mock, Mock]:
         config = replace(AppConfig(), display=DisplayConfig(False))
-        args = build_parser().parse_args(["--video", "fake.avi", "--max-frames", str(max_frames)])
+        arguments = build_parser().parse_args(
+            ["--video", "fake.avi", "--max-frames", str(max_frames)]
+        )
         source, detector, output = Mock(), Mock(), Mock()
         source.get.side_effect = packets
         source.dropped_frames = 0
@@ -249,77 +316,96 @@ class RuntimeTests(unittest.TestCase):
         output.render.return_value = True
         if output_failure:
             output.start.side_effect = RuntimeError("display failed")
-        with (patch("app.main.AppConfig.load", return_value=config),
-              patch("app.main.UltralyticsDetector", return_value=detector),
-              patch("app.main.VideoFileCapture", return_value=source),
-              patch("app.main.RunOutput", return_value=output),
-              patch("app.main.health_snapshot", return_value={})):
-            result = run(args)
+        with (
+            patch("app.main.AppConfig.load", return_value=config),
+            patch("app.main.UltralyticsDetector", return_value=detector),
+            patch("app.main.VideoFileCapture", return_value=source),
+            patch("app.main.RunOutput", return_value=output),
+            patch("app.main.health_snapshot", return_value={}),
+        ):
+            result = run(arguments)
         return result, source, detector, output
 
-    def test_replay_no_dropped_frames_and_clean_completion(self):
-        packets = [FramePacket(i, 10+i, np.zeros((32,32,3), np.uint8)) for i in range(3)]
+    def test_replay_no_dropped_frames_and_clean_completion(self) -> None:
+        packets = [
+            FramePacket(frame_index, 10 + frame_index, create_test_frame())
+            for frame_index in range(3)
+        ]
         result, source, detector, output = self.exercise([*packets, EndOfStream()])
         self.assertEqual(result, 0)
         self.assertEqual(detector.detect.call_count, 3)
         source.close.assert_called_once()
         output.close.assert_called_once()
         events = output.event.call_args_list
-        frames = [c.kwargs for c in events if c.args[0] == "frame"]
-        self.assertEqual([r["frame_number"] for r in frames], [0,1,2])
+        frames = [event_call.kwargs for event_call in events if event_call.args[0] == "frame"]
+        self.assertEqual([record["frame_number"] for record in frames], [0, 1, 2])
         self.assertEqual(events[-1].kwargs["reason"], "video_complete")
 
-    def test_inference_and_capture_failure_cleanup(self):
-        packet = FramePacket(0, 0, None)
+    def test_inference_and_capture_failure_cleanup(self) -> None:
+        packet = FramePacket(0, 0, create_test_frame())
         for packets, error in (([packet], DetectorError("bad")), ([CaptureError("camera")], None)):
             result, source, _, output = self.exercise(packets, error)
             self.assertEqual(result, 1)
             source.close.assert_called_once()
             output.close.assert_called_once()
 
-    def test_startup_output_failure_cleanup(self):
+    def test_startup_output_failure_cleanup(self) -> None:
         result, source, _, output = self.exercise([], output_failure=True)
         self.assertEqual(result, 1)
         source.start.assert_not_called()
         output.close.assert_called_once()
 
-    def test_max_frames(self):
-        result, source, _, output = self.exercise([FramePacket(0, 0, None)], max_frames=1)
+    def test_max_frames(self) -> None:
+        result, source, _, output = self.exercise(
+            [FramePacket(0, 0, create_test_frame())], max_frames=1
+        )
         self.assertEqual(result, 0)
         self.assertEqual(source.get.call_count, 1)
         self.assertEqual(output.event.call_args.kwargs["reason"], "max_frames")
 
-    def test_warmup_failure_before_capture_and_outputs(self):
-        args = build_parser().parse_args([])
-        with (patch("app.main.UltralyticsDetector") as detector,
-              patch("app.main.Picamera2Capture") as camera,
-              patch("app.main.RunOutput") as output):
+    def test_warmup_failure_before_capture_and_outputs(self) -> None:
+        arguments = build_parser().parse_args([])
+        with (
+            patch("app.main.UltralyticsDetector") as detector,
+            patch("app.main.Picamera2Capture") as camera,
+            patch("app.main.RunOutput") as output,
+        ):
             detector.return_value.warmup.side_effect = DetectorError("warmup")
-            self.assertEqual(run(args), 1)
+            self.assertEqual(run(arguments), 1)
         camera.assert_not_called()
         output.assert_not_called()
 
-    def test_sigterm_restores_handlers_and_closes_resources(self):
+    def test_sigterm_restores_handlers_and_closes_resources(self) -> None:
         import signal
-        installed = {}
-        original = object()
-        def install(sig, handler):
-            previous = installed.get(sig, original)
-            installed[sig] = handler
+
+        installed: dict[int, Callable[[int, FrameType | None], None] | Mock] = {}
+        original = Mock()
+
+        def install(
+            signal_number: int,
+            handler: Callable[[int, FrameType | None], None] | Mock,
+        ) -> Callable[[int, FrameType | None], None] | Mock:
+            previous = installed.get(signal_number, original)
+            installed[signal_number] = handler
             return previous
+
         source, detector, output = Mock(), Mock(), Mock()
-        source.get.return_value = FramePacket(0, 0, None)
+        source.get.return_value = FramePacket(0, 0, create_test_frame())
         source.dropped_frames = 0
         output.render.return_value = True
-        def detect(_packet):
+
+        def detect(_packet: FramePacket) -> list[Detection]:
             installed[signal.SIGTERM](signal.SIGTERM, None)
             return []
+
         detector.detect.side_effect = detect
-        with (patch("app.main.signal.signal", side_effect=install),
-              patch("app.main.UltralyticsDetector", return_value=detector),
-              patch("app.main.VideoFileCapture", return_value=source),
-              patch("app.main.RunOutput", return_value=output),
-              patch("app.main.health_snapshot", return_value={})):
+        with (
+            patch("app.main.signal.signal", side_effect=install),
+            patch("app.main.UltralyticsDetector", return_value=detector),
+            patch("app.main.VideoFileCapture", return_value=source),
+            patch("app.main.RunOutput", return_value=output),
+            patch("app.main.health_snapshot", return_value={}),
+        ):
             self.assertEqual(run(build_parser().parse_args(["--video", "fake.avi"])), 0)
         source.close.assert_called_once()
         output.close.assert_called_once()
@@ -327,45 +413,55 @@ class RuntimeTests(unittest.TestCase):
         self.assertIs(installed[signal.SIGTERM], original)
         self.assertIs(installed[signal.SIGINT], original)
 
-    def test_cli_overrides_and_invalid_frame_limit(self):
-        args = build_parser().parse_args(["--model", "override.pt", "--confidence", "0.7", "--record", "--max-frames", "1"])
+    def test_cli_overrides_and_invalid_frame_limit(self) -> None:
+        arguments = build_parser().parse_args(
+            ["--model", "override.pt", "--confidence", "0.7", "--record", "--max-frames", "1"]
+        )
         source, output = Mock(), Mock()
-        source.get.return_value = FramePacket(0, 0, None)
+        source.get.return_value = FramePacket(0, 0, create_test_frame())
         source.dropped_frames, source.capture_fps = 0, 15.0
-        with (patch("app.main.UltralyticsDetector") as detector,
-              patch("app.main.RunOutput", return_value=output) as factory,
-              patch("app.main.health_snapshot", return_value={})):
+        with (
+            patch("app.main.UltralyticsDetector") as detector,
+            patch("app.main.RunOutput", return_value=output) as factory,
+            patch("app.main.health_snapshot", return_value={}),
+        ):
             detector.return_value.detect.return_value = []
-            # Use video source so isinstance checks still refer to a real type.
-            args.video = "fake.avi"
+            # patching video construction leaves the live stream class available for type checks.
+            arguments.video = "fake.avi"
             with patch("app.main.VideoFileCapture", return_value=source):
-                self.assertEqual(run(args), 0)
+                self.assertEqual(run(arguments), 0)
             detector.assert_called_once_with("override.pt", 640, 0.7)
             self.assertTrue(factory.call_args.args[0].output.record)
-        args.max_frames = -1
+        arguments.max_frames = -1
         with self.assertRaises(ConfigError):
-            run(args)
+            run(arguments)
 
-    def test_source_cleanup_failure_still_closes_outputs(self):
+    def test_source_cleanup_failure_still_closes_outputs(self) -> None:
         source, output = Mock(), Mock()
         source.get.side_effect = EndOfStream()
         source.close.side_effect = RuntimeError("release failed")
-        with (patch("app.main.UltralyticsDetector"),
-              patch("app.main.VideoFileCapture", return_value=source),
-              patch("app.main.RunOutput", return_value=output),
-              patch("app.main.health_snapshot", return_value={})):
+        with (
+            patch("app.main.UltralyticsDetector"),
+            patch("app.main.VideoFileCapture", return_value=source),
+            patch("app.main.RunOutput", return_value=output),
+            patch("app.main.health_snapshot", return_value={}),
+        ):
             self.assertEqual(run(build_parser().parse_args(["--video", "fake.avi"])), 1)
         output.close.assert_called_once()
         self.assertEqual(output.event.call_args.kwargs["reason"], "cleanup_error")
 
-    def test_no_hardware_imports(self):
+    def test_no_hardware_imports(self) -> None:
         import ast
+
         forbidden = {"gpiozero", "RPi", "pigpio", "lgpio"}
-        for file in Path("app").glob("*.py"):
-            tree = ast.parse(file.read_text())
+        for source_path in Path("app").glob("*.py"):
+            tree = ast.parse(source_path.read_text())
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
-                    self.assertFalse({n.name.split(".")[0] for n in node.names} & forbidden)
+                    self.assertFalse(
+                        {imported_name.name.split(".")[0] for imported_name in node.names}
+                        & forbidden
+                    )
                 if isinstance(node, ast.ImportFrom):
                     self.assertNotIn((node.module or "").split(".")[0], forbidden)
 

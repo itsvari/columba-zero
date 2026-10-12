@@ -2,31 +2,137 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from .config import AppConfig
-from .models import Detection
+from .json_data import JsonValue
+from .models import Detection, Frame
+
+if TYPE_CHECKING:
+    import cv2
+
+MILLIUNITS_PER_UNIT = 1000
+RUN_SUFFIX_LENGTH = 8
+BOX_COLOUR_BGR = (0, 255, 0)
+TEXT_COLOUR_BGR = (0, 255, 255)
+TEXT_OUTLINE_COLOUR_BGR = (0, 0, 0)
+BOX_THICKNESS_PX = 2
+TEXT_SCALE = 0.5
+TEXT_THICKNESS_PX = 1
+TEXT_OUTLINE_THICKNESS_PX = 3
+LABEL_BOTTOM_MARGIN_PX = 8
+LABEL_MINIMUM_TOP_PX = 70
+LABEL_OFFSET_PX = 18
+PROCESSING_TEXT_POSITION_PX = (10, 24)
+CAPTURE_TEXT_POSITION_PX = (10, 46)
+WINDOW_KEY_MASK = 0xFF
+WINDOW_EVENT_DELAY_MS = 1
 
 
-def health_snapshot() -> dict:
-    result = {}
+def process_health() -> dict[str, JsonValue]:
     try:
         import psutil
-        process = psutil.Process()
-        result["memory_rss_bytes"] = process.memory_info().rss
-        result["cpu_percent"] = psutil.cpu_percent(interval=None)
     except ImportError:
-        pass
+        return {}
+    try:
+        process = psutil.Process()
+        return {
+            "memory_rss_bytes": process.memory_info().rss,
+            "cpu_percent": psutil.cpu_percent(interval=None),
+        }
+    except (OSError, psutil.Error):
+        return {}
+
+
+def health_snapshot() -> dict[str, JsonValue]:
+    result = process_health()
     thermal = Path("/sys/class/thermal/thermal_zone0/temp")
-    if thermal.exists():
-        try:
-            result["temperature_c"] = float(thermal.read_text().strip()) / 1000
-        except (OSError, ValueError):
-            pass
+    try:
+        result["temperature_c"] = float(thermal.read_text().strip()) / MILLIUNITS_PER_UNIT
+    except (OSError, ValueError):
+        pass
     return result
+
+
+def annotate_frame(
+    frame: Frame,
+    detections: Sequence[Detection],
+    processing_fps: float,
+    capture_fps: float | None,
+    requested_capture_fps: float,
+) -> Frame:
+    import cv2
+
+    image = frame.copy()
+    for detection in detections:
+        left_px, top_px, right_px, bottom_px = (
+            round(coordinate)
+            for coordinate in (
+                detection.left_px,
+                detection.top_px,
+                detection.right_px,
+                detection.bottom_px,
+            )
+        )
+        cv2.rectangle(
+            image,
+            (left_px, top_px),
+            (right_px, bottom_px),
+            BOX_COLOUR_BGR,
+            BOX_THICKNESS_PX,
+        )
+        label = f"pigeon {detection.confidence:.2f}"
+        position_px = (
+            max(0, left_px),
+            min(
+                image.shape[0] - LABEL_BOTTOM_MARGIN_PX,
+                max(LABEL_MINIMUM_TOP_PX, top_px + LABEL_OFFSET_PX),
+            ),
+        )
+        cv2.putText(
+            image,
+            label,
+            position_px,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            TEXT_SCALE,
+            TEXT_OUTLINE_COLOUR_BGR,
+            TEXT_OUTLINE_THICKNESS_PX,
+        )
+        cv2.putText(
+            image,
+            label,
+            position_px,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            TEXT_SCALE,
+            BOX_COLOUR_BGR,
+            TEXT_THICKNESS_PX,
+        )
+    text = f"Pigeons: {len(detections)} | Processing: {processing_fps:.1f} FPS"
+    cv2.putText(
+        image,
+        text,
+        PROCESSING_TEXT_POSITION_PX,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        TEXT_SCALE,
+        TEXT_COLOUR_BGR,
+        TEXT_THICKNESS_PX,
+    )
+    if capture_fps is not None:
+        text = f"Capture: {capture_fps:.1f} FPS (requested {requested_capture_fps:g})"
+        cv2.putText(
+            image,
+            text,
+            CAPTURE_TEXT_POSITION_PX,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            TEXT_SCALE,
+            TEXT_COLOUR_BGR,
+            TEXT_THICKNESS_PX,
+        )
+    return image
 
 
 class RunOutput:
@@ -34,74 +140,87 @@ class RunOutput:
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        self.directory = Path(config.output.directory) / f"{stamp}-{uuid4().hex[:8]}"
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        self.directory = (
+            Path(config.output.directory) / f"{timestamp}-{uuid4().hex[:RUN_SUFFIX_LENGTH]}"
+        )
         self.directory.mkdir(parents=True, exist_ok=False)
-        self._log = (self.directory / "detections.jsonl").open("w", encoding="utf-8")
-        self._writer: Any = None
-        self._shape = None
+        self._log = (self.directory / "detections.jsonl").open("w", encoding="utf-8", newline="\n")
+        self._writer: cv2.VideoWriter | None = None
+        self._recording_size_px: tuple[int, int] | None = None
         self._window_open = False
 
-    def event(self, event: str, **fields: Any) -> None:
-        self._log.write(json.dumps({"event": event, "timestamp": time.time(), **fields},
-                                  allow_nan=False) + "\n")
+    def event(self, event: str, **fields: JsonValue) -> None:
+        self._log.write(
+            json.dumps(
+                {"event": event, "timestamp": time.time(), **fields},
+                allow_nan=False,
+            )
+            + "\n"
+        )
         self._log.flush()
 
     def start(self) -> None:
         if self.config.display.enabled:
             import cv2
+
             self._window_open = True
             cv2.namedWindow(self.window, cv2.WINDOW_NORMAL)
 
-    def render(self, frame: Any, detections: list[Detection], processing_fps: float,
-               capture_fps: float | None) -> bool:
+    def _record(self, image: Frame) -> None:
+        import cv2
+
+        height_px, width_px = image.shape[:2]
+        frame_size_px = (width_px, height_px)
+        if self._writer is None:
+            self._recording_size_px = frame_size_px
+            self._writer = cv2.VideoWriter(
+                str(self.directory / "annotated.avi"),
+                cv2.VideoWriter.fourcc(*"MJPG"),
+                self.config.output.recording_fps,
+                frame_size_px,
+            )
+            if not self._writer.isOpened():
+                raise RuntimeError("cannot open annotated video writer")
+        if frame_size_px != self._recording_size_px:
+            raise RuntimeError("frame size changed during recording")
+        self._writer.write(image)
+
+    def render(
+        self,
+        frame: Frame,
+        detections: Sequence[Detection],
+        processing_fps: float,
+        capture_fps: float | None,
+    ) -> bool:
         if not self.config.display.enabled and not self.config.output.record:
             return True
-        import cv2
-        image = frame.copy()
-        for detection in detections:
-            x1, y1, x2, y2 = (round(v) for v in
-                              (detection.x1, detection.y1, detection.x2, detection.y2))
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"pigeon {detection.confidence:.2f}"
-            position = (max(0, x1), min(image.shape[0] - 8, max(70, y1 + 18)))
-            cv2.putText(image, label, position, cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5, (0, 0, 0), 3)
-            cv2.putText(image, label, position, cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5, (0, 255, 0), 1)
-        text = f"Pigeons: {len(detections)} | Processing: {processing_fps:.1f} FPS"
-        cv2.putText(image, text, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-        if capture_fps is not None:
-            text = f"Capture: {capture_fps:.1f} FPS (requested {self.config.camera.fps:g})"
-            cv2.putText(image, text, (10, 46), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+        image = annotate_frame(
+            frame, detections, processing_fps, capture_fps, self.config.camera.fps
+        )
         if self.config.output.record:
-            height, width = image.shape[:2]
-            if self._writer is None:
-                self._shape = (width, height)
-                self._writer = cv2.VideoWriter(str(self.directory / "annotated.avi"),
-                                               cv2.VideoWriter_fourcc(*"MJPG"),
-                                               self.config.output.recording_fps, self._shape)
-                if not self._writer.isOpened():
-                    raise RuntimeError("cannot open annotated video writer")
-            if (width, height) != self._shape:
-                raise RuntimeError("frame size changed during recording")
-            self._writer.write(image)
-        if self.config.display.enabled:
-            if cv2.getWindowProperty(self.window, cv2.WND_PROP_VISIBLE) < 1:
-                return False
-            cv2.imshow(self.window, image)
-            key = cv2.waitKey(1) & 0xFF
-            return key != ord("q") and cv2.getWindowProperty(self.window, cv2.WND_PROP_VISIBLE) >= 1
-        return True
+            self._record(image)
+        if not self.config.display.enabled:
+            return True
+        import cv2
+
+        if cv2.getWindowProperty(self.window, cv2.WND_PROP_VISIBLE) < 1:
+            return False
+        cv2.imshow(self.window, image)
+        key = cv2.waitKey(WINDOW_EVENT_DELAY_MS) & WINDOW_KEY_MASK
+        return key != ord("q") and cv2.getWindowProperty(self.window, cv2.WND_PROP_VISIBLE) >= 1
 
     def close(self) -> None:
         try:
             if self._writer is not None:
                 self._writer.release()
+                self._writer = None
         finally:
             try:
                 if self._window_open:
                     import cv2
+
                     cv2.destroyAllWindows()
+                    self._window_open = False
             finally:
                 self._log.close()
