@@ -1,0 +1,8 @@
+# canonical metadata is hashed from the LF bytes tracked by Git.
+runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/best_ncnn_model/metadata.yaml text eol=lf
+
+# manifest checksums require exact bytes for the remaining export files.
+runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/best.pt -text
+runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/best_ncnn_model/model.ncnn.bin -text
+runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/best_ncnn_model/model.ncnn.param -text
+runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/best_ncnn_model/model_ncnn.py -text

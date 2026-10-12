@@ -9,8 +9,8 @@
     },
     {
       "file": "best_ncnn_model/metadata.yaml",
-      "sha256": "16c589f246b1531c072a4c248629a694a6aa4f03d1f271a1957a9dcc38155f84",
-      "bytes": 447
+      "sha256": "180b7e93ae87e5fa4848da6a598c06001362c3b3c410c8bf9412cae8158bae65",
+      "bytes": 427
     },
     {
       "file": "best_ncnn_model/model.ncnn.bin",
