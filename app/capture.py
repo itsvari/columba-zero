@@ -4,7 +4,6 @@ import math
 import threading
 import time
 from typing import Any
-from libcamera import controls
 
 from .models import FramePacket
 
@@ -26,11 +25,13 @@ class Picamera2Capture:
 
     def start(self) -> None:
         try:
+            from libcamera import controls
             from picamera2 import Picamera2
             self._camera = Picamera2()
             config = self._camera.create_video_configuration(
                 main={"size": (self.width, self.height), "format": "RGB888"},
-                controls={"FrameRate": self.fps, "AfMode": controls.AfModeEnum.Continuous,}, buffer_count=3, queue=False)
+                controls={"FrameRate": self.fps, "AfMode": controls.AfModeEnum.Continuous},
+                buffer_count=3, queue=False)
             self._camera.configure(config)
             self._camera.start()
         except Exception as exc:

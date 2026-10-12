@@ -178,10 +178,15 @@ class CaptureTests(unittest.TestCase):
     def test_picamera_bgr_format_and_cleanup(self):
         camera = Mock()
         fake_module = Mock(Picamera2=Mock(return_value=camera))
-        with patch.dict("sys.modules", {"picamera2": fake_module}):
+        fake_controls = Mock()
+        with patch.dict("sys.modules", {"picamera2": fake_module,
+                                        "libcamera": Mock(controls=fake_controls)}):
             source = Picamera2Capture(640, 480, 15)
             source.start()
             self.assertEqual(camera.create_video_configuration.call_args.kwargs["main"]["format"], "RGB888")
+            self.assertEqual(
+                camera.create_video_configuration.call_args.kwargs["controls"]["AfMode"],
+                fake_controls.AfModeEnum.Continuous)
             source.close()
         camera.stop.assert_called_once()
         camera.close.assert_called_once()
