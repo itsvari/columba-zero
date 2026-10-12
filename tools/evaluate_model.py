@@ -1,10 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import platform
+from pathlib import Path
+
+from app.inference import NMS_INTERSECTION_OVER_UNION
+from app.json_data import JsonValue
 
 
 def main() -> None:
@@ -16,32 +19,41 @@ def main() -> None:
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--confidence", type=float, default=0.001)
     parser.add_argument("--output", default="test_metrics.json")
-    args = parser.parse_args()
+    arguments = parser.parse_args()
 
     from ultralytics import YOLO
 
-    model = YOLO(args.model)
+    model = YOLO(arguments.model, task="detect")
     metrics = model.val(
-        data=args.data_yaml,
+        data=arguments.data_yaml,
         split="test",
-        imgsz=args.imgsz,
-        conf=args.confidence,
-        plots=True, device="cpu", batch=1, workers=0, rect=False, iou=0.7,
-        project=str(Path("outputs/evaluation").resolve()), name=Path(args.model).stem,
+        imgsz=arguments.imgsz,
+        conf=arguments.confidence,
+        plots=True,
+        device="cpu",
+        batch=1,
+        workers=0,
+        rect=False,
+        iou=NMS_INTERSECTION_OVER_UNION,
+        project=str(Path("outputs/evaluation").resolve()),
+        name=Path(arguments.model).stem,
     )
-    result = {
+    result: dict[str, JsonValue] = {
         "platform": platform.platform(),
-        "split": "test", "device": "cpu", "rect": False, "iou": 0.7,
-        "speed_ms_per_image": metrics.speed,
+        "split": "test",
+        "device": "cpu",
+        "rect": False,
+        "iou": NMS_INTERSECTION_OVER_UNION,
+        "speed_ms_per_image": {key: float(value) for key, value in metrics.speed.items()},
         "precision": float(metrics.box.mp),
         "recall": float(metrics.box.mr),
         "map50": float(metrics.box.map50),
         "map50_95": float(metrics.box.map),
-        "confidence": args.confidence,
-        "image_size": args.imgsz,
+        "confidence": arguments.confidence,
+        "image_size": arguments.imgsz,
     }
-    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-    with open(args.output, "w", encoding="utf-8") as handle:
+    Path(arguments.output).parent.mkdir(parents=True, exist_ok=True)
+    with open(arguments.output, "w", encoding="utf-8") as handle:
         json.dump(result, handle, indent=2)
     print(json.dumps(result, indent=2))
 

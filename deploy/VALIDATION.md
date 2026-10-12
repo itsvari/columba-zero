@@ -35,6 +35,60 @@ only one GUI-capable OpenCV provider.
 The evaluator could not write its optional label cache outside the workspace;
 validation completed successfully without it. Original labels were unchanged.
 
+## Deployment fix and cleanup checks on 12 October 2026
+
+The manifest originally hashed the Windows CRLF copy of NCNN `metadata.yaml`,
+447 bytes with SHA-256
+`16c589f246b1531c072a4c248629a694a6aa4f03d1f271a1957a9dcc38155f84`.
+Git tracked LF bytes, so model preparation failed on the local LF checkout in
+the same way as the reported clean Linux checkout. The canonical entry now
+records 427 bytes with SHA-256
+`180b7e93ae87e5fa4848da6a598c06001362c3b3c410c8bf9412cae8158bae65`.
+`.gitattributes` enforces LF for this metadata and exact bytes for the other
+four manifest files. Their checksums are unchanged.
+
+- 33 automated unittest cases passed, including the original 25 runtime cases.
+  Added checks cover tracked manifest bytes, clean checkouts with both
+  `core.autocrlf=false` and `true`, source and copy corruption, export matching,
+  streaming summaries, benchmark resource release, and final log failure.
+- Model preparation passed and verified all five source and copied files.
+  It now checks recorded sizes as well as SHA-256. A Linux execution was not
+  repeated here because the local Docker daemon was unavailable.
+- Ruff lint and formatting checks passed. Strict mypy passed on application
+  code, tests, and tools. Ultralytics and Pi camera bindings are excluded from
+  import analysis because their type information is incomplete; prediction
+  protocols describe the detector boundary.
+- Real NCNN replay processed a five-frame diagnostic AVI in order, logged zero
+  drops, exited at EOF, and recorded an AVI that decoded to five frames. Counts
+  were `0, 1, 0, 1, 0` on alternating blank frames and a pigeon tile from existing
+  annotated validation imagery. GUI calls remain covered by mocks.
+- Real CPU PT/NCNN comparison passed on three smoke images at confidence 0.5,
+  input 640, square preprocessing, and NMS IoU 0.7. The positive tile had one
+  detection in each model, matched IoU 0.99747, and confidence delta 0.000064.
+  These derived images do not constitute independent accuracy validation or
+  representative negative footage. The earlier 63-image test results remain
+  the recorded dataset evidence and were not rerun.
+- All eight supporting tools accepted `--help`. The video benchmark processed
+  five frames, the summariser read the real replay log, and `pip check` passed.
+  Training and export generation were not rerun, preserving the trained files.
+
+Environment: macOS 27.0.1 ARM64, Python 3.14.8, Ultralytics 8.4.175,
+NCNN 1.0.20260526, Torch 2.14.1, OpenCV 5.0.0, and NumPy 2.5.2.
+Smoke outputs are in ignored `outputs/validation/style-cleanup/`, including
+`positive-result.json`, `positive-comparison.json`, replay JSONL, and recording.
+Desktop smoke timing is not a Pi performance result.
+
+Reproduce the automated checks from the repository root with the desktop
+development dependencies installed:
+
+```bash
+python -m unittest discover -s tests -v
+python -m ruff check app tests tools
+python -m ruff format --check app tests tools
+python -m mypy
+python tools/prepare_models.py
+```
+
 ## Pending on physical Pi 5
 
 Pi OS installation and ARM dependency compatibility, CSI colors and box alignment,

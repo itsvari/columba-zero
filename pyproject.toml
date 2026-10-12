@@ -39,7 +39,7 @@ select = ["E", "F", "I", "B", "UP"]
 python_version = "3.11"
 strict = true
 explicit_package_bases = true
-files = ["app", "tests/test_runtime.py", "tests/test_model_manifest.py"]
+files = ["app", "tests", "tools"]
 
 [[tool.mypy.overrides]]
 module = ["ultralytics", "ultralytics.*", "picamera2", "libcamera"]

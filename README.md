@@ -26,6 +26,11 @@ modified. When transferring to the Pi, copy `models/pigeon_baseline_v1-2/` as
 well as the application; ignored model binaries do not arrive via Git alone.
 Keep original training artifacts backed up separately.
 
+Git checks out the NCNN `metadata.yaml` with LF line endings on every platform.
+Its manifest entry hashes the tracked 427-byte file. The other four manifest
+files retain their exact bytes during checkout. Preparation verifies both file
+size and SHA-256 before copying and again after copying.
+
 ## Pi setup
 
 Use Raspberry Pi OS Desktop **64-bit**, Python 3.11 or newer, with a local desktop
@@ -121,6 +126,9 @@ python -m venv .venv
 # Activate .venv using your shell's activation script.
 python -m pip install -e '.[vision,metrics,dev]'
 python -m unittest discover -s tests -v
+python -m ruff check app tests tools
+python -m ruff format --check app tests tools
+python -m mypy
 python tools/prepare_models.py
 python tools/compare_exports.py models/pigeon_baseline_v1-2/best.pt models/pigeon_baseline_v1-2/best_ncnn_model /path/to/test/images --output outputs/validation/export_comparison.json
 python tools/evaluate_model.py models/pigeon_baseline_v1-2/best.pt /path/to/data.yaml --output outputs/validation/pt_test_metrics.json
@@ -129,6 +137,10 @@ python tools/evaluate_model.py models/pigeon_baseline_v1-2/best.pt /path/to/data
 For clean desktop environments use GUI-capable `opencv-python`. The Pi-specific
 installation above deliberately uses OS OpenCV instead of the desktop extra.
 The runtime CLI is also available as `python -m app.main`.
+
+Strict type checking covers application code, tests, and tools. Ultralytics and
+the Pi camera bindings lack complete type information; the detector adapter uses
+explicit prediction protocols, and camera imports remain deferred until use.
 
 Export comparison uses matching CPU, 640-square preprocessing, confidence 0.5,
 and NMS IoU 0.7. It records counts, boxes, matched IoUs, and confidence deltas;

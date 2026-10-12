@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 from __future__ import annotations
 
 import argparse
@@ -9,11 +9,13 @@ def main() -> None:
     parser.add_argument("model")
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--half", action="store_true")
-    args = parser.parse_args()
+    arguments = parser.parse_args()
 
     from ultralytics import YOLO
 
-    exported = YOLO(args.model).export(format="ncnn", imgsz=args.imgsz, half=args.half)
+    exported = YOLO(arguments.model, task="detect").export(
+        format="ncnn", imgsz=arguments.imgsz, half=arguments.half
+    )
     print(exported)
 
 

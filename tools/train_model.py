@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-import yaml
+from app.dataset import load_dataset
 
-REQUIRED_CLASSES = {"pigeon"}
+EARLY_STOPPING_PATIENCE_EPOCHS = 10
 
 
 def main() -> None:
@@ -20,33 +20,33 @@ def main() -> None:
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--project", default="pigeon_detector")
     parser.add_argument("--name", default="pigeon_experiment")
-    args = parser.parse_args()
+    arguments = parser.parse_args()
 
-    data = yaml.safe_load(Path(args.data_yaml).read_text(encoding="utf-8"))
-    names_value = data.get("names", [])
-    names = list(names_value.values()) if isinstance(names_value, dict) else list(names_value)
-    normalized = {str(name).lower() for name in names}
-    if normalized != REQUIRED_CLASSES:
-        raise SystemExit("refusing to train: expected the single class pigeon")
+    try:
+        data = load_dataset(Path(arguments.data_yaml))
+    except ValueError as error:
+        raise SystemExit(f"refusing to train: {error}") from error
     if not data.get("test"):
         raise SystemExit("refusing to train: data.yaml has no held-out test split")
 
     from ultralytics import YOLO
 
-    model = YOLO(args.base_model)
+    model = YOLO(arguments.base_model, task="detect")
     model.train(
-        data=args.data_yaml,
-        epochs=args.epochs,
-        imgsz=args.imgsz,
-        batch=args.batch,
-        project=args.project,
-        name=args.name,
+        data=arguments.data_yaml,
+        epochs=arguments.epochs,
+        imgsz=arguments.imgsz,
+        batch=arguments.batch,
+        project=arguments.project,
+        name=arguments.name,
         pretrained=True,
-        patience=10,
+        patience=EARLY_STOPPING_PATIENCE_EPOCHS,
         plots=True,
     )
-    best_model = Path(args.project) / args.name / "weights" / "best.pt"
-    YOLO(str(best_model)).val(data=args.data_yaml, split="test", imgsz=args.imgsz, plots=True)
+    best_model = Path(arguments.project) / arguments.name / "weights" / "best.pt"
+    YOLO(str(best_model), task="detect").val(
+        data=arguments.data_yaml, split="test", imgsz=arguments.imgsz, plots=True
+    )
     print(best_model)
 
 
