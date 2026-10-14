@@ -28,6 +28,8 @@ from typing import Any
 
 PHASH_BITS = 64
 DEFAULT_MAX_DISTANCE = 6
+FINE_HASH_SIZE = 16  # 256-bit phash used to confirm 64-bit matches
+DEFAULT_CONFIRM_DISTANCE = 32
 HASH_CHUNK_BYTES = 1 << 20
 
 Record = dict[str, Any]
@@ -43,12 +45,35 @@ def file_sha256(path: Path) -> str:
 
 def perceptual_hashes(path: Path) -> tuple[str, str]:
     """phash of the image and of its left-right mirror (Roboflow sets contain flipped copies)."""
+    hashes = all_hashes(path)
+    return hashes["phash"], hashes["phash_mirror"]
+
+
+def all_hashes(path: Path) -> dict[str, str]:
+    """64-bit phash (search) and 256-bit phash (confirmation), each also of the mirror image."""
     import imagehash
     from PIL import Image, ImageOps
 
     with Image.open(path) as opened:
         image = ImageOps.exif_transpose(opened).convert("RGB")
-    return str(imagehash.phash(image)), str(imagehash.phash(ImageOps.mirror(image)))
+    mirror = ImageOps.mirror(image)
+    return {
+        "phash": str(imagehash.phash(image)),
+        "phash_mirror": str(imagehash.phash(mirror)),
+        "phash256": str(imagehash.phash(image, hash_size=FINE_HASH_SIZE)),
+        "phash256_mirror": str(imagehash.phash(mirror, hash_size=FINE_HASH_SIZE)),
+    }
+
+
+def confirmed(left: Record, right: Record, confirm_distance: int | None) -> bool:
+    """A 64-bit phash match counts only if the 256-bit phashes (mirror-aware) also agree.
+    Low-texture photos (a bird on sky or blurred foliage) often collide at 64 bits."""
+    if confirm_distance is None or not left.get("phash256") or not right.get("phash256"):
+        return True
+    distance = hamming(left["phash256"], right["phash256"])
+    if right.get("phash256_mirror"):
+        distance = min(distance, hamming(left["phash256"], right["phash256_mirror"]))
+    return distance <= confirm_distance
 
 
 def hamming(left: str | int, right: str | int) -> int:
@@ -70,16 +95,14 @@ def hash_source(provenance_path: Path) -> dict[str, Record]:
     changed = False
     for record in records:
         cached = cache.get(record["id"])
-        if cached is not None and cached.get("file") == record["file"]:
+        if cached is not None and cached.get("file") == record["file"] and "phash256" in cached:
             continue
         path = source_root / record["file"]
-        phash, phash_mirror = perceptual_hashes(path)
         cache[record["id"]] = {
             "id": record["id"],
             "file": record["file"],
             "sha256": file_sha256(path),
-            "phash": phash,
-            "phash_mirror": phash_mirror,
+            **all_hashes(path),
         }
         changed = True
     if changed:
@@ -155,9 +178,12 @@ def group_id(smallest_member: str) -> str:
 
 
 def assign_groups(
-    items: Sequence[Record], max_distance: int
+    items: Sequence[Record], max_distance: int, confirm_distance: int | None = None
 ) -> tuple[dict[str, str], list[Record]]:
     """Group records with keys `id`, `sha256`, `phash` and optional `scene_id`.
+
+    With `confirm_distance`, a phash link also needs the records' `phash256` values (if present)
+    within that distance (see `confirmed`).
 
     Returns {id: group} and a list of near-duplicate clusters (groups with more than one image),
     each `{"group", "members", "links": [[a, b, reason], ...]}`.
@@ -178,9 +204,12 @@ def assign_groups(
             union.union(members[0], member)
             links.append((members[0], member, kind))
     mirrors = {item["id"]: item["phash_mirror"] for item in items if item.get("phash_mirror")}
+    by_id = {item["id"]: item for item in items}
     for left, right, distance in near_duplicate_pairs(
         {item["id"]: item["phash"] for item in items}, max_distance, mirrors
     ):
+        if not confirmed(by_id[left], by_id[right], confirm_distance):
+            continue
         union.union(left, right)
         links.append((left, right, f"phash:{distance}"))
     members_by_root: dict[str, list[str]] = defaultdict(list)
@@ -247,11 +276,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("provenance", nargs="+", type=Path, help="raw/<source>/provenance.jsonl")
     parser.add_argument("--max-distance", type=int, default=DEFAULT_MAX_DISTANCE)
+    parser.add_argument(
+        "--confirm-distance",
+        type=int,
+        help=f"256-bit phash confirmation (e.g. {DEFAULT_CONFIRM_DISTANCE}); default off",
+    )
     parser.add_argument("--output", type=Path, help="write id/source/group/hash lines")
     parser.add_argument("--clusters", type=Path, help="write the multi-image clusters as JSON")
     arguments = parser.parse_args()
     items = load_items(arguments.provenance)
-    groups, clusters = assign_groups(items, arguments.max_distance)
+    groups, clusters = assign_groups(items, arguments.max_distance, arguments.confirm_distance)
     if arguments.output:
         arguments.output.parent.mkdir(parents=True, exist_ok=True)
         with open(arguments.output, "w", encoding="utf-8") as handle:

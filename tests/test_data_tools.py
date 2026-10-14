@@ -31,7 +31,13 @@ from tools.build_dataset import (
     yolo_lines,
 )
 from tools.dataset_audit import main as audit_main
-from tools.dedupe_images import assign_groups, hamming, near_duplicate_pairs, perceptual_hashes
+from tools.dedupe_images import (
+    assign_groups,
+    confirmed,
+    hamming,
+    near_duplicate_pairs,
+    perceptual_hashes,
+)
 from tools.fetch_sources import (
     RateLimiter,
     license_allowed,
@@ -231,6 +237,19 @@ class DedupeTests(unittest.TestCase):
         self.assertAlmostEqual(kinds["other_bird"] / len(val), 0.2, delta=0.05)
         self.assertFalse(any(item["source"] == "nea" for item in val))
         self.assertEqual(report["val_mix_target"], mix)
+
+    def test_fine_hash_confirmation_breaks_false_chains(self) -> None:
+        items = [
+            {"id": "a", "sha256": "a", "phash": "0" * 16, "phash256": "0" * 64},
+            {"id": "b", "sha256": "b", "phash": "0" * 15 + "f", "phash256": "f" * 16 + "0" * 48},
+            {"id": "c", "sha256": "c", "phash": "0" * 15 + "3", "phash256": "0" * 63 + "f"},
+        ]
+        loose, _ = assign_groups(items, 6)
+        self.assertEqual(len(set(loose.values())), 1)
+        strict, _ = assign_groups(items, 6, confirm_distance=32)
+        self.assertEqual(strict["a"], strict["c"])  # 256-bit hashes 4 bits apart
+        self.assertNotEqual(strict["a"], strict["b"])  # 64 bits apart: a different photo
+        self.assertTrue(confirmed({"phash256": "0" * 64}, {"phash256": "f" * 64}, None))
 
     def test_split_keeps_groups_together(self) -> None:
         items = [

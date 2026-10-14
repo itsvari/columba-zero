@@ -38,6 +38,7 @@ from typing import Any, cast
 import yaml
 
 from tools.dedupe_images import (
+    all_hashes,
     assign_groups,
     file_sha256,
     hash_source,
@@ -424,6 +425,7 @@ def write_dataset(
     }
     if spec["kind"] == "train":
         summary["dedupe"]["test_exclusion_distance"] = spec["test_exclusion_distance"]
+        summary["dedupe"]["phash256_confirm_distance"] = spec.get("phash256_confirm_distance")
     if any(record["style"] != "original" for record in manifest):
         summary["styles"] = {
             split: dict(
@@ -650,9 +652,8 @@ def build_train(spec: Record, root: Path) -> Path:
     names = taxonomy_names(taxonomy, spec["taxonomy"])
     test_dir = root / spec["test_dataset"]
     test_records = load_dataset_manifest(test_dir)
-    test_hashes = {
-        record["id"]: perceptual_hashes(test_dir / record["file"]) for record in test_records
-    }
+    test_fine = {record["id"]: all_hashes(test_dir / record["file"]) for record in test_records}
+    test_hashes = {key: (value["phash"], value["phash_mirror"]) for key, value in test_fine.items()}
     test_sha = {record["sha256"] for record in test_records}
     candidates: list[Record] = []
     report: Record = {"per_source": {}}
@@ -672,15 +673,17 @@ def build_train(spec: Record, root: Path) -> Path:
             "sha256": record["sha256"],
             "phash": test_hashes[record["id"]][0],
             "phash_mirror": test_hashes[record["id"]][1],
+            "phash256": test_fine[record["id"]]["phash256"],
+            "phash256_mirror": test_fine[record["id"]]["phash256_mirror"],
             "scene_id": test_scene.get(record["id"]),
         }
         for record in test_records
     ]
-    pool = [
-        {key: item.get(key) for key in ("id", "sha256", "phash", "phash_mirror", "scene_id")}
-        for item in unique
-    ]
-    groups, _ = assign_groups([*pool, *test_items], spec["phash_max_distance"])
+    keys = ("id", "sha256", "phash", "phash_mirror", "phash256", "phash256_mirror", "scene_id")
+    pool = [{key: item.get(key) for key in keys} for item in unique]
+    groups, _ = assign_groups(
+        [*pool, *test_items], spec["phash_max_distance"], spec.get("phash256_confirm_distance")
+    )
     test_groups = {groups[item["id"]] for item in test_items}
     nearest = nearest_distances(
         {item["id"]: [item["phash"], item["phash_mirror"]] for item in unique},

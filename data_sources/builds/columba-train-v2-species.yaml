@@ -26,6 +26,10 @@ sources:
     review_default: keep
 phash_max_distance: 10
 test_exclusion_distance: 12
+# A 64-bit phash link also needs the 256-bit phashes within 32 bits: iNaturalist close-ups on
+# sky or blurred foliage collide at 64 bits and chained 848 unrelated images into one group.
+# Test exclusion (above) stays 64-bit only, which is the conservative direction.
+phash256_confirm_distance: 32
 val_fraction: 0.15                         # of pigeon-positive images
 val_mix: {pigeon: 0.45, other_bird: 0.2, empty: 0.35}
 seed: 0
