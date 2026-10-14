@@ -212,11 +212,14 @@ def fetch(root: Path, runs: Sequence[DesiredRun], destination: Path, leaderboard
             raise RuntimeError(completed.stderr.strip())
         if (local / "run.json").exists():
             row = leaderboard_row(local)
-            real_leaderboard = (REPOSITORY / "experiments/leaderboard.csv").resolve()
+            production_leaderboard = any(
+                path.name == "leaderboard.csv" and path.parent.name == "experiments"
+                for path in (leaderboard, leaderboard.resolve())
+            )
             smoke = run.recipe.identifier.startswith("smoke-") or row["recipe_id"].startswith(
                 "smoke-"
             )
-            if not smoke or leaderboard.resolve() != real_leaderboard:
+            if not smoke or not production_leaderboard:
                 rows.append(row)
     if rows or not leaderboard.exists():
         update_leaderboard(leaderboard, rows)

@@ -377,6 +377,11 @@ class ClusterTests(unittest.TestCase):
             ):
                 fetch(root / "remote", [desired], destination, real_leaderboard)
                 self.assertEqual(real_leaderboard.read_bytes(), original)
+                other_leaderboard = root / "main/experiments/leaderboard.csv"
+                update_leaderboard(other_leaderboard, [incumbent])
+                other_original = other_leaderboard.read_bytes()
+                fetch(root / "remote", [desired], destination, other_leaderboard)
+                self.assertEqual(other_leaderboard.read_bytes(), other_original)
                 fetch(root / "remote", [desired], destination, scratch)
             with scratch.open() as source:
                 rows = list(csv.DictReader(source))
