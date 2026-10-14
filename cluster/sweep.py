@@ -140,8 +140,18 @@ def deploy(root: Path) -> tuple[Path, str]:
 
 
 def submission_for(
-    run: DesiredRun, root: Path, checkout: Path, commit: str, stop_after_epoch: int | None = None
+    run: DesiredRun,
+    root: Path,
+    checkout: Path,
+    commit: str,
+    stop_after_epoch: int | None = None,
+    constraint: str | None = None,
 ) -> Submission:
+    """Build one submission; `constraint` replaces the recipe's GPU type for this submission."""
+    if constraint is not None and (
+        run.recipe.lane != "nv" or constraint not in ("t4", "titanrtx", "titanv")
+    ):
+        raise ValueError("--constraint needs an nv recipe and one of t4, titanrtx, titanv")
     try:
         relative_recipe = run.recipe_path.relative_to(REPOSITORY)
     except ValueError as error:
@@ -159,6 +169,8 @@ def submission_for(
         "epochs_done": 0,
         "source_snapshot": checkout.name,
     }
+    if constraint is not None:
+        metadata["constraint_override"] = constraint
     exports = "\n".join(
         f"export {key}={shlex.quote(value)}"
         for key, value in {
@@ -181,7 +193,7 @@ def submission_for(
     return {
         "name": run.name,
         "lane": run.recipe.lane,
-        "constraint": run.recipe.constraint_for_seed(run.seed),
+        "constraint": constraint or run.recipe.constraint_for_seed(run.seed),
         "script": script,
         "run_path": str(root / "runs" / run.relative_run),
     }
@@ -250,6 +262,11 @@ def main() -> None:
     )
     parser.add_argument("--probe-node", default="xgpe6")
     parser.add_argument("--stop-after-epoch", type=int)
+    parser.add_argument(
+        "--constraint",
+        choices=("t4", "titanrtx", "titanv"),
+        help="submit: override the recipe's GPU type (recipe hash unchanged; use with --seeds)",
+    )
     parser.add_argument("--destination", type=Path, default=REPOSITORY / "experiments/runs")
     parser.add_argument(
         "--leaderboard", type=Path, default=REPOSITORY / "experiments/leaderboard.csv"
@@ -302,7 +319,9 @@ def main() -> None:
         submissions = [probe_submission(arguments.probe_node, root, checkout)]
     else:
         submissions = [
-            submission_for(run, root, checkout, commit, arguments.stop_after_epoch)
+            submission_for(
+                run, root, checkout, commit, arguments.stop_after_epoch, arguments.constraint
+            )
             for run in runs
             if run.relative_run not in done
         ]

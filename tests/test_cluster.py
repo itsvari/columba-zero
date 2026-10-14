@@ -259,6 +259,17 @@ class ClusterTests(unittest.TestCase):
         self.assertEqual(submission["constraint"], "titanv")
         self.assertNotEqual(job_name("x" * 100 + "a", 0), job_name("x" * 100 + "b", 0))
 
+    def test_constraint_override_keeps_recipe_and_records_metadata(self) -> None:
+        recipe = load_recipe(BASELINE_RECIPE)
+        run = DesiredRun(BASELINE_RECIPE, recipe, 1)
+        root, checkout = Path("/home/user/columba"), Path("/checkout")
+        submission = submission_for(run, root, checkout, "commit", constraint="titanv")
+        self.assertEqual(submission["constraint"], "titanv")
+        self.assertIn("constraint_override", submission["script"])
+        self.assertEqual(submission_for(run, root, checkout, "commit")["constraint"], "titanrtx")
+        with self.assertRaises(ValueError):
+            submission_for(run, root, checkout, "commit", constraint="a100")
+
     def test_done_requires_all_artifacts_and_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

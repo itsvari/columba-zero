@@ -63,7 +63,9 @@ Environment paths:
 
 Every submission excludes the nodes listed in `cluster/excluded_nodes.txt`
 (currently `xgpe6` and `xgpe2`, whose GPUs report "No devices were found").
-`--exclude-nodes` adds nodes to that list; it cannot remove them. Edit the file
+`--exclude-nodes` adds nodes to that list; it cannot remove them. `submit
+--constraint t4|titanrtx|titanv` overrides the recipe GPU type for one submission
+(use with `--seeds`) without changing the recipe hash. Edit the file
 to change the default. Exclusions accept only node names in the permitted lanes. They
 cannot broaden the GPU request or select restricted hardware.
 

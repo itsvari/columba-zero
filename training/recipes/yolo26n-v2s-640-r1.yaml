@@ -7,7 +7,7 @@ seeds:
 - 0
 lane: nv
 gpu_constraint: null
-est_gpu_hours: 4.0
+est_gpu_hours: 7.3
 teacher: null
 train:
   epochs: 150
