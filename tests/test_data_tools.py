@@ -679,6 +679,11 @@ class PhaseTwoBuildTests(DatasetFixture):
             self.assertEqual((copy["split"], copy["group"]), ("train", original["group"]))
             self.assertEqual(copy["classes_present"], original["classes_present"])
         validate_dataset(dataset)
+        with (
+            patch("sys.argv", ["dataset_audit.py", str(dataset / "data.yaml")]),
+            patch("builtins.print"),
+        ):
+            audit_main()  # multi-class species names are accepted for C1 datasets
 
     def test_test_styles_copy_every_test_image_in_every_style(self) -> None:
         spec = {

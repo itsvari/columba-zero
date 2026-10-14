@@ -38,6 +38,18 @@ def resolve_image_directory(
     return root / image_directory
 
 
+def read_c1_data_yaml(path: Path) -> dict[str, JsonValue]:
+    import yaml
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as error:
+        raise ValueError(f"invalid dataset {path}: {error}") from error
+    if not isinstance(data, dict):
+        raise ValueError(f"invalid dataset {path}: expected a mapping")
+    return {str(key): value for key, value in data.items()}
+
+
 def c1_audit(dataset: Path, data: dict[str, JsonValue], configuration_path: Path) -> list[str]:
     """CONTRACTS.md C1 checks for datasets built by tools/build_dataset.py (DATASET.json present):
     manifest fields and licences, labels against the taxonomy, groups within one split, and for
@@ -89,7 +101,12 @@ def main() -> None:
     arguments = parser.parse_args()
     configuration_path = Path(arguments.data_yaml).resolve()
     try:
-        data = load_dataset(configuration_path)
+        if (configuration_path.parent / "DATASET.json").exists():
+            # C1 datasets may use the multi-class `species` taxonomy; c1_audit checks the
+            # names against training/classes.yaml instead of the single-class runtime rule.
+            data = read_c1_data_yaml(configuration_path)
+        else:
+            data = load_dataset(configuration_path)
     except ValueError as error:
         raise SystemExit(f"dataset audit failed: {error}") from error
     problems: list[str] = []
