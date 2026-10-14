@@ -22,8 +22,8 @@ train:
   imgsz: 640
   save: true
   save_period: 5
-  cache: false
-  workers: 0
+  cache: ram
+  workers: 6
   exist_ok: false
   pretrained: true
   cls_remap: true
@@ -103,6 +103,16 @@ deploy_sizes:
   - 640
 - - 448
   - 800
-notes: v1-2 args preserved except runner-owned paths, seed, batch, device, resume
-  and periodic checkpoints. Source epoch budget 200, patience 10, imgsz 640; original
-  batch 8. Runner keeps nbs 64.
+notes: >-
+  v1-2 args preserved except runner-owned paths, seed, batch, device, resume and
+  periodic checkpoints. Source epoch budget 200, patience 10, imgsz 640.
+  Deviations from v1-2 (WS5): workers 0 -> 6 and cache false -> ram (data
+  loading only; ~1.3 GB RAM of 64 GB; Ultralytics warns ram cache can make
+  deterministic runs non-bit-exact, which cross-GPU seeds already are). Batch 8
+  -> runner memory class (T4 48, Titan RTX 64, Titan V 32). nbs 64 gives
+  accumulate round(64/batch): effective batch 64 on Titan RTX/V as in v1-2,
+  but 48 on T4 (accumulate 1, weight decay scaled by 48/64). BatchNorm sees
+  larger batches than v1-2. Optimizer auto still picks AdamW (2800 < 10000
+  iterations). Data is
+  columba-train-v1clean (868/156, regrouped, test-v2 groups removed), not the
+  original v1 split.
