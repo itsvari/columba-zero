@@ -1,13 +1,15 @@
 # WS9 — Runtime pipeline features
 
-- State: not started  <!-- not started | in progress | blocked | done -->
-- Branch:
-- Agent:
-- Last updated:
+- State: in progress  <!-- not started | in progress | blocked | done -->
+- Branch: `ws9/runtime`
+- Agent: Claude Opus 5.5 via T3 delegate
+- Last updated: 2026-10-14
 
 ## Done
 
 ## In progress
+
+Tasks 1–8 of PLAN.md WS9, in order.
 
 ## Blockers and requests
 
