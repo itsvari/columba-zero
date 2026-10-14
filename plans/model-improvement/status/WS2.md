@@ -1,6 +1,6 @@
 # WS2 — Data
 
-- State: in progress (phase 1 done; phase 2 not started)  <!-- not started | in progress | blocked | done -->
+- State: in progress (phase 1 done and merged; phase 2 in progress)  <!-- not started | in progress | blocked | done -->
 - Branch: `ws2/data`
 - Agent: Claude Opus 5.5 via T3 delegate
 - Last updated: 2026-10-14
@@ -173,7 +173,7 @@ python -m tools.dataset_audit <dataset>/data.yaml      # also: python tools/data
 
 ## In progress
 
-Nothing. Phase 2 not started.
+Phase 2 (started 2026-10-14): iNaturalist and COCO train2017 fetches, auto-labelling, style copies, `columba-train-v2`, `-v2s`, `columba-test-v2-styles`, species variants.
 
 ## Blockers and requests
 

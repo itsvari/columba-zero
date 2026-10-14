@@ -1,4 +1,5 @@
-# Training negatives (phase 2): same rules as coco-negatives, from train2017.
+# Training negatives (phase 2): same rules as coco-negatives, from train2017, first 1500
+# licence-allowed images by COCO id (CC-BY, CC-BY-SA and, since C1 v1.4, PDM).
 name: coco-negatives-train
 kind: coco
 split: train2017
@@ -6,4 +7,4 @@ url: https://cocodataset.org/
 require_any: [car, bus, truck, traffic light, fire hydrant, stop sign, parking meter, bench, motorcycle, bicycle]
 exclude_any: [bird, kite]
 box_categories: []
-limit: 3000
+limit: 1500

@@ -64,11 +64,11 @@ COCO_LICENSES = {
     4: "CC-BY-2.0",
     5: "CC-BY-SA-2.0",
     6: "CC-BY-ND-2.0",
-    7: "Flickr-no-known-copyright-restrictions",
-    8: "US-Government-Work",
+    7: "PDM",  # "No known copyright restrictions" (public domain, CONTRACTS.md C1 v1.4)
+    8: "PDM",  # "United States Government Work"
 }
 INATURALIST_LICENSES = {"cc0": "CC0-1.0", "cc-by": "CC-BY-4.0", "cc-by-sa": "CC-BY-SA-4.0"}
-ALLOWED_LICENSE = re.compile(r"^(CC0-1\.0|CC-BY-\d\.\d|CC-BY-SA-\d\.\d)$")
+ALLOWED_LICENSE = re.compile(r"^(CC0-1\.0|PDM|CC-BY-\d\.\d|CC-BY-SA-\d\.\d)$")
 
 Record = dict[str, Any]
 
@@ -78,7 +78,8 @@ def data_root() -> Path:
 
 
 def license_allowed(license_id: str | None, extra_allowed: Iterable[str] = ()) -> bool:
-    """Open question Q2 default: CC0, CC-BY and CC-BY-SA only; NC, ND and unknown are excluded."""
+    """Q2 default plus C1 v1.4: CC0, public domain (PDM), CC-BY and CC-BY-SA; NC, ND and unknown
+    licences are excluded."""
     if not license_id:
         return False
     return bool(ALLOWED_LICENSE.match(license_id)) or license_id in set(extra_allowed)
@@ -438,10 +439,11 @@ def inaturalist_observations(
         "per_page": INATURALIST_PAGE_SIZE,
         "order_by": "id",
         "order": "desc",
+        **source.get("query", {}),
     }
     if taxon.get("exclude_taxon_ids"):
         params["without_taxon_id"] = ",".join(str(item) for item in taxon["exclude_taxon_ids"])
-    places = source.get("place_ids", [None])
+    places = taxon.get("place_ids", source.get("place_ids", [None]))
     yielded = 0
     for place in places:
         page_params = dict(params)
@@ -464,8 +466,9 @@ def inaturalist_observations(
 def fetch_inaturalist(source: Record, out_dir: Path, arguments: argparse.Namespace) -> list[Record]:
     session = http_session()
     limiter = RateLimiter(INATURALIST_MIN_INTERVAL_S)
+    photo_limiter = RateLimiter(float(source.get("photo_interval_s", INATURALIST_MIN_INTERVAL_S)))
     size = source.get("photo_size", "large")
-    per_taxon = int(arguments.limit_per_taxon or source.get("limit_per_taxon", 50))
+    default_limit = int(arguments.limit_per_taxon or source.get("limit_per_taxon", 50))
     photos_per_observation = int(source.get("photos_per_observation", 1))
     existing = {}
     provenance = out_dir / "provenance.jsonl"
@@ -476,6 +479,7 @@ def fetch_inaturalist(source: Record, out_dir: Path, arguments: argparse.Namespa
     for taxon in source["taxa"]:
         if arguments.taxon and taxon["name"] not in arguments.taxon:
             continue
+        per_taxon = int(arguments.limit_per_taxon or taxon.get("limit", default_limit))
         count = sum(1 for record in records.values() if record["extra"]["taxon"] == taxon["name"])
         if count >= per_taxon:
             continue
@@ -493,7 +497,7 @@ def fetch_inaturalist(source: Record, out_dir: Path, arguments: argparse.Namespa
                 if image_id in records:
                     continue
                 target = out_dir / "images" / taxon["name"] / f"{image_id}.jpg"
-                limiter.wait()
+                photo_limiter.wait()
                 try:
                     download(session, photo_url(photo["url"], size), target, image_id)
                 except RuntimeError as error:
@@ -534,18 +538,24 @@ def fetch_inaturalist(source: Record, out_dir: Path, arguments: argparse.Namespa
                     },
                 }
                 count += 1
+                if count % 100 == 0:
+                    print(f"{source['name']}: {taxon['name']} {count}/{per_taxon}")
+                    write_inaturalist_state(out_dir, records, licences)
                 if count >= per_taxon:
                     break
         print(f"{source['name']}: {taxon['name']} has {count} images")
-        write_jsonl(provenance, sorted(records.values(), key=lambda record: record["id"]))
-    previous: Record = {}
-    report_path = out_dir / "licence_report.json"
-    if report_path.exists():
-        previous = json.loads(report_path.read_text(encoding="utf-8"))
-    for key, value in previous.items():
-        licences[key] += int(value)
-    write_json(report_path, dict(sorted(licences.items())))
+        write_inaturalist_state(out_dir, records, licences)
+    write_inaturalist_state(out_dir, records, licences)
     return sorted(records.values(), key=lambda record: record["id"])
+
+
+def write_inaturalist_state(out_dir: Path, records: dict[str, Record], seen: Counter[str]) -> None:
+    """Checkpoint provenance, and a licence report: kept images by licence (from provenance),
+    and photo licence codes seen in this run (`seen_this_run:<code>`)."""
+    write_jsonl(out_dir / "provenance.jsonl", sorted(records.values(), key=lambda r: r["id"]))
+    report: dict[str, int] = dict(Counter(f"kept:{r['license']}" for r in records.values()))
+    report.update({f"seen_this_run:{key.split(':', 1)[1]}": value for key, value in seen.items()})
+    write_json(out_dir / "licence_report.json", dict(sorted(report.items())))
 
 
 FETCHERS: dict[str, Callable[[Record, Path, argparse.Namespace], list[Record]]] = {
