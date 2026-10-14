@@ -19,6 +19,7 @@ MILLIUNITS_PER_UNIT = 1000
 RUN_SUFFIX_LENGTH = 8
 BOX_COLOUR_BGR = (0, 255, 0)
 OTHER_CLASS_COLOUR_BGR = (0, 165, 255)
+CONFIRMED_COLOUR_BGR = (0, 0, 255)
 TEXT_COLOUR_BGR = (0, 255, 255)
 TEXT_OUTLINE_COLOUR_BGR = (0, 0, 0)
 BOX_THICKNESS_PX = 2
@@ -65,12 +66,16 @@ def annotate_frame(
     processing_fps: float,
     capture_fps: float | None,
     requested_capture_fps: float,
+    confirmed_track_ids: frozenset[int] = frozenset(),
 ) -> Frame:
     import cv2
 
     image = frame.copy()
     for detection in detections:
         colour = BOX_COLOUR_BGR if detection.label == "pigeon" else OTHER_CLASS_COLOUR_BGR
+        confirmed = detection.track_id is not None and detection.track_id in confirmed_track_ids
+        if confirmed:
+            colour = CONFIRMED_COLOUR_BGR
         left_px, top_px, right_px, bottom_px = (
             round(coordinate)
             for coordinate in (
@@ -90,6 +95,8 @@ def annotate_frame(
         label = f"{detection.label} {detection.confidence:.2f}"
         if detection.track_id is not None:
             label = f"#{detection.track_id} {label}"
+        if confirmed:
+            label = f"{label} CONFIRMED"
         position_px = (
             max(0, left_px),
             min(
@@ -197,11 +204,17 @@ class RunOutput:
         detections: Sequence[Detection],
         processing_fps: float,
         capture_fps: float | None,
+        confirmed_track_ids: frozenset[int] = frozenset(),
     ) -> bool:
         if not self.config.display.enabled and not self.config.output.record:
             return True
         image = annotate_frame(
-            frame, detections, processing_fps, capture_fps, self.config.camera.fps
+            frame,
+            detections,
+            processing_fps,
+            capture_fps,
+            self.config.camera.fps,
+            confirmed_track_ids,
         )
         if self.config.output.record:
             self._record(image)
@@ -212,6 +225,15 @@ class RunOutput:
         if cv2.getWindowProperty(self.window, cv2.WND_PROP_VISIBLE) < 1:
             return False
         cv2.imshow(self.window, image)
+        key = cv2.waitKey(WINDOW_EVENT_DELAY_MS) & WINDOW_KEY_MASK
+        return key != ord("q") and cv2.getWindowProperty(self.window, cv2.WND_PROP_VISIBLE) >= 1
+
+    def poll(self) -> bool:
+        """Handle window events between frames; False when the window closed or q."""
+        if not self.config.display.enabled or not self._window_open:
+            return True
+        import cv2
+
         key = cv2.waitKey(WINDOW_EVENT_DELAY_MS) & WINDOW_KEY_MASK
         return key != ord("q") and cv2.getWindowProperty(self.window, cv2.WND_PROP_VISIBLE) >= 1
 

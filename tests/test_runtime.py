@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import threading
+import time
 import unittest
 from collections.abc import Callable, Sequence
 from dataclasses import replace
@@ -40,6 +41,7 @@ from app.json_data import JsonValue
 from app.main import build_parser, create_detector, run
 from app.models import Detection, Frame, FramePacket
 from app.output import RunOutput
+from app.pipeline import OutputQueue, RenderJob
 
 TEST_FRAME_SIZE_PX = 32
 COLOUR_CHANNEL_COUNT = 3
@@ -473,6 +475,7 @@ class OutputTests(unittest.TestCase):
                 patch.object(cv2, "getWindowProperty", return_value=1),
             ):
                 output.start()
+                self.assertFalse(output.poll())
                 self.assertFalse(output.render(create_test_frame(), [], 1, 15))
                 with (
                     patch.object(cv2, "waitKey", return_value=0),
@@ -481,6 +484,53 @@ class OutputTests(unittest.TestCase):
                     self.assertFalse(output.render(create_test_frame(), [], 1, 15))
                 output.close()
                 destroy.assert_called_once()
+
+
+def render_job(index: int) -> RenderJob:
+    return RenderJob(create_test_frame(), [], float(index), None)
+
+
+def rendered_fps(job: RenderJob | None) -> float | None:
+    return None if job is None else job.processing_fps
+
+
+class OutputQueueTests(unittest.TestCase):
+    def test_live_queue_drops_oldest_frames_but_never_logs(self) -> None:
+        queue = OutputQueue(render_capacity=2)
+        for index in range(5):
+            queue.event("frame", frame_number=index)
+            queue.render(render_job(index))
+        self.assertEqual(queue.dropped_renders, 3)
+        records, job = queue.take()
+        self.assertEqual([record.fields["frame_number"] for record in records], list(range(5)))
+        self.assertEqual(rendered_fps(job), 3.0)
+        self.assertEqual(rendered_fps(queue.take()[1]), 4.0)
+        self.assertEqual(queue.take(), ([], None))
+
+    def test_replay_queue_waits_for_space_until_closed(self) -> None:
+        queue = OutputQueue(render_capacity=1, drop_oldest=False)
+        queue.render(render_job(0))
+        submitted = threading.Event()
+
+        def produce() -> None:
+            queue.render(render_job(1))
+            submitted.set()
+
+        producer = threading.Thread(target=produce)
+        producer.start()
+        self.assertFalse(submitted.wait(0.05))
+        self.assertEqual(rendered_fps(queue.take()[1]), 0.0)
+        self.assertTrue(submitted.wait(THREAD_TEST_TIMEOUT_S))
+        producer.join()
+        self.assertEqual(queue.dropped_renders, 0)
+        self.assertEqual(rendered_fps(queue.take()[1]), 1.0)
+        queue.render(render_job(2))
+        blocked = threading.Thread(target=queue.render, args=(render_job(3),))
+        blocked.start()
+        queue.close()
+        blocked.join(THREAD_TEST_TIMEOUT_S)
+        self.assertFalse(blocked.is_alive())
+        self.assertEqual(queue.take(), ([], None))
 
 
 class RuntimeTests(unittest.TestCase):
@@ -563,6 +613,85 @@ class RuntimeTests(unittest.TestCase):
         names = [event_call.args[0] for event_call in events]
         # the trigger follows the frame record that confirmed it.
         self.assertEqual(names[names.index("trigger") - 1], "frame")
+
+    def test_live_processing_never_waits_for_display(self) -> None:
+        frame_limit = 20
+        processed = threading.Event()
+        detect_calls = 0
+
+        class Camera:
+            def start(self) -> None:
+                pass
+
+            def read(self) -> Frame:
+                time.sleep(0.001)
+                return create_test_frame()
+
+            def close(self) -> None:
+                pass
+
+        def detect(_packet: FramePacket) -> list[Detection]:
+            nonlocal detect_calls
+            detect_calls += 1
+            if detect_calls == frame_limit:
+                processed.set()
+            return []
+
+        def slow_render(*_arguments: object, **_keywords: object) -> bool:
+            # the display is stuck until every frame has been processed.
+            self.assertTrue(processed.wait(THREAD_TEST_TIMEOUT_S))
+            return True
+
+        detector, output = Mock(), Mock()
+        detector.detect.side_effect = detect
+        output.render.side_effect = slow_render
+        output.poll.return_value = True
+        config = replace(AppConfig(), display=DisplayConfig(True))
+        with (
+            patch("app.main.AppConfig.load", return_value=config),
+            patch("app.main.UltralyticsDetector", return_value=detector),
+            patch("app.main.Picamera2Capture", return_value=Camera()),
+            patch("app.main.RunOutput", return_value=output),
+            patch("app.main.health_snapshot", return_value={}),
+        ):
+            self.assertEqual(run(build_parser().parse_args(["--max-frames", str(frame_limit)])), 0)
+        run_end = output.event.call_args.kwargs
+        self.assertEqual((run_end["reason"], run_end["processed_frames"]), ("max_frames", 20))
+        self.assertGreater(run_end["render_dropped_frames"], 0)
+        self.assertLess(output.render.call_count, frame_limit)
+        frames = [call for call in output.event.call_args_list if call.args[0] == "frame"]
+        self.assertEqual(len(frames), frame_limit)
+
+    def test_window_close_and_render_failure_stop_processing(self) -> None:
+        packets = [FramePacket(index, index, create_test_frame()) for index in range(50)]
+        config = replace(AppConfig(), display=DisplayConfig(True))
+        for render_result, expected_status, expected_reason in (
+            (False, 0, "window_closed_or_q"),
+            (RuntimeError("writer failed"), 1, "error"),
+        ):
+            with self.subTest(expected_reason=expected_reason):
+                source, detector, output = Mock(), Mock(), Mock()
+                source.get.side_effect = packets
+                source.dropped_frames = 0
+                detector.detect.return_value = []
+                if isinstance(render_result, Exception):
+                    output.render.side_effect = render_result
+                else:
+                    output.render.return_value = render_result
+                with (
+                    patch("app.main.AppConfig.load", return_value=config),
+                    patch("app.main.UltralyticsDetector", return_value=detector),
+                    patch("app.main.VideoFileCapture", return_value=source),
+                    patch("app.main.RunOutput", return_value=output),
+                    patch("app.main.health_snapshot", return_value={}),
+                ):
+                    status = run(build_parser().parse_args(["--video", "fake.avi"]))
+                self.assertEqual(status, expected_status)
+                self.assertEqual(output.event.call_args.args[0], "run_end")
+                self.assertEqual(output.event.call_args.kwargs["reason"], expected_reason)
+                self.assertLess(source.get.call_count, len(packets))
+                source.close.assert_called_once()
+                output.close.assert_called_once()
 
     def test_inference_and_capture_failure_cleanup(self) -> None:
         packet = FramePacket(0, 0, create_test_frame())

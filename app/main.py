@@ -4,17 +4,19 @@ import argparse
 import importlib
 import signal
 import sys
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from types import FrameType
 from typing import Protocol, cast
 
-from .capture import EndOfStream, LatestFrameStream, Picamera2Capture, VideoFileCapture
+from .capture import LatestFrameStream, Picamera2Capture, VideoFileCapture
 from .config import AppConfig, ConfigError, ImageSize, ModelConfig
 from .detector import DetectorError, FrameDetector, UltralyticsDetector, load_model_info
 from .json_data import JsonValue
 from .output import RunOutput, health_snapshot
+from .pipeline import CONSUMER_POLL_S, FrameProcessor, OutputQueue
 from .tracking import ConfirmationTracker
 
 
@@ -83,6 +85,7 @@ def finalize_output(
     processed_frames: int,
     dropped_frames: int,
     started_at_monotonic_s: float | None,
+    **fields: JsonValue,
 ) -> bool:
     successful = True
     try:
@@ -105,6 +108,7 @@ def finalize_output(
             dropped_frames=dropped_frames,
             elapsed_s=elapsed_s,
             processing_fps=processed_frames / elapsed_s if elapsed_s else 0.0,
+            **fields,
             **health_snapshot(),
         )
     except Exception as error:
@@ -130,38 +134,72 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def consume_output(
+    output: RunOutput,
+    queue: OutputQueue,
+    processing: threading.Thread,
+    stop: threading.Event,
+) -> bool:
+    """Write logs and render frames on the main thread until processing ends.
+
+    Returns True when the window was closed or q was pressed.
+    """
+    window_closed = False
+    while True:
+        finished = not processing.is_alive()
+        records, job = queue.take(0.0 if finished else CONSUMER_POLL_S)
+        for record in records:
+            output.event(record.event, **record.fields)
+        if window_closed:
+            pass
+        elif job is not None:
+            window_closed = not output.render(
+                job.frame,
+                job.detections,
+                job.processing_fps,
+                job.capture_fps,
+                confirmed_track_ids=job.confirmed_track_ids,
+            )
+        elif not finished:
+            window_closed = not output.poll()
+        if window_closed:
+            stop.set()
+            queue.close()
+        if finished and not records and job is None:
+            return window_closed
+
+
 def run(arguments: argparse.Namespace | CommandOptions) -> int:
     options = (
         arguments if isinstance(arguments, CommandOptions) else CommandOptions(**vars(arguments))
     )
     config = load_configuration(options)
-    stopping = False
+    stop = threading.Event()
     handlers: dict[signal.Signals, int | Callable[[int, FrameType | None], None] | None] = {}
     source: VideoFileCapture | LatestFrameStream | None = None
     output: RunOutput | None = None
-    processed_frames = 0
-    dropped_frames = 0
+    queue: OutputQueue | None = None
+    processor: FrameProcessor | None = None
     started_at_monotonic_s: float | None = None
     status = 0
     reason = "stopped"
     failure: str | None = None
 
     def request_stop(_signal_number: int, _frame: FrameType | None) -> None:
-        nonlocal stopping
-        stopping = True
+        stop.set()
 
     try:
         for signal_number in (signal.SIGINT, signal.SIGTERM):
             handlers[signal_number] = signal.signal(signal_number, request_stop)
         detector, trigger_classes = create_detector(config.model)
+        detector.warmup(config.camera.width, config.camera.height)
+        if stop.is_set():
+            return 0
         tracker = (
             ConfirmationTracker(config.confirmation, trigger_classes)
             if config.confirmation.enabled
             else None
         )
-        detector.warmup(config.camera.width, config.camera.height)
-        if stopping:
-            return 0
         output = RunOutput(config)
         print(f"Run output: {output.directory}", flush=True)
         output.event(
@@ -180,54 +218,35 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
         )
         source.start()
         started_at_monotonic_s = time.monotonic()
-        last_health_at_monotonic_s = started_at_monotonic_s
         output.event("health", processed_frames=0, dropped_frames=0, **health_snapshot())
-        while not stopping:
-            packet = source.get(config.camera.frame_timeout_s)
-            inference_started_at_monotonic_s = time.monotonic()
-            detections = detector.detect(packet)
-            inference_s = time.monotonic() - inference_started_at_monotonic_s
-            triggers = []
-            if tracker is not None:
-                update = tracker.update(detections, packet.sequence, packet.captured_at)
-                detections, triggers = update.detections, update.triggers
-            dropped_frames = source.dropped_frames
-            next_processed_frames = processed_frames + 1
-            elapsed_s = time.monotonic() - started_at_monotonic_s
-            processing_fps = next_processed_frames / elapsed_s if elapsed_s else 0.0
-            capture_fps = source.capture_fps if isinstance(source, LatestFrameStream) else None
-            keep_running = output.render(packet.frame, detections, processing_fps, capture_fps)
-            processed_frames = next_processed_frames
-            output.event(
-                "frame",
-                frame_number=packet.sequence,
-                captured_at=packet.captured_at,
-                inference_s=inference_s,
-                pigeon_count=sum(detection.label == "pigeon" for detection in detections),
-                detections=[detection.as_dict() for detection in detections],
-                dropped_frames=dropped_frames,
-                processing_fps=processing_fps,
-                capture_fps=capture_fps,
-            )
-            for trigger in triggers:
-                output.event("trigger", **trigger.as_dict())
-            now_monotonic_s = time.monotonic()
-            if now_monotonic_s - last_health_at_monotonic_s >= config.output.health_interval_s:
-                output.event(
-                    "health",
-                    processed_frames=processed_frames,
-                    dropped_frames=dropped_frames,
-                    **health_snapshot(),
-                )
-                last_health_at_monotonic_s = now_monotonic_s
-            if not keep_running:
-                reason = "window_closed_or_q"
-                break
-            if options.max_frames and processed_frames >= options.max_frames:
-                reason = "max_frames"
-                break
-    except EndOfStream:
-        reason = "video_complete"
+        live_source = source if isinstance(source, LatestFrameStream) else None
+        queue = OutputQueue(drop_oldest=not options.video)
+        processor = FrameProcessor(
+            config,
+            source,
+            detector,
+            tracker,
+            queue,
+            stop,
+            started_at_monotonic_s,
+            options.max_frames,
+            capture_fps=(lambda: live_source.capture_fps) if live_source else lambda: None,
+        )
+        processing = threading.Thread(target=processor.run, name="frame-processing")
+        processing.start()
+        try:
+            window_closed = consume_output(output, queue, processing, stop)
+        finally:
+            stop.set()
+            queue.close()
+            processing.join()
+        result = processor.result
+        reason = result.reason
+        if result.error is not None:
+            status, failure = 1, str(result.error)
+            print(f"error: {result.error}", file=sys.stderr)
+        elif window_closed and reason == "stopped":
+            reason = "window_closed_or_q"
     except Exception as error:
         status, reason, failure = 1, "error", str(error)
         print(f"error: {error}", file=sys.stderr)
@@ -243,9 +262,10 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
                 output,
                 reason,
                 failure,
-                processed_frames,
-                dropped_frames,
+                processor.result.processed_frames if processor else 0,
+                processor.result.dropped_frames if processor else 0,
                 started_at_monotonic_s,
+                render_dropped_frames=queue.dropped_renders if queue else 0,
             )
             if not finalized:
                 status = 1
