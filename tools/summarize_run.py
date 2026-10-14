@@ -2,7 +2,10 @@
 
 Timing distributions (per-stage, frame delivery, decision and trigger reaction
 times) use fixed 0.1 ms histogram bins up to 10 s, so memory does not grow with
-the length of the run; percentiles are reported at that resolution.
+the length of the run; percentiles are reported at that resolution. Values of
+10 s or more are kept exactly while there are at most 1000 of them; beyond that,
+percentiles falling among them are reported as 10000 ms and listed in
+`lower_bound`. The maximum is always exact.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ RECENT_FRAME_LIMIT = 1000
 LATENCY_PERCENTILE = 0.95
 HISTOGRAM_BIN_MS = 0.1
 HISTOGRAM_RANGE_MS = 10_000.0
+OVERFLOW_EXACT_LIMIT = 1000
 REPORTED_PERCENTILES = (("p50", 0.50), ("p95", 0.95), ("p99", 0.99))
 STAGES = ("wait", "preprocess", "inference", "postprocess", "track")
 
@@ -42,22 +46,42 @@ class Distribution:
         self.count = 0
         self.total = 0.0
         self.maximum = 0.0
-        self.bins = array("Q", bytes(8 * (round(HISTOGRAM_RANGE_MS / HISTOGRAM_BIN_MS) + 1)))
+        self.bins = array("Q", bytes(8 * round(HISTOGRAM_RANGE_MS / HISTOGRAM_BIN_MS)))
+        self.overflow_count = 0
+        self.overflow_values = array("d")
 
     def add(self, value_ms: float) -> None:
         value_ms = max(0.0, value_ms)
         self.count += 1
         self.total += value_ms
         self.maximum = max(self.maximum, value_ms)
-        self.bins[min(int(value_ms / HISTOGRAM_BIN_MS), len(self.bins) - 1)] += 1
+        index = int(value_ms / HISTOGRAM_BIN_MS)
+        if index < len(self.bins):
+            self.bins[index] += 1
+            return
+        self.overflow_count += 1
+        if len(self.overflow_values) < OVERFLOW_EXACT_LIMIT:
+            self.overflow_values.append(value_ms)
 
-    def percentiles(self) -> dict[str, float]:
-        """Nearest-rank percentiles, as the upper edge of their bin (capped at the maximum)."""
+    def percentiles(self) -> tuple[dict[str, float], list[str]]:
+        """Nearest-rank percentiles, as the upper edge of their bin (capped at the maximum),
+        and the names of those that are only lower bounds."""
         ranks = [
             (name, max(1, math.ceil(fraction * self.count)))
             for name, fraction in REPORTED_PERCENTILES
         ]
         results: dict[str, float] = {}
+        lower_bounds: list[str] = []
+        in_range = self.count - self.overflow_count
+        exact = sorted(self.overflow_values) if self.overflow_count <= OVERFLOW_EXACT_LIMIT else []
+        for name, rank in ranks:
+            if rank > in_range:
+                if exact:
+                    results[name] = exact[rank - in_range - 1]
+                else:
+                    results[name] = HISTOGRAM_RANGE_MS
+                    lower_bounds.append(name)
+        ranks = [(name, rank) for name, rank in ranks if rank <= in_range]
         seen = 0
         for index, count in enumerate(self.bins):
             if not count:
@@ -69,17 +93,21 @@ class Distribution:
                 )
             if not ranks:
                 break
-        return results
+        return results, lower_bounds
 
     def summary(self) -> dict[str, JsonValue] | None:
         if not self.count:
             return None
-        return {
+        percentiles, lower_bounds = self.percentiles()
+        summary: dict[str, JsonValue] = {
             "count": self.count,
             "mean": self.total / self.count,
-            **self.percentiles(),
+            **{name: percentiles[name] for name, _ in REPORTED_PERCENTILES},
             "max": self.maximum,
         }
+        if lower_bounds:
+            summary["lower_bound"] = cast(JsonValue, lower_bounds)
+        return summary
 
 
 def summarize_log(path: Path) -> dict[str, JsonValue]:

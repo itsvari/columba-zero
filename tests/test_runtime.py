@@ -6,7 +6,7 @@ import threading
 import time
 import unittest
 from collections.abc import Callable, Sequence
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 from io import StringIO
 from pathlib import Path
@@ -174,6 +174,33 @@ class DetectorTests(unittest.TestCase):
             with self.subTest(names=names), self.assertRaises(DetectorError):
                 validate_names(names)
 
+    def test_trigger_classes_limited_to_pigeon(self) -> None:
+        species = {0: "pigeon", 1: "spotted_dove", 2: "other_bird"}
+        with tempfile.TemporaryDirectory() as directory:
+            trigger_sets: tuple[list[JsonValue], ...] = (
+                ["pigeon", "spotted_dove"],
+                ["spotted_dove"],
+            )
+            for trigger_classes in trigger_sets:
+                path = write_package(
+                    Path(directory), species, [384, 640], {"trigger_classes": trigger_classes}
+                )
+                model = ModelConfig(path=str(path), image_size=(384, 640), backend="native")
+                with self.subTest(trigger_classes=trigger_classes):
+                    with self.assertRaisesRegex(DetectorError, "may only trigger on"):
+                        load_model_info(str(path), (384, 640))
+                    with self.assertRaisesRegex(DetectorError, "may only trigger on"):
+                        create_detector(model)
+
+    def test_ultralytics_backend_rejects_nms_free_decode(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_package(Path(directory), columba={"decode": "yolo26"})
+            with (
+                patch.dict("sys.modules", {"ultralytics": Mock()}),
+                self.assertRaisesRegex(DetectorError, "model.backend: native"),
+            ):
+                UltralyticsDetector(str(path), 640, 0.5)
+
     def test_package_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
@@ -195,7 +222,7 @@ class DetectorTests(unittest.TestCase):
             )
             invalid_metadata: tuple[tuple[dict[str, JsonValue], str], ...] = (
                 ({"decode": "magic"}, "decode"),
-                ({"trigger_classes": ["hawk"]}, "trigger classes"),
+                ({"trigger_classes": ["hawk"]}, "may only trigger on"),
                 ({"trigger_classes": []}, "trigger_classes"),
                 ({"input_hw": [352, 608]}, "input_hw"),
             )
@@ -513,18 +540,50 @@ def rendered_fps(job: RenderJob | None) -> float | None:
     return None if job is None else job.processing_fps
 
 
+class FastCamera:
+    def start(self) -> None:
+        pass
+
+    def read(self) -> Frame:
+        time.sleep(0.001)
+        return create_test_frame()
+
+    def close(self) -> None:
+        pass
+
+
 class OutputQueueTests(unittest.TestCase):
+    def test_log_queue_is_bounded_but_keeps_events(self) -> None:
+        queue = OutputQueue(log_capacity=4)
+        for index in range(10):
+            queue.event("frame", frame_number=index)
+            if index == 2:
+                queue.event("trigger", track_id=1)
+            if index == 5:
+                queue.event("camera_switch", to="noir")
+        records = queue.take_logs()
+        self.assertEqual(
+            [(record.event, record.fields) for record in records],
+            [
+                ("trigger", {"track_id": 1}),
+                ("camera_switch", {"to": "noir"}),
+                ("frame", {"frame_number": 8}),
+                ("frame", {"frame_number": 9}),
+            ],
+        )
+        self.assertEqual(queue.dropped_records, 8)
+
     def test_live_queue_drops_oldest_frames_but_never_logs(self) -> None:
         queue = OutputQueue(render_capacity=2)
         for index in range(5):
             queue.event("frame", frame_number=index)
             queue.render(render_job(index))
         self.assertEqual(queue.dropped_renders, 3)
-        records, job = queue.take()
+        records = queue.take_logs()
         self.assertEqual([record.fields["frame_number"] for record in records], list(range(5)))
-        self.assertEqual(rendered_fps(job), 3.0)
-        self.assertEqual(rendered_fps(queue.take()[1]), 4.0)
-        self.assertEqual(queue.take(), ([], None))
+        self.assertEqual(rendered_fps(queue.take_render()), 3.0)
+        self.assertEqual(rendered_fps(queue.take_render()), 4.0)
+        self.assertEqual((queue.take_logs(), queue.take_render()), ([], None))
 
     def test_replay_queue_waits_for_space_until_closed(self) -> None:
         queue = OutputQueue(render_capacity=1, drop_oldest=False)
@@ -538,18 +597,18 @@ class OutputQueueTests(unittest.TestCase):
         producer = threading.Thread(target=produce)
         producer.start()
         self.assertFalse(submitted.wait(0.05))
-        self.assertEqual(rendered_fps(queue.take()[1]), 0.0)
+        self.assertEqual(rendered_fps(queue.take_render()), 0.0)
         self.assertTrue(submitted.wait(THREAD_TEST_TIMEOUT_S))
         producer.join()
         self.assertEqual(queue.dropped_renders, 0)
-        self.assertEqual(rendered_fps(queue.take()[1]), 1.0)
+        self.assertEqual(rendered_fps(queue.take_render()), 1.0)
         queue.render(render_job(2))
         blocked = threading.Thread(target=queue.render, args=(render_job(3),))
         blocked.start()
         queue.close()
         blocked.join(THREAD_TEST_TIMEOUT_S)
         self.assertFalse(blocked.is_alive())
-        self.assertEqual(queue.take(), ([], None))
+        self.assertIsNone(queue.take_render())
 
 
 class ProcessorTests(unittest.TestCase):
@@ -584,7 +643,7 @@ class ProcessorTests(unittest.TestCase):
         processor.run()
         self.assertEqual(processor.result.reason, "video_complete")
         tracker.reset.assert_called_once()
-        records, _ = queue.take()
+        records = queue.take_logs()
         self.assertEqual(
             [record.event for record in records],
             ["frame", "frame", "camera_switch", "frame"],
@@ -615,7 +674,7 @@ class InstrumentationTests(unittest.TestCase):
             time.monotonic(),
         )
         processor.run()
-        return [record.fields for record in queue.take()[0] if record.event == "frame"]
+        return [record.fields for record in queue.take_logs() if record.event == "frame"]
 
     def test_stage_timings_from_ultralytics_speed(self) -> None:
         class Detector:
@@ -653,6 +712,34 @@ class InstrumentationTests(unittest.TestCase):
         self.assertAlmostEqual(
             cast(float, stages["inference"]), cast(float, record["inference_s"]) * 1000
         )
+
+    def test_summary_reports_values_beyond_the_histogram(self) -> None:
+        def summary_of(waits: list[float]) -> dict[str, JsonValue]:
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "detections.jsonl"
+                path.write_text(
+                    "".join(
+                        json.dumps(
+                            {"event": "frame", "inference_s": 0.01, "stage_ms": {"wait": wait}}
+                        )
+                        + "\n"
+                        for wait in waits
+                    )
+                )
+                distributions = cast(dict[str, JsonValue], summarize_log(path)["distributions_ms"])
+                return cast(dict[str, JsonValue], distributions["wait"])
+
+        wait = summary_of([5.0] * 18 + [60_000.0, 30_000.0])
+        # in-range percentiles are bin upper edges; values beyond 10 s stay exact.
+        self.assertEqual(
+            (wait["p50"], wait["p95"], wait["p99"], wait["max"]),
+            (5.1, 30_000.0, 60_000.0, 60_000.0),
+        )
+        self.assertNotIn("lower_bound", wait)
+        with patch("tools.summarize_run.OVERFLOW_EXACT_LIMIT", 2):
+            wait = summary_of([5.0] * 7 + [20_000.0, 60_000.0, 40_000.0])
+        self.assertEqual((wait["p95"], wait["max"]), (10_000.0, 60_000.0))
+        self.assertEqual(wait["lower_bound"], ["p95", "p99"])
 
     def test_summary_reports_distributions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -843,7 +930,7 @@ class RuntimeTests(unittest.TestCase):
     def exercise(
         self,
         packets: Sequence[FramePacket | Exception],
-        failure: Exception | None = None,
+        failure: BaseException | None = None,
         output_failure: bool = False,
         max_frames: int = 0,
         config: AppConfig | None = None,
@@ -919,6 +1006,128 @@ class RuntimeTests(unittest.TestCase):
         names = [event_call.args[0] for event_call in events]
         # the trigger follows the frame record that confirmed it.
         self.assertEqual(names[names.index("trigger") - 1], "frame")
+
+    def test_render_failure_keeps_frame_and_trigger_records(self) -> None:
+        pigeon = Detection("pigeon", 0.9, 1, 2, 30, 40)
+        output = Mock()
+        output.poll.return_value = True
+        processed = threading.Event()
+
+        def failing_render(*_arguments: object, **_keywords: object) -> bool:
+            self.assertTrue(processed.wait(THREAD_TEST_TIMEOUT_S))
+            raise RuntimeError("display failed")
+
+        output.render.side_effect = failing_render
+        # the render waits for the whole run, so every record is still queued when it fails.
+        status = self.live_run(output, [[], [], [pigeon], [pigeon]], processed)
+        self.assertEqual(status, 1)
+        events = output.event.call_args_list
+        frames = [call for call in events if call.args[0] == "frame"]
+        triggers = [call for call in events if call.args[0] == "trigger"]
+        run_end = events[-1]
+        self.assertEqual(run_end.args[0], "run_end")
+        self.assertEqual(
+            (run_end.kwargs["reason"], run_end.kwargs["processed_frames"]), ("error", 4)
+        )
+        self.assertEqual(len(frames), run_end.kwargs["processed_frames"])
+        self.assertEqual([call.kwargs["frame_number"] for call in triggers], [3])
+
+    def live_run(
+        self,
+        output: Mock,
+        detections: Sequence[Sequence[Detection]],
+        processed: threading.Event,
+    ) -> int:
+        """Run live with a fast fake camera, confirmation and display on; `processed`
+        is set once the last frame has been detected."""
+        calls = 0
+
+        def detect(_packet: FramePacket) -> list[Detection]:
+            nonlocal calls
+            calls += 1
+            if calls == len(detections):
+                processed.set()
+            return list(detections[min(calls, len(detections)) - 1])
+
+        detector = Mock()
+        detector.detect.side_effect = detect
+        detector.trigger_classes = ("pigeon",)
+        config = replace(
+            AppConfig(),
+            display=DisplayConfig(True),
+            confirmation=ConfirmationConfig(enabled=True),
+        )
+        with (
+            patch("app.main.AppConfig.load", return_value=config),
+            patch("app.main.UltralyticsDetector", return_value=detector),
+            patch("app.main.Picamera2Capture", return_value=FastCamera()),
+            patch("app.main.RunOutput", return_value=output),
+            patch("app.main.health_snapshot", return_value={}),
+            redirect_stderr(StringIO()),
+        ):
+            return run(build_parser().parse_args(["--max-frames", str(len(detections))]))
+
+    def test_worker_base_exceptions_are_failures(self) -> None:
+        for error in (SystemExit("worker exit"), KeyboardInterrupt()):
+            with self.subTest(error=type(error).__name__):
+                packet = FramePacket(0, 0, create_test_frame())
+                with redirect_stderr(StringIO()):
+                    result, source, _, output = self.exercise([packet], error)
+                self.assertEqual(result, 1)
+                self.assertEqual(output.event.call_args.kwargs["reason"], "error")
+                self.assertIsNotNone(output.event.call_args.kwargs["error"])
+                source.close.assert_called_once()
+
+    def test_display_stall_does_not_block_logging(self) -> None:
+        frame_limit = 10
+        output = Mock()
+        output.poll.return_value = True
+        processed = threading.Event()
+        logged_during_stall: list[int] = []
+
+        def frames_logged() -> int:
+            return sum(call.args[0] == "frame" for call in output.event.call_args_list)
+
+        def stalled_render(*_arguments: object, **_keywords: object) -> bool:
+            self.assertTrue(processed.wait(THREAD_TEST_TIMEOUT_S))
+            deadline = time.monotonic() + THREAD_TEST_TIMEOUT_S
+            while frames_logged() < frame_limit and time.monotonic() < deadline:
+                time.sleep(0.005)
+            logged_during_stall.append(frames_logged())
+            return True
+
+        output.render.side_effect = stalled_render
+        status = self.live_run(output, [[]] * frame_limit, processed)
+        self.assertEqual(status, 0)
+        self.assertEqual(logged_during_stall[0], frame_limit)
+
+    def test_log_writer_stall_drops_frames_but_keeps_triggers(self) -> None:
+        frame_limit = 40
+        pigeon = Detection("pigeon", 0.9, 1, 2, 30, 40)
+        output = Mock()
+        output.poll.return_value = True
+        output.render.return_value = True
+        processed = threading.Event()
+
+        def stalled_event(event: str, **_fields: JsonValue) -> None:
+            if event == "frame":
+                processed.wait(THREAD_TEST_TIMEOUT_S)
+
+        output.event.side_effect = stalled_event
+        detections: list[list[Detection]] = [[]] * (frame_limit - 2) + [[pigeon], [pigeon]]
+        with patch("app.main.LOG_QUEUE_CAPACITY", 8):
+            status = self.live_run(output, detections, processed)
+        self.assertEqual(status, 0)
+        events = output.event.call_args_list
+        run_end = events[-1].kwargs
+        frames = sum(call.args[0] == "frame" for call in events)
+        self.assertEqual(run_end["processed_frames"], frame_limit)
+        self.assertGreater(run_end["log_dropped_records"], 0)
+        self.assertEqual(frames + run_end["log_dropped_records"], frame_limit)
+        self.assertEqual(
+            [call.kwargs["frame_number"] for call in events if call.args[0] == "trigger"],
+            [frame_limit - 1],
+        )
 
     def test_live_processing_never_waits_for_display(self) -> None:
         frame_limit = 20

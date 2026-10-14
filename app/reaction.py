@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import random
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -117,8 +118,14 @@ class ReactionAnalysis:
         self.trigger_classes = trigger_classes
         self.trials: list[Trial] = []
         self.false_triggers = 0
+        # stimuli arrive from the main thread, frames and triggers from the log writer.
+        self._lock = threading.Lock()
 
     def stimulus(self, number: int, state: str, displayed_at: float) -> None:
+        with self._lock:
+            self._stimulus(number, state, displayed_at)
+
+    def _stimulus(self, number: int, state: str, displayed_at: float) -> None:
         if state == "on":
             self.trials.append(Trial(number, on_at=displayed_at))
         elif self.trials:
@@ -131,6 +138,10 @@ class ReactionAnalysis:
         return None
 
     def observe(self, event: str, fields: dict[str, JsonValue]) -> None:
+        with self._lock:
+            self._observe(event, fields)
+
+    def _observe(self, event: str, fields: dict[str, JsonValue]) -> None:
         if event == "trigger":
             confirmed_at = fields.get("confirmed_at")
             if not isinstance(confirmed_at, (int, float)):
@@ -160,6 +171,10 @@ class ReactionAnalysis:
                 trial.first_detection_at = float(decided_at)
 
     def report(self) -> dict[str, JsonValue]:
+        with self._lock:
+            return self._report()
+
+    def _report(self) -> dict[str, JsonValue]:
         completed = [trial for trial in self.trials if trial.on_at is not None]
         reactions = [
             trial.trigger_at - trial.on_at

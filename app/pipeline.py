@@ -1,18 +1,20 @@
-"""Frame processing on its own thread, handing logs and frames to the main thread.
+"""Frame processing on its own thread, handing logs and frames to other threads.
 
-The main thread owns the OpenCV window (macOS and Qt require GUI calls there), the
-JSONL log and the recording. The processing thread never waits for them while
-live: log records queue without limit (they are small and written quickly), and
+The main thread owns the OpenCV window (macOS and Qt require GUI calls there) and
+the recording; a log-writer thread owns the JSONL log, so a stalled display never
+blocks logging. The processing thread never waits for either while live: log
+records go to a bounded queue that drops the oldest frame records first, and
 frames to render go to a bounded queue that drops the oldest waiting frame.
 """
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Protocol
 
 from .capture import EndOfStream
@@ -24,6 +26,10 @@ from .output import health_snapshot
 from .tracking import ConfirmationTracker, TriggerEvent
 
 RENDER_QUEUE_CAPACITY = 2
+LOG_QUEUE_CAPACITY = 4096
+# only per-frame records may be dropped; trigger, camera_switch, health, stimulus and
+# error/run records are always kept.
+DROPPABLE_EVENTS = frozenset({"frame"})
 MILLISECONDS_PER_SECOND = 1000
 CONSUMER_POLL_S = 0.01
 
@@ -32,10 +38,21 @@ def milliseconds(seconds: float) -> float:
     return seconds * MILLISECONDS_PER_SECOND
 
 
+def describe(error: BaseException) -> str:
+    message = str(error)
+    if isinstance(error, Exception) and message:
+        return message
+    return f"{type(error).__name__}: {message}" if message else type(error).__name__
+
+
 class FrameSource(Protocol):
     @property
     def dropped_frames(self) -> int: ...
     def get(self, timeout_s: float) -> FramePacket: ...
+
+
+class EventWriter(Protocol):
+    def event(self, event: str, **fields: JsonValue) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,31 +71,55 @@ class LogRecord:
 
 
 class OutputQueue:
-    """Log records (never dropped, in order) and a bounded queue of frames to render.
+    """A bounded log queue and a bounded queue of frames to render.
 
-    With `drop_oldest` the producer never waits: a full render queue loses its
-    oldest frame. Without it (replay, which has no real-time pacing) the producer
-    waits for space so that recordings keep every processed frame.
+    Logs: past `log_capacity` the oldest frame record is dropped (counted in
+    `dropped_records`); other records are never dropped. Frames: with
+    `drop_oldest` the producer never waits and a full queue loses its oldest
+    frame. Without it (replay, which has no real-time pacing) the producer waits
+    for space so that recordings keep every processed frame.
     """
 
-    def __init__(self, render_capacity: int = RENDER_QUEUE_CAPACITY, drop_oldest: bool = True):
+    def __init__(
+        self,
+        render_capacity: int = RENDER_QUEUE_CAPACITY,
+        drop_oldest: bool = True,
+        log_capacity: int = LOG_QUEUE_CAPACITY,
+    ):
         self.render_capacity = render_capacity
         self.drop_oldest = drop_oldest
+        self.log_capacity = log_capacity
         self.dropped_renders = 0
+        self.dropped_records = 0
         self._records: deque[LogRecord] = deque()
         self._renders: deque[RenderJob] = deque()
-        self._condition = threading.Condition()
+        self._log_condition = threading.Condition()
+        self._render_condition = threading.Condition()
         self._closed = False
 
     def event(self, event: str, **fields: JsonValue) -> None:
-        with self._condition:
+        with self._log_condition:
+            if len(self._records) >= self.log_capacity:
+                for index, record in enumerate(self._records):
+                    if record.event in DROPPABLE_EVENTS:
+                        del self._records[index]
+                        self.dropped_records += 1
+                        break
             self._records.append(LogRecord(event, fields))
-            self._condition.notify_all()
+            self._log_condition.notify_all()
+
+    def take_logs(self, timeout_s: float = 0.0) -> list[LogRecord]:
+        with self._log_condition:
+            if timeout_s > 0:
+                self._log_condition.wait_for(lambda: self._records, timeout_s)
+            records = list(self._records)
+            self._records.clear()
+            return records
 
     def render(self, job: RenderJob) -> None:
-        with self._condition:
+        with self._render_condition:
             if not self.drop_oldest:
-                self._condition.wait_for(
+                self._render_condition.wait_for(
                     lambda: self._closed or len(self._renders) < self.render_capacity
                 )
             if self._closed:
@@ -87,25 +128,67 @@ class OutputQueue:
                 self._renders.popleft()
                 self.dropped_renders += 1
             self._renders.append(job)
-            self._condition.notify_all()
+            self._render_condition.notify_all()
 
-    def take(self, timeout_s: float = 0.0) -> tuple[list[LogRecord], RenderJob | None]:
-        """Return all waiting log records and the oldest waiting frame."""
-        with self._condition:
+    def take_render(self, timeout_s: float = 0.0) -> RenderJob | None:
+        """Return the oldest waiting frame, if any."""
+        with self._render_condition:
             if timeout_s > 0:
-                self._condition.wait_for(lambda: self._records or self._renders, timeout_s)
-            records = list(self._records)
-            self._records.clear()
+                self._render_condition.wait_for(lambda: self._renders, timeout_s)
             job = self._renders.popleft() if self._renders else None
-            self._condition.notify_all()
-            return records, job
+            self._render_condition.notify_all()
+            return job
 
     def close(self) -> None:
-        """Stop accepting frames and release a waiting producer."""
-        with self._condition:
+        """Stop accepting frames to render and release a waiting producer."""
+        with self._render_condition:
             self._closed = True
             self._renders.clear()
-            self._condition.notify_all()
+            self._render_condition.notify_all()
+
+
+class LogWriter:
+    """Writes queued log records on its own thread until `finish` drains the queue."""
+
+    def __init__(
+        self,
+        output: EventWriter,
+        queue: OutputQueue,
+        on_failure: Callable[[], None],
+        observe: Callable[[LogRecord], None] | None = None,
+    ) -> None:
+        self.output = output
+        self.queue = queue
+        self.on_failure = on_failure
+        self.observe = observe
+        self.error: BaseException | None = None
+        self._done = threading.Event()
+        self._thread = threading.Thread(target=self.run, name="log-writer")
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def run(self) -> None:
+        try:
+            while True:
+                done = self._done.is_set()
+                records = self.queue.take_logs(0.0 if done else CONSUMER_POLL_S)
+                for record in records:
+                    self.output.event(record.event, **record.fields)
+                    if self.observe is not None:
+                        self.observe(record)
+                if done and not records:
+                    return
+        except BaseException as error:
+            self.error = error
+            print(f"log writing failed: {describe(error)}", file=sys.stderr)
+            self.on_failure()
+
+    def finish(self) -> None:
+        """Write everything still queued, then stop."""
+        self._done.set()
+        if self._thread.ident is not None:
+            self._thread.join()
 
 
 @dataclass
@@ -113,8 +196,9 @@ class ProcessingResult:
     processed_frames: int = 0
     dropped_frames: int = 0
     reason: str = "stopped"
-    error: Exception | None = None
-    triggers: list[TriggerEvent] = field(default_factory=list)
+    error: BaseException | None = None
+    # set only when the loop ends normally; anything else is a failure.
+    completed: bool = False
 
 
 class FrameProcessor:
@@ -170,9 +254,12 @@ class FrameProcessor:
                 if self.max_frames and result.processed_frames >= self.max_frames:
                     result.reason = "max_frames"
                     break
+            result.completed = True
         except EndOfStream:
-            result.reason = "video_complete"
-        except Exception as error:
+            result.reason, result.completed = "video_complete", True
+        except BaseException as error:
+            # also SystemExit and KeyboardInterrupt, which would otherwise end the
+            # thread silently and look like a clean stop.
             result.reason, result.error = "error", error
 
     def process(self, packet: FramePacket) -> None:
@@ -239,7 +326,6 @@ class FrameProcessor:
             self.sink.event("trigger", **trigger.as_dict())
         for camera_switch in self.camera_events():
             self.sink.event("camera_switch", **camera_switch)
-        result.triggers.extend(triggers)
         now_monotonic_s = time.monotonic()
         if (
             now_monotonic_s - self._last_health_at_monotonic_s
@@ -250,6 +336,7 @@ class FrameProcessor:
                 processed_frames=result.processed_frames,
                 dropped_frames=result.dropped_frames,
                 render_dropped_frames=self.sink.dropped_renders,
+                log_dropped_records=self.sink.dropped_records,
                 **health_snapshot(),
             )
             self._last_health_at_monotonic_s = now_monotonic_s

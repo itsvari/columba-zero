@@ -14,10 +14,14 @@ from .json_data import JsonValue
 from .models import Detection, FramePacket
 
 DEFAULT_TRIGGER_CLASSES = ("pigeon",)
+# Mirrors `trigger_classes` in training/classes.yaml (CONTRACTS.md C2): only rock/feral
+# pigeons may trigger, whatever a model package's metadata says.
+PERMITTED_TRIGGER_CLASSES = frozenset({"pigeon"})
 DEFAULT_DECODE = "yolo11"
 DECODERS = frozenset({"yolo11", "yolo26", "dfine", "rfdetr", "nanodet"})
-# Ultralytics applies NMS itself; for one-to-one (yolo26) heads that removes almost nothing.
-ULTRALYTICS_DECODERS = frozenset({"yolo11", "yolo26"})
+# Ultralytics always applies NMS to these NCNN exports (their metadata has end2end false),
+# so it cannot run the NMS-free yolo26 decoder; the native backend implements it.
+ULTRALYTICS_DECODERS = frozenset({"yolo11"})
 STAGE_NAMES = ("preprocess", "inference", "postprocess")
 NCNN_DIRECTORY_SUFFIX = "_ncnn_model"
 
@@ -80,6 +84,12 @@ def trigger_classes(value: JsonValue, names: dict[int, str]) -> tuple[str, ...]:
         classes = tuple(str(label).lower() for label in value)
     else:
         raise ValueError("columba.trigger_classes must be a non-empty list of class names")
+    forbidden = set(classes) - PERMITTED_TRIGGER_CLASSES
+    if forbidden:
+        raise ValueError(
+            f"models may only trigger on {', '.join(sorted(PERMITTED_TRIGGER_CLASSES))}; "
+            f"remove {', '.join(sorted(forbidden))} from columba.trigger_classes"
+        )
     unknown = set(classes) - set(names.values())
     if unknown:
         raise ValueError(f"trigger classes are not model classes: {', '.join(sorted(unknown))}")
@@ -155,7 +165,10 @@ class UltralyticsDetector:
         self.confidence = confidence
         self.last_stage_ms: dict[str, float | None] = dict.fromkeys(STAGE_NAMES)
         if self.model_info.decode not in ULTRALYTICS_DECODERS:
-            raise DetectorError(f"decode {self.model_info.decode!r} needs model.backend: native")
+            raise DetectorError(
+                f"decode {self.model_info.decode!r} cannot run on the Ultralytics backend, "
+                "which applies NMS to every NCNN export; use model.backend: native"
+            )
         try:
             from ultralytics import YOLO
 

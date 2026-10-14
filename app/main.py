@@ -18,7 +18,14 @@ from .config import AppConfig, CameraConfig, ConfigError, ImageSize, ModelConfig
 from .detector import DetectorError, FrameDetector, UltralyticsDetector, load_model_info
 from .json_data import JsonValue
 from .output import RunOutput, health_snapshot
-from .pipeline import CONSUMER_POLL_S, FrameProcessor, OutputQueue
+from .pipeline import (
+    CONSUMER_POLL_S,
+    LOG_QUEUE_CAPACITY,
+    FrameProcessor,
+    LogWriter,
+    OutputQueue,
+    describe,
+)
 from .reaction import ReactionPlan, ReactionTest
 from .switching import SwitchingCameraStream
 from .tracking import ConfirmationTracker
@@ -201,29 +208,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def consume_output(
+def display_frames(
     output: RunOutput,
     queue: OutputQueue,
     processing: threading.Thread,
     stop: threading.Event,
     reaction: ReactionTest | None = None,
 ) -> bool:
-    """Write logs and render frames on the main thread until processing ends.
+    """Render frames (and drive the reaction test) on the main thread until processing
+    ends. Logging runs separately in a LogWriter.
 
     Returns True when the window was closed or q was pressed.
     """
     window_closed = False
     while True:
         finished = not processing.is_alive()
-        records, job = queue.take(0.0 if finished else CONSUMER_POLL_S)
-        for record in records:
-            output.event(record.event, **record.fields)
-            if reaction is not None:
-                reaction.analysis.observe(record.event, record.fields)
+        job = queue.take_render(0.0 if finished else CONSUMER_POLL_S)
         if reaction is not None and not finished:
             stimulus = reaction.tick()
             if stimulus is not None:
-                output.event("stimulus", **stimulus)
+                queue.event("stimulus", **stimulus)
             if reaction.finished:
                 stop.set()
         if window_closed:
@@ -241,7 +245,7 @@ def consume_output(
         if window_closed:
             stop.set()
             queue.close()
-        if finished and not records and job is None:
+        if finished and job is None:
             return window_closed
 
 
@@ -300,7 +304,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
         live_source = (
             source if isinstance(source, (LatestFrameStream, SwitchingCameraStream)) else None
         )
-        queue = OutputQueue(drop_oldest=not options.video)
+        queue = OutputQueue(drop_oldest=not options.video, log_capacity=LOG_QUEUE_CAPACITY)
         processor = FrameProcessor(
             config,
             source,
@@ -315,23 +319,46 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
                 source.take_events if isinstance(source, SwitchingCameraStream) else list
             ),
         )
+        log_writer = LogWriter(
+            output,
+            queue,
+            stop.set,
+            observe=(
+                (lambda record: reaction.analysis.observe(record.event, record.fields))
+                if reaction is not None
+                else None
+            ),
+        )
         processing = threading.Thread(target=processor.run, name="frame-processing")
-        processing.start()
         try:
-            window_closed = consume_output(output, queue, processing, stop, reaction)
+            log_writer.start()
+            processing.start()
+            window_closed = display_frames(output, queue, processing, stop, reaction)
         finally:
+            # stop and join the worker, then write every record it queued (even after a
+            # display failure) before anything else is logged.
             stop.set()
             queue.close()
-            processing.join()
+            if processing.ident is not None:
+                processing.join()
+            log_writer.finish()
         result = processor.result
         reason = result.reason
-        if result.error is not None:
-            status, failure = 1, str(result.error)
-            print(f"error: {result.error}", file=sys.stderr)
+        processing_error = result.error
+        if processing_error is None and not result.completed:
+            processing_error = RuntimeError("frame processing ended without completing")
+        if processing_error is not None:
+            reason = "error"
+            status, failure = 1, describe(processing_error)
+            print(f"error: {failure}", file=sys.stderr)
         elif window_closed and reason == "stopped":
             reason = "window_closed_or_q"
         elif reaction is not None and reaction.finished and reason == "stopped":
             reason = "reaction_test_complete"
+        if log_writer.error is not None:
+            log_failure = f"log writing failed: {describe(log_writer.error)}"
+            status, reason = 1, "error"
+            failure = f"{failure}; {log_failure}" if failure else log_failure
         if reaction is not None:
             report = reaction.analysis.report()
             output.event("reaction_test", **report)
@@ -350,7 +377,9 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             try:
                 source.close()
             except Exception as error:
-                status, reason, failure = 1, "cleanup_error", str(error)
+                cleanup_failure = f"capture cleanup failed: {error}"
+                status, reason = 1, "cleanup_error"
+                failure = f"{failure}; {cleanup_failure}" if failure else str(error)
                 print(f"capture cleanup error: {error}", file=sys.stderr)
         if output is not None:
             finalized = finalize_output(
@@ -361,6 +390,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
                 processor.result.dropped_frames if processor else 0,
                 started_at_monotonic_s,
                 render_dropped_frames=queue.dropped_renders if queue else 0,
+                log_dropped_records=queue.dropped_records if queue else 0,
             )
             if not finalized:
                 status = 1

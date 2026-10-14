@@ -26,6 +26,7 @@ from app.config import AppConfig, CameraConfig, CameraSwitchConfig, ConfigError
 from app.json_data import JsonValue
 from app.main import create_camera, create_source
 from app.models import Frame, FramePacket
+from app.pipeline import FrameProcessor, OutputQueue
 from app.switching import LuxHysteresis, SwitchingCameraStream
 
 THREAD_TEST_TIMEOUT_S = 2.0
@@ -370,6 +371,36 @@ class DayNightTests(unittest.TestCase):
         self.assertEqual((event["active"], event["error"]), ("wide", "noir unavailable"))
         self.assertEqual(source.role, "day")
         self.assertEqual(source.get(1).camera, "wide")
+
+    def test_failed_switch_cleanup_failure_is_fatal(self) -> None:
+        streams = [fake_stream("wide", [1, 1]), fake_stream("wide", [1])]
+        broken = fake_stream("noir", [])
+        broken.start.side_effect = CaptureError("noir unavailable")
+        broken.close.side_effect = RuntimeError("noir release failed")
+
+        def open_stream(camera: CameraConfig) -> LatestFrameStream:
+            return cast(LatestFrameStream, broken if camera.label == "noir" else streams.pop(0))
+
+        cameras = {"day": CameraConfig(name="wide"), "night": CameraConfig(name="noir")}
+        source = SwitchingCameraStream(
+            cameras, CameraSwitchConfig(10, 40, 0), open_stream, lambda: 0
+        )
+        source.start()
+        with redirect_stderr(StringIO()), self.assertRaises(CaptureError) as raised:
+            source.get(1)
+        message = str(raised.exception)
+        self.assertIn("noir unavailable", message)
+        self.assertIn("noir release failed", message)
+        # the working camera is not reopened behind a failed cleanup.
+        self.assertEqual(len(streams), 1)
+        processor_source = Mock()
+        processor_source.get.side_effect = raised.exception
+        processor = FrameProcessor(
+            AppConfig(), processor_source, Mock(), None, OutputQueue(), threading.Event(), 0.0
+        )
+        processor.run()
+        self.assertEqual(processor.result.reason, "error")
+        self.assertIn("noir release failed", str(processor.result.error))
 
     def test_cameras_config(self) -> None:
         config = CameraConfigTests.load(

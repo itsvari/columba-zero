@@ -17,6 +17,10 @@ MILLISECONDS_PER_SECOND = 1000
 SWITCH_RETRY_S = 60.0
 
 
+class CameraCleanupError(CaptureError):
+    """A camera failed to start and then failed to release; the run must stop."""
+
+
 class LuxHysteresis:
     """Decide when to change camera from the active camera's lux estimate.
 
@@ -89,11 +93,15 @@ class SwitchingCameraStream:
         stream = self.open_stream(self.cameras[role])
         try:
             stream.start()
-        except Exception:
+        except Exception as start_error:
             try:
                 stream.close()
-            except Exception as error:
-                print(f"camera cleanup error: {error}", file=sys.stderr)
+            except Exception as cleanup_error:
+                # the camera may still be held; recovering onto the other one is unsafe.
+                raise CameraCleanupError(
+                    f"camera {self.cameras[role].label} failed to start ({start_error}) "
+                    f"and its cleanup failed ({cleanup_error})"
+                ) from cleanup_error
             raise
         return stream
 
@@ -126,6 +134,8 @@ class SwitchingCameraStream:
         try:
             self._stream = self._open(target)
             self.role = target
+        except CameraCleanupError:
+            raise
         except Exception as failure:
             # keep running on the camera that worked; a second failure stops the run.
             error = str(failure)

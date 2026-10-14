@@ -101,11 +101,15 @@ buffered frames when inference falls behind; video replay processes every decode
 frame sequentially, without real-time pacing or frame dropping.
 
 Capture, inference and confirmation run on a processing thread. The main thread
-draws the window, writes the log and records, so the processing loop never waits
-for the display: when drawing falls behind, the oldest waiting frame is dropped
-from the display and recording (`render_dropped_frames` in `health` and
-`run_end`). Log records are never dropped. Replay waits for the display instead,
-so replay recordings keep every frame.
+draws the window and records; a separate log-writer thread writes the JSONL log,
+so a stalled display never delays logging and the processing loop never waits
+for either. When drawing falls behind, the oldest waiting frame is dropped from
+the display and recording (`render_dropped_frames` in `health` and `run_end`).
+Replay waits for the display instead, so replay recordings keep every frame. If
+the log writer falls more than 4096 records behind, the oldest `frame` records
+are dropped and counted (`log_dropped_records`); `trigger`, `camera_switch`,
+`health` and run records are never dropped. Every queued record is written before
+`run_end`, also after a display or recording failure.
 
 ### Configuration reference
 
@@ -139,9 +143,12 @@ is off until configured.
 
 Class names and trigger classes come from the package's `metadata.yaml`
 (`names`, and `trigger_classes` in the `columba:` block, default `[pigeon]`).
-`pigeon` must be class 0. Packages without a `columba:` block, such as
-`pigeon_baseline_v1-2`, are read as a YOLO11 export with trigger class `pigeon`.
-Other classes are drawn in orange and logged, but never trigger.
+`pigeon` must be class 0, and `pigeon` is the only class the runtime lets
+trigger (CONTRACTS.md C2): a package listing any other trigger class is rejected.
+Packages without a `columba:` block, such as `pigeon_baseline_v1-2`, are read as
+a YOLO11 export with trigger class `pigeon`. Other classes are drawn in orange
+and logged, but never trigger. The Ultralytics backend always applies NMS, so
+packages with `columba.decode: yolo26` (NMS-free) need `model.backend: native`.
 
 `confirmation:` (off by default)
 
@@ -218,7 +225,9 @@ python tools/summarize_run.py outputs/<run>/detections.jsonl
 The summary adds count, mean, p50, p95, p99 and maximum for each stage, frame
 delivery, decision time and trigger reaction time (first frame of a track to its
 confirmation), in 0.1 ms histogram bins, plus trigger, camera-switch and
-per-camera frame counts.
+per-camera frame counts. Values of 10 s or more are kept exactly (up to 1000 of
+them); past that, affected percentiles are reported as 10000 ms and listed under
+`lower_bound`.
 
 ## Desktop development and validation
 
