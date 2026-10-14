@@ -1,0 +1,9 @@
+# Training negatives (phase 2): same rules as coco-negatives, from train2017.
+name: coco-negatives-train
+kind: coco
+split: train2017
+url: https://cocodataset.org/
+require_any: [car, bus, truck, traffic light, fire hydrant, stop sign, parking meter, bench, motorcycle, bicycle]
+exclude_any: [bird, kite]
+box_categories: []
+limit: 3000

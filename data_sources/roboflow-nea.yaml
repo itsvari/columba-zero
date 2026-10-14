@@ -1,0 +1,17 @@
+# NEA "pigeon+foxes detector" v1 (Roboflow Universe). Used by the v1 training set.
+# Licence as stated on Roboflow Universe and returned by the Roboflow project API
+# (`license: "CC BY 4.0"`), checked 2026-10-14.
+# 450 images, pre-resized by Roboflow to 416x416 ("Stretch to"), no augmentation.
+# The v1 notebook kept the pigeon class only and dropped images without a pigeon box.
+name: roboflow-nea
+kind: roboflow
+workspace: nea-pn0bc
+project: pigeon-foxes-detector
+version: 1
+format: yolov8
+url: https://universe.roboflow.com/nea-pn0bc/pigeon-foxes-detector/dataset/1
+license: CC-BY-4.0
+attribution: "nea-pn0bc, \"pigeon+foxes detector\" v1, Roboflow Universe, CC BY 4.0, https://universe.roboflow.com/nea-pn0bc/pigeon-foxes-detector"
+classes:            # source class name -> our class name; unmapped classes are dropped
+  pigeon: pigeon
+  Fox: null

@@ -1,0 +1,14 @@
+# COCO 2017 urban street scenes with no bird box, used as empty-scene negatives.
+# A street scene has at least one of the street categories below. `val2017` feeds
+# the frozen test set; training negatives (phase 2) use `coco-negatives-train`
+# (train2017), so the two never share an image.
+# Licence filter as for coco-birds: CC-BY-2.0 and CC-BY-SA-2.0 only.
+# COCO labels are exhaustive for its 80 categories but can miss small birds, so test
+# images are still checked by eye before use.
+name: coco-negatives
+kind: coco
+split: val2017
+url: https://cocodataset.org/
+require_any: [car, bus, truck, traffic light, fire hydrant, stop sign, parking meter, bench, motorcycle, bicycle]
+exclude_any: [bird, kite]
+box_categories: []

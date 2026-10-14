@@ -1,0 +1,30 @@
+# iNaturalist research-grade observations of the C2 taxa (training/classes.yaml),
+# Singapore first (place id 6734). Only photos licensed CC0, CC BY or CC BY-SA are
+# downloaded (open question Q2 default: NC/ND and all-rights-reserved are excluded);
+# the API is asked for those licences and every photo's `license_code` is checked again.
+# API v1, at most one request per second (photo downloads are paced the same way).
+# Labels: none (`boxes: null`). Species comes from the observation's taxon. Phase 2
+# adds boxes with tools/auto_label.py; phase 1 uses these images only as reviewed
+# no-pigeon "other bird" test images (an image-level label is enough there).
+name: inaturalist
+kind: inaturalist
+url: https://www.inaturalist.org/
+photo_licenses: [cc0, cc-by, cc-by-sa]
+photo_size: large                 # up to 1024 px on the long side
+photos_per_observation: 1
+place_ids: [6734]                 # Singapore
+limit_per_taxon: 30
+taxa:                             # names and ids must match training/classes.yaml
+  - {name: pigeon, taxon_id: 3017}
+  - {name: spotted_dove, taxon_id: 1455918}
+  - {name: zebra_dove, taxon_id: 3607}
+  - {name: pink_necked_green_pigeon, taxon_id: 3393}
+  - {name: javan_myna, taxon_id: 145095}
+  - {name: house_crow, taxon_id: 8031}
+  - {name: asian_glossy_starling, taxon_id: 14965}
+  - {name: eurasian_tree_sparrow, taxon_id: 13851}
+  - {name: yellow_vented_bulbul, taxon_id: 14623}
+  - {name: asian_koel, taxon_id: 204510}
+  - name: other_bird
+    taxon_id: 3                   # Aves, minus the named taxa
+    exclude_taxon_ids: [3017, 1455918, 3607, 3393, 145095, 8031, 14965, 13851, 14623, 204510]

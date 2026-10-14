@@ -1,0 +1,16 @@
+# "Pigeons Detection" v1 (Roboflow Universe, 1199 images, single class Pigeon).
+# Licence as stated on Roboflow Universe and returned by the Roboflow project API
+# (`license: "CC BY 4.0"`), checked 2026-10-14. No preprocessing, no augmentation.
+# Its own test split (63 images) is the closest available proxy for the old
+# 63-image v1 test split (WS8 parity).
+name: roboflow-yolo1199
+kind: roboflow
+workspace: yolo-bl12d
+project: pigeons-detection-l7u3l
+version: 1
+format: yolov8
+url: https://universe.roboflow.com/yolo-bl12d/pigeons-detection-l7u3l/dataset/1
+license: CC-BY-4.0
+attribution: "yolo-bl12d, \"Pigeons Detection\" v1, Roboflow Universe, CC BY 4.0, https://universe.roboflow.com/yolo-bl12d/pigeons-detection-l7u3l"
+classes:
+  Pigeon: pigeon

@@ -1,0 +1,15 @@
+# COCO 2017 val images containing at least one `bird` box. The v1 training set used
+# all of them, relabelled `pigeon` (pigeon_detection_training.ipynb, section 4).
+# COCO annotations are CC BY 4.0 (COCO Consortium); every image keeps its own
+# Flickr licence from the annotation JSON `licenses` table, which we filter:
+# only CC-BY-2.0 (id 4) and CC-BY-SA-2.0 (id 5) pass. NC (ids 1-3), ND (id 6),
+# "No known copyright restrictions" (id 7) and "United States Government Work"
+# (id 8) are dropped; `licence_report.json` records how many.
+name: coco-birds
+kind: coco
+split: val2017
+url: https://cocodataset.org/
+require_any: [bird]
+box_categories: [bird]
+classes:
+  bird: bird        # species unknown; builds decide (v1 convention relabels to pigeon)
