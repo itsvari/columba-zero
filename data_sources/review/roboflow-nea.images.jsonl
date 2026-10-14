@@ -1,0 +1,296 @@
+{"id": "roboflow-nea-200220_abc_spec_pigeons_hpMain_16x9_992_jpg.rf.016830f57d50e704c8e11214c284a2eb", "verdict": "drop", "note": "cage, partial/messy boxes"}
+{"id": "roboflow-nea-200220_abc_spec_pigeons_hpMain_16x9_992_jpg.rf.db0bdbf4c650ff7225e5642503b5526f", "verdict": "drop", "note": "cage, partial/messy boxes"}
+{"id": "roboflow-nea-200220_abc_spec_pigeons_hpMain_16x9_992_jpg.rf.e5e92f2c2e13c483fc803935469c9440", "verdict": "drop", "note": "cage, partial/messy boxes"}
+{"id": "roboflow-nea-20150123__CCT-PIGEONS-01255_jpg.rf.45a48a6c979347db6651492ab9805084", "verdict": "drop", "note": "overlapping boxes, birds missed"}
+{"id": "roboflow-nea-20150123__CCT-PIGEONS-01255_jpg.rf.54ba5b4499f75fbd587d4d1ffabe8c1e", "verdict": "drop", "note": "overlapping boxes, birds missed"}
+{"id": "roboflow-nea-20150123__CCT-PIGEONS-01255_jpg.rf.c5d7f5ed8343c6475256064fde196c50", "verdict": "drop", "note": "overlapping boxes, birds missed"}
+{"id": "roboflow-nea-3101980309_c773bf0e05_o_jpg.rf.630e2ceb05c07b1ec7a8bfc6cadf7739", "verdict": "drop", "note": "Nicobar pigeon, not Columba livia"}
+{"id": "roboflow-nea-38001952-0-image-a-8_1610630416624_jpg.rf.3af3766f9ee75b1a6ed51cf98727c234", "verdict": "drop", "note": "infographic"}
+{"id": "roboflow-nea-38001952-0-image-a-8_1610630416624_jpg.rf.c7ba96368af6e461057eb1d56a78f4e7", "verdict": "drop", "note": "infographic"}
+{"id": "roboflow-nea-38001952-0-image-a-8_1610630416624_jpg.rf.cf4943cd0de7f47aa62d78dfac3a8907", "verdict": "drop", "note": "infographic"}
+{"id": "roboflow-nea-4i36gs1mw7u41_jpg.rf.b9c4af21c6583e7b23d8ece1c48a217c", "verdict": "drop", "note": "dove, not a rock pigeon"}
+{"id": "roboflow-nea-4i36gs1mw7u41_jpg.rf.c13c7269dc8370552fa3c5e65a75fdb8", "verdict": "drop", "note": "dove, not a rock pigeon"}
+{"id": "roboflow-nea-4i36gs1mw7u41_jpg.rf.f07195b1905419c8c1eb7a360e59e672", "verdict": "drop", "note": "dove, not a rock pigeon"}
+{"id": "roboflow-nea-4sn9pyjk6q9zhguo_1607575855_jpeg_jpg.rf.29b5f8dc428bf157c7837bea14d0b4e0", "verdict": "drop", "note": "second pigeon unboxed"}
+{"id": "roboflow-nea-4sn9pyjk6q9zhguo_1607575855_jpeg_jpg.rf.74fdd6e9c6ddea51f2e63b70ca28bb15", "verdict": "drop", "note": "second pigeon unboxed"}
+{"id": "roboflow-nea-4sn9pyjk6q9zhguo_1607575855_jpeg_jpg.rf.c44bdb8c5ea3eca7f7e1502e41ef4806", "verdict": "drop", "note": "second pigeon unboxed"}
+{"id": "roboflow-nea-822519_jpg.rf.0f3945ff630f784e0473b18a823e67ff", "verdict": "drop", "note": "flock, several pigeons unboxed"}
+{"id": "roboflow-nea-822519_jpg.rf.ba97adfe47e33576a91494c64c8f9ab0", "verdict": "drop", "note": "flock, several pigeons unboxed"}
+{"id": "roboflow-nea-822519_jpg.rf.e7b5c2131b33019882b7a24711d49da7", "verdict": "drop", "note": "flock, several pigeons unboxed"}
+{"id": "roboflow-nea-Clontarf_Pigeon_Club_Racing_Pigeons_jpg.rf.302969a5ebe460405e9fb4fb1b40e5f4", "verdict": "drop", "note": "several pigeons unboxed"}
+{"id": "roboflow-nea-Clontarf_Pigeon_Club_Racing_Pigeons_jpg.rf.de7c8d8094279c10bc91bcc99c55e934", "verdict": "drop", "note": "several pigeons unboxed"}
+{"id": "roboflow-nea-Clontarf_Pigeon_Club_Racing_Pigeons_jpg.rf.f49966abb9d457f2c4317b12050876ab", "verdict": "drop", "note": "several pigeons unboxed"}
+{"id": "roboflow-nea-_92458036_gettyimages-490604622_jpg.rf.06f424fb397de970ff39ed0634f85130", "verdict": "drop", "note": "dark, merged boxes"}
+{"id": "roboflow-nea-_92458036_gettyimages-490604622_jpg.rf.561e8725474e7d59746d88ba6e9c3e5c", "verdict": "drop", "note": "dark, merged boxes"}
+{"id": "roboflow-nea-_92458036_gettyimages-490604622_jpg.rf.7100cee46ebbe930e0b4267769fb65b3", "verdict": "drop", "note": "dark, merged boxes"}
+{"id": "roboflow-nea-australia-racing-pigeon_jpg.rf.023d3b6f81847c95d0ce07087824c844", "verdict": "drop", "note": "species unclear (brown dove-like)"}
+{"id": "roboflow-nea-australia-racing-pigeon_jpg.rf.60110542729256cc55a54f6a6c19f142", "verdict": "drop", "note": "species unclear (brown dove-like)"}
+{"id": "roboflow-nea-australia-racing-pigeon_jpg.rf.7e9214864cb4868d2ec5fedf0b080c4e", "verdict": "drop", "note": "species unclear (brown dove-like)"}
+{"id": "roboflow-nea-band-tail-becky-matsubara-header_jpg.rf.b5bfab7f8712e13c9c8c3b273b7a26a2", "verdict": "drop", "note": "species unclear, birds in branches"}
+{"id": "roboflow-nea-band-tail-becky-matsubara-header_jpg.rf.c75cb8e75eb14f1427c7bfa8ad958167", "verdict": "drop", "note": "species unclear, birds in branches"}
+{"id": "roboflow-nea-band-tail-becky-matsubara-header_jpg.rf.e1385a383137c12fd122b2c12126f562", "verdict": "drop", "note": "species unclear, birds in branches"}
+{"id": "roboflow-nea-cmUJzPLBEpdoinkrwJVLyk-1200-80_jpg.rf.4640159d15cb0fbc47859975e1c95f1c", "verdict": "drop", "note": "background pigeons unboxed"}
+{"id": "roboflow-nea-cmUJzPLBEpdoinkrwJVLyk-1200-80_jpg.rf.c396681e7d1eaec301ccae035e0f50cb", "verdict": "drop", "note": "background pigeons unboxed"}
+{"id": "roboflow-nea-cmUJzPLBEpdoinkrwJVLyk-1200-80_jpg.rf.c81f77f48696cddefb802b0afb2eaaa7", "verdict": "drop", "note": "background pigeons unboxed"}
+{"id": "roboflow-nea-google-pigeo-update_jpg.rf.fbcaf06f8edc91f70ffd48023bd738fa", "verdict": "drop", "note": "graphic with caption"}
+{"id": "roboflow-nea-ia_100000146_jpg.rf.6ab611e8cfb30c5b82d476e094ccd126", "verdict": "drop", "note": "flock, one of many pigeons boxed"}
+{"id": "roboflow-nea-00b53cee88cfa4e6cd606d75008fd1a8_jpg.rf.4f93dd6e736f9799de3fb30c9f0e4bc8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-00b53cee88cfa4e6cd606d75008fd1a8_jpg.rf.54591d77cacc8cd867094147a641e1a7", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-00b53cee88cfa4e6cd606d75008fd1a8_jpg.rf.9ca6d20a26c1ad4e47d70e5d9d291845", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-04ecd5fac29270f4fdb4467a95d97057_jpg.rf.3ff24b4e0ca27a47571d1a04c269199d", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-04ecd5fac29270f4fdb4467a95d97057_jpg.rf.5b2234755fb5dd7b530ba8d7ca9aa341", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-04ecd5fac29270f4fdb4467a95d97057_jpg.rf.f715a1f97efed1490ac6e5a28ecf3686", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-06df9ca55628fef232719214bc2e1031_jpg.rf.aac1e367b8e3e44cd0082e0bee0d5606", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-077f566499c749ff832a5bb39a79730e_jpg.rf.9b59753cf95d3f14b8f1d1b5422b5d1f", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-077f566499c749ff832a5bb39a79730e_jpg.rf.ab94ac40e32ab0204af3d1b607c2ea10", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-077f566499c749ff832a5bb39a79730e_jpg.rf.ce3fa5ced7e7ad6ed50ade80d603d0ae", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-09203dff14480f609196b97018a5a45c_jpg.rf.623b3119b9da0baa7be64d482e18ab42", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-0985835d586dd76a5339fb4e5ca8c81e_jpg.rf.278aafb16e5cf23aa74b75c9a8ba37aa", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-0985835d586dd76a5339fb4e5ca8c81e_jpg.rf.69ac1887af31b30c04fee9f733b6d1d5", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-0985835d586dd76a5339fb4e5ca8c81e_jpg.rf.ecee29ace45755ceda7d2ce96f36aab8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-0bf5c3cc3ac96542eeca2635aaafa98c_jpg.rf.c9d7764d7f3cb11099b68e27b8b4c31b", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-0f0ce276a5ed57dbb3dd7efb279de97e_jpg.rf.6a6484dbb3bade65b9f548a9bca88fad", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-0f0ce276a5ed57dbb3dd7efb279de97e_jpg.rf.86d3ddc8262e867ac84c16a548da05cf", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-0f0ce276a5ed57dbb3dd7efb279de97e_jpg.rf.ee72f3525ad43efffb16de2e3336b012", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-0fd7750280b7204eaa43bd74c4699606_jpg.rf.0ceabe7555b8092bd016e6b8adf718ff", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-0fd7750280b7204eaa43bd74c4699606_jpg.rf.87f02bf7d061749b00e8bb3e966aa6b7", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-0fd7750280b7204eaa43bd74c4699606_jpg.rf.9ed4755f1c1dafb8ebed20115dbe78ef", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-102a6eb9893a48f4924151b7a74e28bc_jpg.rf.2b681507bad56a022b518e11ef58f5e6", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-102a6eb9893a48f4924151b7a74e28bc_jpg.rf.7f65ef51b8c360b3323014f7930a1f61", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-102a6eb9893a48f4924151b7a74e28bc_jpg.rf.927ac4242459616565c0d4cf01479341", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-10b0dc2f06b6d312f19a4dfec84336d6_jpg.rf.1366766fd6b0bdb52f2873b70f2ea9bf", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-10b0dc2f06b6d312f19a4dfec84336d6_jpg.rf.17f058bdf3c074bb66cd6baf81bf7dc5", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-10b0dc2f06b6d312f19a4dfec84336d6_jpg.rf.2236cf8bbc7a6fa9af91966d2dea2408", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-14c8e54d52475ccb1e25ed4c9ee5a93e_jpg.rf.3db5baacb6bc5648ec5e419051b09737", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-14c8e54d52475ccb1e25ed4c9ee5a93e_jpg.rf.5d2e5b6504172c4e1bc3ec97ee87bdc8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-14c8e54d52475ccb1e25ed4c9ee5a93e_jpg.rf.5d80b0dadca7f64e136fc53e79b54c95", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-191c998e037e20ab941dfc75d85e11f0_jpg.rf.2f06e42762b8190f33d998db00593c5e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-191c998e037e20ab941dfc75d85e11f0_jpg.rf.48ed42646bc8cc746021fb0c64691498", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-191c998e037e20ab941dfc75d85e11f0_jpg.rf.aeba7073f75ef930e557b44357742224", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-194e312da4aff350fb2dc44a4807f07d_jpg.rf.623c77dd4fb343d207911a6ba7a6750b", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1990ade1db6704b4340a1b7fd77e8a75_jpg.rf.ba298ba40c6c4faf3d4b3b79206ee30e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1990ade1db6704b4340a1b7fd77e8a75_jpg.rf.edaa5a8ef292b1af00bd899c4e20627b", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1990ade1db6704b4340a1b7fd77e8a75_jpg.rf.fcd048f2ef5c1ba9449576b922e41cc8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1d7ccc1116e59a14983592fa55a9287c_jpg.rf.8ae3826b8a8838a66ca4bc142321a451", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1d7ccc1116e59a14983592fa55a9287c_jpg.rf.8c03a3d365e3d0d19d067efa6be84903", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1d7ccc1116e59a14983592fa55a9287c_jpg.rf.c3d333e6ca82bb90b5ee67bff12d66b0", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1e8cd627c4dbb8f7161317bc309c99da_jpg.rf.848bcb1f4ea851013f70b2c2e70ae8ed", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1e8cd627c4dbb8f7161317bc309c99da_jpg.rf.8b4f5e29d785781cc12b7cdd719e612a", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1e8cd627c4dbb8f7161317bc309c99da_jpg.rf.a2f47cd7138fb497a4b2d1bbd059e075", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1ef073e23d1d378c9869bbc951b8b7e6_jpg.rf.065935547289d2d81cedc6730d1fe31c", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1ef073e23d1d378c9869bbc951b8b7e6_jpg.rf.7702fe468362ba1365d30866399d176c", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1ef073e23d1d378c9869bbc951b8b7e6_jpg.rf.a1d9a22a55b7bd922f833547e39d8196", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1f2c5249b04efb874ae76122016ba9c6_jpg.rf.66a9137905281215b1ed267e550d9189", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1f2c5249b04efb874ae76122016ba9c6_jpg.rf.cf1f7a6ee577740ede29c7a7e43b2f68", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-1f2c5249b04efb874ae76122016ba9c6_jpg.rf.fd9ae269c1ba1ec86dc4c631c81b078f", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-287d3f9e78dfb1df01ca10d574cc68d8_png_jpg.rf.44e83fb0ae211631af17270e560355bc", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-287d3f9e78dfb1df01ca10d574cc68d8_png_jpg.rf.814138ca1c578a8a01c81e5d3714da10", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-287d3f9e78dfb1df01ca10d574cc68d8_png_jpg.rf.b14b2697615ba1afb0be41c1d8aa3e47", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-2908793f6d07df431901911c1047cab7_jpg.rf.44d8bee105a86f75b2448bf4c0693c08", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-2908793f6d07df431901911c1047cab7_jpg.rf.a00b4d69397cc9d03b0586de15a979e5", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-2908793f6d07df431901911c1047cab7_jpg.rf.a4d98b98b47f22d60bd95b95a18db52c", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-2c1953745010a0e99f30e7e3b3372e30_jpg.rf.5d8b1471446e58c55c0805f7c4f93d94", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-2c1953745010a0e99f30e7e3b3372e30_jpg.rf.8ca5623683c8407c0940dba7ca2dd049", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-2c1953745010a0e99f30e7e3b3372e30_jpg.rf.c3b30f35a094554650951e03051ab2c3", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-2d9e4f175dc60883c7f8c9cf7da2d164_jpg.rf.230ed914b01a9f9fc02308a48db2c32f", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-302a699999dafdb5ce8f090291187343_png_jpg.rf.93e2d16060489338a667f1925b946da2", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-3051203511e5ce0c5507671ee3190feb_jpg.rf.0ad3004762515d5b60e86bedfa97457e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-3051203511e5ce0c5507671ee3190feb_jpg.rf.3c7db8c6272657c3e6d490c25d438d7c", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-3051203511e5ce0c5507671ee3190feb_jpg.rf.80ebefe602d39cf88d36b45e81c0b37b", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-3725189cab0584e45b389c6ba7bf0ae5_jpg.rf.27571bfd68c567b345f074b5f1486531", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-3725189cab0584e45b389c6ba7bf0ae5_jpg.rf.cf057569c4535b1d49ab365c18e0ce21", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-3725189cab0584e45b389c6ba7bf0ae5_jpg.rf.e960395235f3487a6a92b1ac9c29b881", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-3ec01f92919046d0eacab04a26a7e4f7_jpg.rf.a355705be89e403fc3fa495fcbb39bfd", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-3ec01f92919046d0eacab04a26a7e4f7_jpg.rf.bd1080635b24f2dd4ec883cfa3c40eaa", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-3ec01f92919046d0eacab04a26a7e4f7_jpg.rf.f3a3b43387bedcdcb5e9b0b569c7ab82", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-439d7eb397a14ac107b458012d873819_jpg.rf.58ae8ed923133b3bdb0a72fc0e1a81b5", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-439d7eb397a14ac107b458012d873819_jpg.rf.9e1179ffcf378132e084397f79d85246", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-439d7eb397a14ac107b458012d873819_jpg.rf.b7f360d6139031302dd1ced291c66fa5", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-4608dbaafb0b133571c6d18bf16fbfdc_jpg.rf.129901543560d01d6da6a26694045c10", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-4608dbaafb0b133571c6d18bf16fbfdc_jpg.rf.521a5ccc4d62e13649d281e41489dc23", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-4608dbaafb0b133571c6d18bf16fbfdc_jpg.rf.9c7b8d69af77101c4c26c526e6b2e3e7", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-4882f86adea1b1de18b777eed81da6c6_jpg.rf.2dd660d26890d44f97c1d699614241a7", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-4882f86adea1b1de18b777eed81da6c6_jpg.rf.524879c34a651ab68aa7703d32d9cac1", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-4882f86adea1b1de18b777eed81da6c6_jpg.rf.979c71bdec8a13aedda435b5032ae1a5", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-4e5d65c19e3d2af04ecf18c543406009_jpg.rf.ebf534e0186f282455a660155c3fff98", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-4fb9de78c4a6ffaf31232893251bcf12_jpg.rf.011cc2ba05b3048e2c2a580da18b72c3", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-4fb9de78c4a6ffaf31232893251bcf12_jpg.rf.9d1448e0c6b7cee3557ad9e8c1c84919", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-4fb9de78c4a6ffaf31232893251bcf12_jpg.rf.ae4f2c00bfa12251beba1a96573b3f1a", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-517aa9edd92dbd39f0cc995110d42d96_jpg.rf.556e4427c3ed712b7f63badd421e5bc4", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5689bf2a4221517d8f82e6eb27514dfe_jpg.rf.11b59b232f1ad7355907789f8e62b920", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5689bf2a4221517d8f82e6eb27514dfe_jpg.rf.1fe667c829ddb92d1a8a62612848719f", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5689bf2a4221517d8f82e6eb27514dfe_jpg.rf.8cc9d8bc76aaf3f91ffe9183bf967e60", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5728f125df7c6664d4d5fae816fd34e9_jpg.rf.c2024eddf32ff693d67f1f7fe256abd1", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5d61f1820c88c23155598f1c8b693b60_jpg.rf.8327650ca0c255df0bd1cedb18ccc1af", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5d61f1820c88c23155598f1c8b693b60_jpg.rf.c3bbd35905efc5860918c010dae300ca", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5d61f1820c88c23155598f1c8b693b60_jpg.rf.cf3b766d34d021bf1a6889a436dc1df7", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5e6c079aa695690976894140a8cd3f42_jpg.rf.25dbe27c16fe53748dcba7da5636eff8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5e6c079aa695690976894140a8cd3f42_jpg.rf.45a0352838d5d13d5a416f71454be609", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5e6c079aa695690976894140a8cd3f42_jpg.rf.9c1238f1ff90706552e058b9babdcf66", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5ef37db2fab78d974c7bbef426c4f168_jpg.rf.645bce5f9b093b8793154a314f78c0dc", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5ef37db2fab78d974c7bbef426c4f168_jpg.rf.76260bf7a26c40f7b98e554f6f00d6a4", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-5ef37db2fab78d974c7bbef426c4f168_jpg.rf.c3f0c925760713570782a82b07d564fd", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-657336159c713ec14ffff9a89ec86a68_jpg.rf.2d1c077adf56c9fee42397365cc2c637", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-657336159c713ec14ffff9a89ec86a68_jpg.rf.682bcfe0163c4a98af5b003ce59ffccc", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-657336159c713ec14ffff9a89ec86a68_jpg.rf.e986b2e7e6a083716fd9c1fa7c0a6a66", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-6886e4dfe7bb59930192f1b0bbec1130_jpg.rf.4a4a193797965d65fc8e38ed265d2ef8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-6886e4dfe7bb59930192f1b0bbec1130_jpg.rf.b2b92cb40c16de08dde2a4bdf647af53", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-6886e4dfe7bb59930192f1b0bbec1130_jpg.rf.df90bdc098233dfd8f4391f33684c5ff", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-69dc478e582b3b4597d1bc1c4fc543fd_jpg.rf.49cec5b3fe76de0fcdcd71487b10e5ee", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-69dc478e582b3b4597d1bc1c4fc543fd_jpg.rf.7e92466adc0c01f7394cc4b33ef2d5c0", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-69dc478e582b3b4597d1bc1c4fc543fd_jpg.rf.9049b607d8e7c72dc2e1ac56bcc959db", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-6a125502846521213571bfd18e727514_jpg.rf.27eaaf32e8c5031b8b035d8fe44e2393", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-6a125502846521213571bfd18e727514_jpg.rf.9707ba850833ef05a75c25083f0a9a78", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-6a125502846521213571bfd18e727514_jpg.rf.c44d2ce064979db09df398c5af05938e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-6b17fbfbeb988d62f78c26db93ac2604_jpg.rf.d9f7238a8ffa36641ffbd5844bac1751", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-6b17fbfbeb988d62f78c26db93ac2604_jpg.rf.e918017452b94a1e26718b03b287fd00", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-6b17fbfbeb988d62f78c26db93ac2604_jpg.rf.f880ddc199acd0c61b44908c2945e146", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-719a379c5808de40b879d1b31835eba9_jpg.rf.223132e68e55122c251e86a75a800cfe", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-719a379c5808de40b879d1b31835eba9_jpg.rf.39cde2075a3836475816c981d045fd61", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-719a379c5808de40b879d1b31835eba9_jpg.rf.d5db5ab79e20432e64a861daa5dd2ba2", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-76cfc207165de99133044f24144db9fc_png_jpg.rf.3e705dc5b1255825bbeeac42f8b9048b", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-76cfc207165de99133044f24144db9fc_png_jpg.rf.6022b24cd353fb27e85ca8fb0ea94f9d", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-76cfc207165de99133044f24144db9fc_png_jpg.rf.62f1b714c0ba8a9c15dd0d36eba72101", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-77f461bde195bc01579892f08f544e90_jpg.rf.48b50e11f1e555950dae74aa2affeff7", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-785815f7f793ae5db91ffcfbb9853314_jpg.rf.31835f1a7e47fa2a357dfd5addbc4531", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-785815f7f793ae5db91ffcfbb9853314_jpg.rf.41a2ec0bd84ff6d07184c7ecf897a551", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-785815f7f793ae5db91ffcfbb9853314_jpg.rf.d96118e56767038b09ce9c717a2c90a9", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-788fcfcb02b37cbfe96fb4f6162ea076_jpg.rf.969763e856715fc4317c83fcd5cf47ed", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-7bce607252e00bf77e9bb4860470fa7a_jpg.rf.85f7d229dc757c1cda2e358772d85c4b", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-7bce607252e00bf77e9bb4860470fa7a_jpg.rf.b8d61981132c704504261fc70e7079a1", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-7bce607252e00bf77e9bb4860470fa7a_jpg.rf.ce0723d036d2b1e594a34edda7ba02ed", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-80e492508907272c69d3fb20f7cbcf7c_jpg.rf.91e67c40a693e9be8136a107278727b9", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-83d6e0ea2cc75dacbdae8df5d592f5df_jpg.rf.1689b28cc898e88f74544a4af148a160", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-83d6e0ea2cc75dacbdae8df5d592f5df_jpg.rf.de17af80b18e7b84482c16b0f9a988f6", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-83d6e0ea2cc75dacbdae8df5d592f5df_jpg.rf.f936a0b9481cbbe9e451f4e761fdf963", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-865d767e78367cd9d15564df3ebd4879_jpg.rf.9348fb736acbef9298bce849e92053a4", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-865d767e78367cd9d15564df3ebd4879_jpg.rf.d8d28c23abfa26b3dfa0813af2e202d5", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-865d767e78367cd9d15564df3ebd4879_jpg.rf.f9b476f6e71508d7b760a823b6daeee5", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-8e90ed88ddb2ee08791c679843b44c6e_jpg.rf.57ad019c74cf35dd07fb93ee9cd4c0f7", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-8e90ed88ddb2ee08791c679843b44c6e_jpg.rf.c1c6135e277341af96fe77805e528ff8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-8e90ed88ddb2ee08791c679843b44c6e_jpg.rf.e047bbc3daa35334ec9d16dfa70e8957", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-91f65e007ee2d2bcb17abd7da5a3fa36_jpg.rf.c6ac90c2dd876cede0936ce686f3cf52", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-94a9a8507d6290a43a5f111b40b80283_jpg.rf.9bf23b0279847be25028738d496cc321", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-94a9a8507d6290a43a5f111b40b80283_jpg.rf.a90c0d72a902c66dd77be060222cf5ad", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-94a9a8507d6290a43a5f111b40b80283_jpg.rf.e8deccc689942a0a4030f8ef289021c3", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-96f4e4dbcba96ada355199ea4ec1afa1_jpg.rf.54b5b68545b4a7bf0e9c1f99ef2cdcf7", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-976dfddc5e818aa728feec1d55ff28a1_jpg.rf.1ed41d4bcf436c3ce32421e5036f5f41", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-976dfddc5e818aa728feec1d55ff28a1_jpg.rf.d43e4b73115d400583af147d52a9bccb", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-976dfddc5e818aa728feec1d55ff28a1_jpg.rf.d87ce18383ba7ad06f18082942278fb7", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-9aad2b6aaab08b1a195dddfdb299bd9a_jpg.rf.d612aab9ee58ef61f1767b613298734c", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-9db7b3f2420eeb72503cfa68e1d598d5_jpg.rf.5a7c920eb09a4dc4fc0e225a7063919f", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-9db7b3f2420eeb72503cfa68e1d598d5_jpg.rf.ba8bd9533cf53bdf2e30fd312d81d8b8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-9db7b3f2420eeb72503cfa68e1d598d5_jpg.rf.d7a52ec3c81ff5db0d089bdcdc0d5e68", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a02f0660da44a5e820a93c48d48cceb0_png_jpg.rf.263231b8f3c5823f5914dd61c924bd6e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a02f0660da44a5e820a93c48d48cceb0_png_jpg.rf.6842b0291dd5e1e59c8f9bde1a48c418", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a02f0660da44a5e820a93c48d48cceb0_png_jpg.rf.71e8d3d5c0882d0d95624907c7a86560", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a2319a7a1d642deea5f756d159a16432_jpg.rf.77e73c52a66c75bd0eff4d9a7aef1fd4", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a23dcc8dd57d0cd09f9a603a66be396d_png_jpg.rf.0b8dd57209776c9d2f91a71d0a1a509c", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a23dcc8dd57d0cd09f9a603a66be396d_png_jpg.rf.258ccca9f6dbe1937735c1d2b75c1b22", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a23dcc8dd57d0cd09f9a603a66be396d_png_jpg.rf.7df9e47c260f2b1d7222335f43016d3a", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a74c5d3e889c086e92ce9ef82755de53_jpg.rf.15783af68c435dc341b799019905ec4e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a74c5d3e889c086e92ce9ef82755de53_jpg.rf.795aa10e9ebe5f45f117c2cfea61bb91", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a74c5d3e889c086e92ce9ef82755de53_jpg.rf.a32de3d14abfe444f5fa374bc5079dcd", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-a835d74306e0da41f408825d6e0090ee_jpg.rf.bd6501d660804dd741d452f9fc42bbe4", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-abc878bb5725f673defe4540660ea93a_jpg.rf.43b3b332a05bf86941f22f138186adaf", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-abc878bb5725f673defe4540660ea93a_jpg.rf.6ff263ac643cfd6ed7d336c72e997f9e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-abc878bb5725f673defe4540660ea93a_jpg.rf.d28a6b2b8d2caac1dbb358fd854d9f6a", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-ac844dceada28ae4344866ccae0c945b_jpg.rf.836020f6f3e752418fa9c0b74b6cbeb4", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-ac844dceada28ae4344866ccae0c945b_jpg.rf.dac784732f9789f41c1737d8830ceecd", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-ac844dceada28ae4344866ccae0c945b_jpg.rf.fea3b71f4762dc58c9cbaa3dcdb759ba", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-accf47bb9fd77f4eda911ea96da8131a_jpg.rf.150b13dc03ebf275ac6848310cecd590", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-accf47bb9fd77f4eda911ea96da8131a_jpg.rf.a82ae1eb57a04bc1d6b88dc69bfff226", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-accf47bb9fd77f4eda911ea96da8131a_jpg.rf.f1e56b0170e77b1404f01c1c029a1b68", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-adfbb0fac6a004a0be1502bee0d82ad7_jpg.rf.2550dd0e79add7108ea153616459ec69", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-ae19a8acd09cf7464f67c9217ded39b1_jpg.rf.23136a094d9581bca4042f89bb27d19e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-ae19a8acd09cf7464f67c9217ded39b1_jpg.rf.6738a2c8579cf6ae66ace8b3e7f6eaad", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-ae19a8acd09cf7464f67c9217ded39b1_jpg.rf.eba1facd9b30a34cee45f5e9a2360357", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b28ec14eb46f0213e3b067042ad5d55a_jpg.rf.0510717390ca1b7e1d523f260216b4c8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b28ec14eb46f0213e3b067042ad5d55a_jpg.rf.181463deee182eb123a8d752223d80d3", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b28ec14eb46f0213e3b067042ad5d55a_jpg.rf.a972ad9abe7c030a8255d50e6fbd6156", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b54dc5e119c4412f0f6babf73f66f392_png_jpg.rf.2c2220a4932c4988f9707b7cd8cbd90f", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b54dc5e119c4412f0f6babf73f66f392_png_jpg.rf.986eddbf549520325b07779f3c23cd80", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b54dc5e119c4412f0f6babf73f66f392_png_jpg.rf.b46f368dca2cff8aa5dd68506872f1cd", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b6a77cc72cb4d71811214aa532518565_jpg.rf.485ab975915dc118fe0683c3efd2520f", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b6a77cc72cb4d71811214aa532518565_jpg.rf.71eaac75b68beda3dd2514a2f4167f7e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b6a77cc72cb4d71811214aa532518565_jpg.rf.a9ba1a50a37b14f2cc313bc840a8603b", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b6d8a1792edbfbef92ba147769578751_jpg.rf.483b1cab9b75b877a7d318f4e0b26ebc", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b6d8a1792edbfbef92ba147769578751_jpg.rf.972334f026fd6de058076cc8645662e0", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-b6d8a1792edbfbef92ba147769578751_jpg.rf.cbec3d2ea38d1750f0d928fed10d046d", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-bec4a8d3df59d36012ac2ac10f95b850_jpg.rf.47f0f8481c356d7a3ae51d365be70b08", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-bec4a8d3df59d36012ac2ac10f95b850_jpg.rf.68d6ebe758bccc93615ffb005cc9047d", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-bec4a8d3df59d36012ac2ac10f95b850_jpg.rf.807e4efc9a0c201a7e7fd58d0c664fe6", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-c069041b4eea0193a9640ef7663d2598_jpg.rf.32164b3d71f8a39dc7ae916d46b5299d", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-c069041b4eea0193a9640ef7663d2598_jpg.rf.6d524642ccc349f3701c2a345bfaa90c", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-c069041b4eea0193a9640ef7663d2598_jpg.rf.c767b34ba6bf80086d9961dd48c6b9dc", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-c209b211e9170a1c977770393d37c125_jpg.rf.3851d76a7d3e5086497175bee75e9696", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-c209b211e9170a1c977770393d37c125_jpg.rf.6034ef5ea46c4f71f1873ef3829271d6", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-c209b211e9170a1c977770393d37c125_jpg.rf.b8bee1cae21f73762ec1c6807490d299", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-cac724e2aa7e008d3f36b150d4ce7b27_png_jpg.rf.4c124acb5373f930c67e948e92b47d20", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-cac724e2aa7e008d3f36b150d4ce7b27_png_jpg.rf.7957f17e5ffe4d887913ad22492e919d", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-cac724e2aa7e008d3f36b150d4ce7b27_png_jpg.rf.fd7af155c7a29069b4db0cb0c815ddd4", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-cc9a1f856786cbab0b2bb939106e5eff_png_jpg.rf.2cade19fc21e920df0597cb6cd8cba03", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-cc9a1f856786cbab0b2bb939106e5eff_png_jpg.rf.9668aba664d822ba64e0c78ff8530d48", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-cc9a1f856786cbab0b2bb939106e5eff_png_jpg.rf.f3bb7ecf39188c2d8719aed1a18f18f8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d1433daed2b78c67d57055f9e82dc030_jpg.rf.2d1d9e434285213f1e2b0bffab617c17", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d1433daed2b78c67d57055f9e82dc030_jpg.rf.2e1fbcf48ecca5d39e5173912a72473a", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d1433daed2b78c67d57055f9e82dc030_jpg.rf.9771c3fe14444ada8b4b427875cddab1", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d15c49767321d5686184c30bbb07f8b2_jpg.rf.10726d42dd46d86f5c0f85c9829c91fd", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d15c49767321d5686184c30bbb07f8b2_jpg.rf.14326eb1a7240073d492c0ced7be7f7f", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d15c49767321d5686184c30bbb07f8b2_jpg.rf.b7e4f93421b46125c4529dfc3b10935e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d3c9b85fa4ff9663d354451dbea14418_jpg.rf.f35b14c7966e532fc944dd436abcbc03", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d5aafe4c4c67661c353b68c22ba93006_jpg.rf.18097475f55d9b526deddb24f50e29d8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d5aafe4c4c67661c353b68c22ba93006_jpg.rf.3065ed765ff93a4bc218a2421e8a40ea", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d5aafe4c4c67661c353b68c22ba93006_jpg.rf.69442febb5d8240d74351005569c656c", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d5e6917e4c8c743c55728bf09861f75b_png_jpg.rf.551d2bcfcf086ed0bd9489ce922329c9", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d7c9946e5600ffd218976d14ce39ad5a_jpg.rf.3b751047fac95695615060f42ca04ef1", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d7c9946e5600ffd218976d14ce39ad5a_jpg.rf.48f388ea8314fdbafdf25afd78cdd45a", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d7c9946e5600ffd218976d14ce39ad5a_jpg.rf.cfcc2540254e82d86c00dce3b2aa9160", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d8009998efa3d82971cae03e32f1ee9d_jpg.rf.195b99af0e7bd93fb90fa1b0312ca1be", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d8009998efa3d82971cae03e32f1ee9d_jpg.rf.7f45ac786d0cce550abc8765887077de", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-d8009998efa3d82971cae03e32f1ee9d_jpg.rf.834d6869d63a8a9baa0f7f96aaae0044", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-da1cb69fabc4646d4b811691d552be48_png_jpg.rf.16610c3d20f5ab6ad28c6494dc4f27c5", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-da1cb69fabc4646d4b811691d552be48_png_jpg.rf.5852e7c9e71e70abc4847abdeed4fde1", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-da1cb69fabc4646d4b811691d552be48_png_jpg.rf.b88d311ab44ea0e4f03061caec523f6f", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-dc6857a10b6d16654a9bd03db704ef7f_jpg.rf.8cf922f80c9bc3f1d9f00c68df5a6f60", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-dc6857a10b6d16654a9bd03db704ef7f_jpg.rf.be7239d23c95d70653bed3ef26c1b3b1", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-dc6857a10b6d16654a9bd03db704ef7f_jpg.rf.c0439f41d652ed73175ca9b7bca3148e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-dd1dd77565db466b15b1265aba4d69df_jpg.rf.1cc331643516222f511fc4827ece3ce0", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-dd1dd77565db466b15b1265aba4d69df_jpg.rf.c025400b601000073c8fc07a2fff6dca", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-dd1dd77565db466b15b1265aba4d69df_jpg.rf.e9cffa3cbe813f3e98d971d06d9cd207", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-e22a47b26f9abbf36415f77d4546e381_jpg.rf.1cfbdc99979e9641d3dec8df0ef514d9", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-e22a47b26f9abbf36415f77d4546e381_jpg.rf.4a1ff16f42d77efa42ff696a9049f18c", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-e22a47b26f9abbf36415f77d4546e381_jpg.rf.5d53bd0b3a63e7cc1e8af5ace2e771b3", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-e7aefd119db7277c27108df841af0de0_jpg.rf.28b6b4961fa945114c437bf95e6b6ea2", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-e7aefd119db7277c27108df841af0de0_jpg.rf.bb21da6192ffb04c2e0f0a132750b1f8", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-e7aefd119db7277c27108df841af0de0_jpg.rf.c87db88c69f27e669d38de3e9465efb6", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-e7f369f5c0d24f09f712e99f30f3f02d_jpg.rf.a5b8f88689cb8d9225f58fa42c7fc324", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-e7f369f5c0d24f09f712e99f30f3f02d_jpg.rf.a9f4a7be7e2674b25c46c90bb8062e18", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-e7f369f5c0d24f09f712e99f30f3f02d_jpg.rf.b08adf98674c9c4b50aa5ddde053fd4b", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-ede18e9cf6cadd17f08cadbaf62c50dd_jpg.rf.17bb4cee236a9de656d74288a83b5f25", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-ede18e9cf6cadd17f08cadbaf62c50dd_jpg.rf.b16401a3bd0716a1dc2ced822c3f8bb6", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-ede18e9cf6cadd17f08cadbaf62c50dd_jpg.rf.d84dcad2c40ac3677334e43f09388076", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f15ef6e4ce420e6512b0db4c3240328b_jpg.rf.08252e688092b1df97f00e3ab1ac8a37", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f15ef6e4ce420e6512b0db4c3240328b_jpg.rf.32ecc0dcaae1b035b0996cea6b3d6040", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f15ef6e4ce420e6512b0db4c3240328b_jpg.rf.5aa399079e28cdb40f55f1f8f8443981", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f25a03a655f28f56bd57430f740f73c2_jpg.rf.30d3e41e8cb1f58c3f3aaf58b0211e4e", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f25a03a655f28f56bd57430f740f73c2_jpg.rf.55e31caa82e6240170a7eecd3db4aec0", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f25a03a655f28f56bd57430f740f73c2_jpg.rf.9faec1d406775e3d9f16bda7c71cc014", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f4473a08f0ddc3224f7c19aad166f0e2_jpg.rf.36e2842f0fc1486d5852d8926770c853", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f4473a08f0ddc3224f7c19aad166f0e2_jpg.rf.56557df3cd77f76b536fa4e4f7903f40", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f4473a08f0ddc3224f7c19aad166f0e2_jpg.rf.60b6a775c7524c4cfa1b1805ae20aac0", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f454f0da8ff678c22bf13484d2382d29_jpg.rf.20d4f8aba5de47382bfb5ddafde5b389", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f454f0da8ff678c22bf13484d2382d29_jpg.rf.b702e2f42fc91c199b4431522ff5b3e1", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f454f0da8ff678c22bf13484d2382d29_jpg.rf.e90c6254e9cae7a645441267c1fdd636", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f495f0ee85c7439a808cd768abb7379a_jpg.rf.55fc8f791d9575cf9ca87bd8237d2553", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f495f0ee85c7439a808cd768abb7379a_jpg.rf.5b53d5892ddeb08bb94853ac90dbae94", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f495f0ee85c7439a808cd768abb7379a_jpg.rf.5f8891d6b8d8764536b9b2ff1b43f237", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f62647c1c79ac65fece0101e08a912de_jpg.rf.1e00c6953e144b7a67f53466c1041f87", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f62647c1c79ac65fece0101e08a912de_jpg.rf.6d1c48128c8d55681732c93565a5d8c7", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f62647c1c79ac65fece0101e08a912de_jpg.rf.754d3973d831cc48a847e20322ba41ab", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f9d336fb871ee0a9e1a5b5e78c3494a9_jpg.rf.35e2aac1b162b9a82c568e902e6edb81", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f9d336fb871ee0a9e1a5b5e78c3494a9_jpg.rf.5e5f94e73a806d442d2b91bd18a8fddb", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-f9d336fb871ee0a9e1a5b5e78c3494a9_jpg.rf.807af59af2b031f32a3370b613ec9a4b", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-fa3ef9cb009617f1df0bf6eafa3177b7_jpg.rf.02c32d21df60e7c7c3eaac17ed0e0388", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-fa3ef9cb009617f1df0bf6eafa3177b7_jpg.rf.731bd1e927e561ea63ee996164f5648a", "verdict": "drop", "note": "fox mosaic, no urban scene"}
+{"id": "roboflow-nea-fa3ef9cb009617f1df0bf6eafa3177b7_jpg.rf.9d7bee798ebcb200a6315f7599b5900a", "verdict": "drop", "note": "fox mosaic, no urban scene"}

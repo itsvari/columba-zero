@@ -44,14 +44,15 @@ from tools.contact_sheet import SheetEntry, render_sheets
 from tools.fetch_sources import read_provenance, write_jsonl
 
 COCO_BIRD_CLASS = 14
-DEFAULT_CONF = 0.35
-DEFAULT_LOW_CONF = 0.10
+DEFAULT_CONF = 0.25
+DEFAULT_LOW_CONF = 0.15
+DETECTION_FLOOR = 0.05  # raw detections kept in auto_labels.jsonl so the policy can be re-run
 DEFAULT_IMGSZ = 1024
 OVERLAP_IOU = 0.3
 MIN_REVIEWED_IMAGES = 200
 MAX_ERROR_RATE = 0.05
 TRIGGER_TAXON = "pigeon"
-BATCH_SIZE = 8
+BATCH_SIZE = 8  # images per checkpoint step; the model always sees one image at a time
 
 Record = dict[str, Any]
 Detection = tuple[float, list[float]]  # (score, xyxy) of one `bird` detection
@@ -113,16 +114,16 @@ def ultralytics_detector(weights: Path, device: str, imgsz: int, low_conf: float
     model = YOLO(str(weights))
 
     def detect(paths: Sequence[Path]) -> list[list[Detection]]:
-        results = model.predict(
-            [str(path) for path in paths],
-            classes=[COCO_BIRD_CLASS],
-            conf=low_conf,
-            imgsz=imgsz,
-            device=device,
-            verbose=False,
-        )
         output = []
-        for result in results:
+        for path in paths:  # one image per call: a list would be one large batch in memory
+            (result,) = model.predict(
+                str(path),
+                classes=[COCO_BIRD_CLASS],
+                conf=low_conf,
+                imgsz=imgsz,
+                device=device,
+                verbose=False,
+            )
             boxes = result.boxes
             output.append(
                 [
@@ -159,8 +160,12 @@ def auto_label(
                 "id": record["id"],
                 "status": "pseudo_unreviewed",
                 "model": model_name,
+                "taxon": taxon,
                 "conf": conf,
                 "low_conf": low_conf,
+                "detections": [
+                    [round(score, 4), [round(v, 2) for v in box]] for score, box in found
+                ],
                 **label_policy(found, taxon, conf, low_conf),
             }
         if (start // batch_size) % 50 == 0:
@@ -171,6 +176,25 @@ def auto_label(
     flags = Counter(flag for record in done.values() for flag in record["flags"])
     print(f"{root.name}: {dict(decisions)}; flags {dict(flags)}")
     return output
+
+
+def relabel(provenance_path: Path, conf: float, low_conf: float) -> Counter[str]:
+    """Re-apply `label_policy` to the stored raw detections with new thresholds."""
+    output = provenance_path.parent / "auto_labels.jsonl"
+    records = []
+    for record in read_provenance(output):
+        found = [(float(score), list(box)) for score, box in record["detections"]]
+        records.append(
+            {
+                **record,
+                "conf": conf,
+                "low_conf": low_conf,
+                "status": "pseudo_unreviewed",
+                **label_policy(found, record["taxon"], conf, low_conf),
+            }
+        )
+    write_jsonl(output, records)
+    return Counter(record["decision"] for record in records)
 
 
 def review_sample(
@@ -258,6 +282,10 @@ def main() -> None:
     detect.add_argument("--imgsz", type=int, default=DEFAULT_IMGSZ)
     detect.add_argument("--conf", type=float, default=DEFAULT_CONF)
     detect.add_argument("--low-conf", type=float, default=DEFAULT_LOW_CONF)
+    again = commands.add_parser("relabel", help="re-apply the policy with new thresholds")
+    again.add_argument("provenance", type=Path)
+    again.add_argument("--conf", type=float, default=DEFAULT_CONF)
+    again.add_argument("--low-conf", type=float, default=DEFAULT_LOW_CONF)
     sample = commands.add_parser("sample", help="render a review sample")
     sample.add_argument("provenance", type=Path)
     sample.add_argument("--count", type=int, default=MIN_REVIEWED_IMAGES)
@@ -269,7 +297,7 @@ def main() -> None:
     arguments = parser.parse_args()
     if arguments.command == "detect":
         detector = ultralytics_detector(
-            arguments.weights, arguments.device, arguments.imgsz, arguments.low_conf
+            arguments.weights, arguments.device, arguments.imgsz, DETECTION_FLOOR
         )
         auto_label(
             arguments.provenance,
@@ -278,6 +306,8 @@ def main() -> None:
             arguments.conf,
             arguments.low_conf,
         )
+    elif arguments.command == "relabel":
+        print(dict(relabel(arguments.provenance, arguments.conf, arguments.low_conf)))
     elif arguments.command == "sample":
         sheets = review_sample(
             arguments.provenance,
