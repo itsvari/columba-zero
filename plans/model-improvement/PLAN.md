@@ -68,6 +68,22 @@ The incumbent starts as `pigeon_baseline_v1-2`, re-scored on
 `columba-test-v2` (WS1). Absolute targets will be set after that honest
 baseline exists. Until then, success is relative to it.
 
+**Decision (coordinator, 14 Oct 2026, from `experiments/reports/WS1-incumbent.md`):**
+118 of test-v2's 121 pigeon-positive images come from image families that
+v1-2 trained or validated on, so its test-v2 recall (0.59 at 640, measured) is
+contaminated, and its unseen subset (3 images, 7 boxes) is too small to rank
+anything. The **comparison baseline for the section-1 accuracy rule is
+therefore WS5's round-0 `baseline-repro`** (the v1-2 recipe retrained on
+`columba-train-v1clean`, which excludes every test family), 3-seed mean and
+std of `pigeon_recall_at_p90` on `columba-test-v2`. v1-2's rows stay on the
+leaderboard as `incumbent-contaminated` diagnostics. The false-alarm gates
+still apply as written; the deployed v1-2 fails them badly (measured empty FAR
+0.11, confuser FAR 0.56 at 640, all on unseen images).
+
+Known test-set limits (to fix with WS10 site footage, `columba-test-site-v1`):
+test-v2 positives come almost entirely from one Roboflow source, and 196 of 212
+small boxes come from one depot session.
+
 ## 2. Decisions already made (do not re-ask)
 
 | Topic | Decision |

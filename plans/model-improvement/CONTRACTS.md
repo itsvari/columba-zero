@@ -1,9 +1,11 @@
 # Shared contracts
 
-Version: **v1.5**. Changes go through the coordinator and bump the version.
+Version: **v1.6**. Changes go through the coordinator and bump the version.
 
 Changelog:
 
+- v1.6 (2026-10-14, coordinator): C4 subset evaluation and calibration-provenance
+  wording from WS1.
 - v1.5 (2026-10-14, coordinator): C9 records WS9's implemented runtime fields;
   C8 notes Ultralytics' `_ncnn_model` directory-name requirement and the
   runtime's pigeon-only trigger restriction.
@@ -250,6 +252,16 @@ Exact semantics (v1.1, implemented by `tools/evaluate_predictions.py`):
   every bird species (or `other_bird`) present even when it is not boxed. A
   false-alarm rate with no eligible images is null. All non-pigeon bird
   classes count as confusers for this metric.
+- `--subset FILE` restricts evaluation to split image ids listed one per
+  line. Prediction ids are validated against the full split before filtering;
+  unknown or empty subsets are errors; metrics record the subset path. A subset
+  view reuses the full validation threshold unless an independently selected
+  validation file is supplied. It never selects a threshold on test.
+- Validation-only threshold selection establishes split provenance, not
+  independence from historical training: report the calibration set's exposure
+  to the evaluated checkpoint separately. Test `recall_at_p90` is a diagnostic
+  PR statistic, not the deployed operating point. Zero small ground truths give
+  small recall 0 with the zero denominator kept in `counts`; it is not a miss rate.
 - `by_style`/`by_source` recompute each subset's PR curve and AP and use the
   shared validation operating threshold for precision, recall and false alarms.
 
