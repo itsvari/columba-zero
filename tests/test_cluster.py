@@ -63,6 +63,9 @@ from cluster.sweep import (
     probe_submission,
     submission_for,
 )
+from cluster.sweep import (
+    main as sweep_main,
+)
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 BASELINE_RECIPE = REPOSITORY / "training/recipes/baseline-repro.yaml"
@@ -435,6 +438,19 @@ class ClusterTests(unittest.TestCase):
             invalid = cast(Submission, {**submission, **changes})
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 gpu_resource_arguments(invalid)
+
+    def test_status_without_recipes_serialises_submission_time(self) -> None:
+        submitted_at = datetime(2026, 10, 15, 1, 0)
+        job = Job("123", "cz-status", "RUNNING", "gpu", "gpu:1", 1, submitted_at)
+        with (
+            patch("sys.argv", ["sweep", "status"]),
+            patch("cluster.sweep.remote_root", return_value=Path("/columba")),
+            patch("cluster.sweep.current_queue", return_value=(job,)),
+            patch("cluster.sweep.inspect_runs", return_value={}),
+            patch("sys.stdout", new_callable=io.StringIO) as output,
+        ):
+            sweep_main()
+        self.assertEqual(json.loads(output.getvalue())["submitted_at"], submitted_at.isoformat())
 
     def test_sbatch_failure_surfaces_scheduler_reason(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

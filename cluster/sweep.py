@@ -362,7 +362,11 @@ def main() -> None:
         if not runs:
             for job in jobs:
                 if job.owned:
-                    print(json.dumps(asdict(job)))
+                    metadata = asdict(job)
+                    metadata["submitted_at"] = (
+                        job.submitted_at.isoformat() if job.submitted_at else None
+                    )
+                    print(json.dumps(metadata))
         return
     if arguments.action == "fetch":
         available = [run for run in runs if state[run.relative_run].get("report")]

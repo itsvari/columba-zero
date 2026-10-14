@@ -317,7 +317,7 @@ def submit_pending(
                 and submission["lane"] == "nv"
                 and active.state == "PENDING"
                 and active.submitted_at is not None
-                and (datetime.now() - active.submitted_at).total_seconds()
+                and (datetime.now(active.submitted_at.tzinfo) - active.submitted_at).total_seconds()
                 >= retarget_pending_after_hours * 3600
             )
             scheduling = (

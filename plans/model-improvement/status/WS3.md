@@ -1,6 +1,6 @@
 # WS3 — Cluster infrastructure
 
-- State: in progress
+- State: done
 - Branch: `ws3/cluster`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-15
@@ -47,7 +47,7 @@
 
 ## In progress
 
-Nothing. Round 2 completed within the two-GPU/one-CPU WS3 limit.
+Nothing. Round 3 completed; no WS3 jobs remain queued or running.
 
 ## Blockers and requests
 
@@ -269,10 +269,10 @@ Re-run commands are documented in cluster/README.md. The smoke-only runtime
 stop flag does not change recipe/checkpoint args and cannot be used with a
 production recipe. No outstanding round-2 blocker or WS1 change request.
 
-## Round 3 in progress
+## Round 3
 
 Fast-forwarded to main a29e4aa. User-authorised all listed GPU types and xgpj0.
-Implementing inventory-based requests, counted GPU budgets, atomic deployment
+Implemented inventory-based requests, counted GPU budgets, atomic deployment
 and an aarch64 CUDA environment. No xgpj0 exclusion will be added.
 Initial queue on xlogin2 has all eight WS5 GPUs running; no WS5 job was changed.
 GPU budget slots were freed under the later explicit cancellation authorisation.
@@ -322,7 +322,7 @@ rewrites the report and resumes last.pt. Other WS5 jobs 946641 and 946662–665
 remain running. WS3 has not resubmitted WS5's work. Evidence:
 outputs/ws3/cancellations-round3.json and cancelled-and-distill-reports.json.
 
-### Round-3 measured results so far
+### Round-3 measured results
 
 Same synthetic four-train/four-val C1 fixture, YOLO11n at 640. Means include
 cold startup and checkpoint persistence; warm means use epochs 2–5. These do
@@ -332,8 +332,10 @@ not measure real-dataset throughput or pigeon accuracy.
 |---|---|---:|---:|---:|
 | H100-47 MIG / xgpi16 | 946777 | 64 | 2.28689 | 0.49123 |
 | A100-40 / xgpg6 | 946782 | 64 | 1.56226 | 0.77724 |
+| A100-80 aarch64 / xgpj0 | 946781 | 64 | 2.96276 | 1.56360 |
 | T4 / xgpf10 (round 1) | 945186 | 32 | 3.03522 | 1.01639 |
 | Titan V / xgpd2 (round 1) | 945188 | 32 | 3.43679 | 1.17310 |
+| Titan RTX / xgpe4 (round 1) | 945187 | 64 | 3.02735 | 1.00112 |
 
 H100 and A100 bootstrap forward/backward passed with torch 2.8.0+cu126,
 sm_90 and sm_80 respectively. Both completed five epochs, real WS1 prediction
@@ -381,10 +383,10 @@ preference policy, rather than an untyped request that can queue anywhere.
 run.json records architecture and the selected venv. Existing recipes and
 sweep syntax remain compatible.
 
-Remaining: xgpj0 GPU probe/five-epoch CUDA smoke is pending (946781).
+Completed: xgpj0 GPU probe and five-epoch CUDA smoke (946781).
 A transient SSH tunnel reset paused cluster calls; the coordinator restored
 it, and calls now use ConnectTimeout=20. No password or tunnel changes were
-made by WS3. Final checks, status and commit will follow the ARM GPU result.
+made by WS3. Final checks and ARM results are recorded below.
 
 Live re-target test exposed an initial node-list bug: Slurm interprets every
 entry in --nodelist as required, rather than alternatives. Own pending job
@@ -394,7 +396,7 @@ nodes/GPUs and stayed PENDING/QOSMaxGRESPerUser. This transient request exceeded
 the project pending-GPU budget; it never ran. Confirmed its cz- name and
 immediately cancelled 946836 (same run, epoch 0, no last.pt). The correction
 selects one free node and explicitly sends --nodes=1. A regression test checks
-multiple free nodes still produce one GPU/node. The live check will be repeated.
+multiple free nodes still produce one GPU/node. The repeated live check passed.
 
 Unmodified Slurm test-only probes verified that untyped gpu:1 requests pinned
 to xgpj0 or constrained to a100/h100 are rejected (Requested node configuration
@@ -410,7 +412,60 @@ Evidence: ~/columba/logs/checkpoint-audit-round3.json.
 
 The corrected live pending re-target cancelled own 946856
 (smoke-policy-retarget-r3/seed0, epoch 0, no last.pt) and submitted 946858
-as one nv GPU on one node. It completed C6/DONE and was fetched. Own xgpj0
-probe 946872 is pending with typed gpu:a100-80:1; the ARM smoke 946781 remains
-pending. All remaining job allocations now count correctly under the eight-
-GPU budget, including these pending jobs.
+as one nv GPU on one node (T4 xgpf0, batch 48). It completed C6/DONE and
+was fetched. Own xgpj0 probe 946872 and ARM smoke 946781 both completed.
+All remaining job allocations count correctly under the eight-GPU budget,
+including pending jobs.
+
+### Round-3 final evidence
+
+- xgpj0 smoke 946781: COMPLETED 0:0 in 1m23s. CUDA forward/backward passed,
+  five epochs, both predictions/metas/metrics, DONE. Architecture aarch64;
+  torch 2.9.0+cu126, CUDA runtime 12.6, driver 580.178.04; device sm_80,
+  wheel architectures sm_80/sm_90. No ARM GPU-specific failure occurred.
+- Formal xgpj0 probes 946872 and final 946894: COMPLETED 0:0 (16s and 14s).
+  nvidia-smi exit 0, CUDA available true, A100 80GB PCIe. Final probe used
+  committed implementation 2153f8a, cleaned its own job scratch plus the
+  earlier probe's /tmp/cz-946872. The standard probe template now has EXIT
+  cleanup. CPU audit cleaned the prewarm scratch as well.
+- No cancellation of 946781 occurred: an attempted pending-only replacement
+  check found it had started and refused to cancel. Its original request
+  finished successfully. Future synthetic smoke submissions use four CPUs,
+  16 GB and ten minutes to fit short scheduling gaps.
+- H200 xgpk0 was still four-of-four allocated and planned for other work
+  (mixed-); no H200 job was queued. H100-96 and x86 A100-80 were not separately
+  benchmarked. Their mapping, guard names and memory classes are unit-tested.
+- Local final checks on the shared Mac: 239 unittest cases run (seven
+  dependency/hardware skips); all executed cases pass, Ruff check/format pass on app/tests/tools/
+  cluster/training/native, strict mypy passes on 79 files. Unit tests have
+  no network. All 45 cluster tests pass without skips.
+- Final queue contains only the five continuing WS5 jobs 946641 and
+  946662–946665. No WS3 jobs or local detached processes remain. The
+  coordinator owns restarting the paused auto-submitter.
+
+Synthetic ARM metrics excerpt (not a pigeon-accuracy result):
+
+```json
+{
+  "val": {"ap50": 0.7613154172560117,
+          "operating_threshold": {"value": 0.7790383100509644, "source": "selected"}},
+  "test": {"operating_threshold": {"value": 0.7790383100509644,
+           "source": "/tmp/cz-946781/runs/smoke-a100-arm-r3/seed0/metrics_val.json"}}
+}
+```
+
+Fetched C6 artifacts: experiments/runs/{smoke-h100-r3,smoke-a100-r3,
+smoke-a100-arm-r3,smoke-distill-gpu-change-r3,smoke-policy-retarget-r3}/seed0/.
+All have DONE, TRAINED, run.json, results.csv, best/last weights, predictions
+and metadata for both splits, and both metrics. Every test threshold equals
+its val-selected threshold. Smoke leaderboard: outputs/ws3/leaderboard-smoke.csv.
+No leaderboard file was committed or production leaderboard updated.
+
+Evidence: outputs/ws3/xgpj0-probe.json, checkpoint-audit-round3.json,
+policy-{pending,retarget}-repeat.json, final-deployment.json,
+status-final-round3.jsonl, unit-round3.log, ruff-round3.log and mypy-round3.log.
+The immutable snapshots used by earlier smoke jobs include their draft content
+hash and then-current base commit; corrected re-target job used 13fa1db and
+final typed probe used 2153f8a. Final source publication after the status commit
+is recorded in final-deployment.json. Only CONTRACTS C5 wording remains for the
+coordinator to update; no implementation blocker remains.
