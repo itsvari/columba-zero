@@ -17,6 +17,9 @@ Two round-0 recipes exist:
   (seed 0) and 0.218 (seed 2).
 - `baseline-repro-p50`: the same args with patience 50. It trains the v1-2
   recipe to convergence.
+  Measured test recall@p90: 0.283 (T4 seed 0, stopped at epoch 151) and
+  0.215 (Titan V seed 2, stopped at epoch 137). Seed 1 (Titan RTX) is
+  pending.
 
 **Proposal:** use `baseline-repro-p50` as the section-1 baseline. A baseline
 truncated by patience 10 would make almost any run look like a win. The

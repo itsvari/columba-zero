@@ -13,8 +13,9 @@
    - Effective batch is 48 on T4 (accumulate 1) and 64 elsewhere.
    - Data is v1clean.
    - The optimizer is still AdamW (optimizer auto).
-2. Round 0 submitted. `baseline-repro` seeds 0 (T4) and 2 (Titan V) are DONE.
-   Seed 1 (Titan RTX) is pending.
+2. Round 0 submitted. Seeds 0 (T4) and 2 (Titan V) are DONE for both
+   `baseline-repro` and `baseline-repro-p50`. Both seed-1 (Titan RTX) jobs
+   are pending.
 3. Patience 10 made `baseline-repro` stop very early, so I added
    `baseline-repro-p50.yaml`: the same args, patience 50. All 3 seeds
    submitted.
@@ -27,15 +28,19 @@
    same source the runner uses.
 6. `experiments/reports/WS5-plan.md`: rounds, recipes, GPU-hour estimates
    and selection rules.
-7. Leaderboard rows for `baseline-repro` seeds 0 and 2, added via
-   `sweep.py fetch`.
+7. Leaderboard rows for `baseline-repro` and `baseline-repro-p50` seeds 0
+   and 2, added via `sweep.py fetch`.
+8. Round 1: `yolo11n-v1clean-640-r1` (945490) and `yolo26n-v1clean-640-r1`
+   (945491) submitted.
 
 ## In progress
 
-- Jobs: `baseline-repro` s1 (945341), `baseline-repro-p50` s0/s1/s2
-  (945408/945409/945410).
-- The 4 v1clean round-1 recipes were refused with "budget full": pending
-  jobs count against the 4-GPU cap. Submit them once round-0 slots free.
+- Pending/running jobs: `baseline-repro` s1 (945341) and
+  `baseline-repro-p50` s1 (945409), both waiting for Titan RTX. Round 1:
+  945490 and 945491.
+- `yolo11s-v1clean-640-r1` and `yolo26s-v1clean-640-r1` were refused with
+  "budget full": pending jobs count against the 4-GPU cap. Submit them when
+  a slot frees.
 
 ## Blockers and requests
 
@@ -66,11 +71,17 @@ start-up) is excluded. These are not Pi results.
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | baseline-repro/seed0 | 945340 | xgpf11 / T4 | 48 | 7.0 | 11 (patience 10, best = epoch 1) | 0.071 | 0.006 | 0.131 | 0.024 | 0.068 |
 | baseline-repro/seed2 | 945342 | xgpd2 / Titan V | 32 | 5.3 | 53 (patience 10) | 0.468 | 0.218 | 0.564 | 0.008 | 0.205 |
+| baseline-repro-p50/seed0 | 945408 | xgpf11 / T4 | 48 | 7.0 | 151 (patience 50) | 0.529 | 0.283 | 0.571 | 0.000 | 0.219 |
+| baseline-repro-p50/seed2 | 945410 | xgpd2 / Titan V | 32 | 5.4 | 137 (patience 50) | 0.489 | 0.215 | 0.633 | 0.000 | 0.356 |
 
+Round 1 first epochs (measured, T4 xgpf10/xgpf11, batch 48):
+yolo11n-v1clean ≈ 7.4 s/epoch, yolo26n-v1clean ≈ 8.3 s/epoch.
+
+Every run in the table has test small-pigeon recall@P90 = 0.0 (measured).
 v1clean val has no empty or confuser images. Its selected thresholds
 (0.99 and 0.76) therefore ignore false alarms.
 
 Artifacts:
 
-- Cluster: `~/columba/runs/baseline-repro/seed{0,2}/`.
-- Local: `experiments/runs/baseline-repro/seed{0,2}/` (git-ignored).
+- Cluster: `~/columba/runs/baseline-repro{,-p50}/seed{0,2}/`.
+- Local: `experiments/runs/baseline-repro{,-p50}/seed{0,2}/` (git-ignored).
