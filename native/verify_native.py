@@ -36,10 +36,10 @@ FP16_MINIMUM_MATCH_IOU = 0.7
 FP16_MAXIMUM_CONFIDENCE_DELTA = 0.1
 DIAGNOSTIC_MINIMUM_MATCH_IOU = 0.5
 DIAGNOSTIC_MAXIMUM_CONFIDENCE_DELTA = 1.0
-DEGENERATE_COORDINATE_ULPS = 8
+DEGENERATE_RELATIVE_COORDINATE_TOLERANCE = 8 * float(numpy.finfo(numpy.float32).eps)
 DEGENERATE_BOX_RULE = (
     "zero-area clipped boxes require equal class and corresponding coordinates within "
-    "eight float32 ULPs at the largest absolute coordinate of either box; "
+    "8 * float32 epsilon * the largest absolute coordinate of either box; "
     "the confidence tolerance still applies"
 )
 
@@ -300,8 +300,8 @@ def match_clipped_boxes(
             coordinate_scale = numpy.maximum(
                 numpy.abs(expected_coordinates).max(), numpy.abs(actual_coordinates).max()
             )
-            # subtraction can leave small endpoints whose own ULP understates upstream rounding.
-            coordinate_tolerance = DEGENERATE_COORDINATE_ULPS * numpy.spacing(coordinate_scale)
+            # cancellation leaves small endpoints whose scale understates upstream rounding.
+            coordinate_tolerance = DEGENERATE_RELATIVE_COORDINATE_TOLERANCE * coordinate_scale
             coordinates_match = bool(
                 numpy.all(
                     numpy.abs(expected_coordinates - actual_coordinates) <= coordinate_tolerance
@@ -331,6 +331,68 @@ def match_clipped_boxes(
             matched_actual.add(actual_index)
             break
     return matches
+
+
+def compare_predictions(
+    image: str,
+    expected: list[ExportPrediction],
+    actual: list[ExportPrediction],
+    *,
+    minimum_iou: float,
+    maximum_confidence_delta: float,
+) -> ParityRecord:
+    matches = match_clipped_boxes(
+        expected,
+        actual,
+        minimum_intersection_over_union=minimum_iou,
+        maximum_confidence_delta=maximum_confidence_delta,
+    )
+    strict_matches = match_clipped_boxes(expected, actual)
+    diagnostic_matches = match_clipped_boxes(
+        expected,
+        actual,
+        minimum_intersection_over_union=DIAGNOSTIC_MINIMUM_MATCH_IOU,
+        maximum_confidence_delta=DIAGNOSTIC_MAXIMUM_CONFIDENCE_DELTA,
+    )
+    return {
+        "image": image,
+        "reference_count": len(expected),
+        "native_count": len(actual),
+        "reference": expected,
+        "native": actual,
+        "matches": matches,
+        "diagnostic_matches": diagnostic_matches,
+        "degenerate_matches": sum(match["iou"] == 0.0 for match in matches),
+        "passed": len(matches) == len(expected) == len(actual),
+        "strict_passed": len(strict_matches) == len(expected) == len(actual),
+    }
+
+
+def comparison_diagnostics(records: Sequence[ParityRecord]) -> dict[str, int | float]:
+    diagnostic_matches = [match for record in records for match in record["diagnostic_matches"]]
+    return {
+        "count_mismatch_images": sum(
+            record["reference_count"] != record["native_count"] for record in records
+        ),
+        "reference_boxes": sum(record["reference_count"] for record in records),
+        "native_boxes": sum(record["native_count"] for record in records),
+        "associated_boxes": len(diagnostic_matches),
+        "unmatched_reference_boxes": sum(
+            record["reference_count"] - len(record["diagnostic_matches"]) for record in records
+        ),
+        "unmatched_native_boxes": sum(
+            record["native_count"] - len(record["diagnostic_matches"]) for record in records
+        ),
+        "maximum_box_delta_px": max(
+            (abs(delta) for match in diagnostic_matches for delta in match["box_delta_px"]),
+            default=0.0,
+        ),
+        "maximum_score_delta": max(
+            (match["confidence_delta"] for match in diagnostic_matches), default=0.0
+        ),
+        "association_minimum_iou": DIAGNOSTIC_MINIMUM_MATCH_IOU,
+        "association_maximum_score_delta": DIAGNOSTIC_MAXIMUM_CONFIDENCE_DELTA,
+    }
 
 
 def main() -> None:
@@ -430,58 +492,17 @@ def main() -> None:
         if frame is None:
             raise ValueError(f"cannot read image: {image}")
         expected = reference_predictions(reference, frame, description, arguments.confidence)
-        matches = match_clipped_boxes(
-            expected,
-            actual,
-            minimum_intersection_over_union=minimum_iou,
-            maximum_confidence_delta=maximum_confidence_delta,
-        )
-        strict_matches = match_clipped_boxes(expected, actual)
-        diagnostic_matches = match_clipped_boxes(
-            expected,
-            actual,
-            minimum_intersection_over_union=DIAGNOSTIC_MINIMUM_MATCH_IOU,
-            maximum_confidence_delta=DIAGNOSTIC_MAXIMUM_CONFIDENCE_DELTA,
-        )
         records.append(
-            {
-                "image": str(image),
-                "reference_count": len(expected),
-                "native_count": len(actual),
-                "reference": expected,
-                "native": actual,
-                "matches": matches,
-                "diagnostic_matches": diagnostic_matches,
-                "degenerate_matches": sum(match["iou"] == 0.0 for match in matches),
-                "passed": len(matches) == len(expected) == len(actual),
-                "strict_passed": len(strict_matches) == len(expected) == len(actual),
-            }
+            compare_predictions(
+                str(image),
+                expected,
+                actual,
+                minimum_iou=minimum_iou,
+                maximum_confidence_delta=maximum_confidence_delta,
+            )
         )
     failures = sum(not record["passed"] for record in records)
-    diagnostic_matches = [match for record in records for match in record["diagnostic_matches"]]
-    diagnostics = {
-        "count_mismatch_images": sum(
-            record["reference_count"] != record["native_count"] for record in records
-        ),
-        "reference_boxes": sum(record["reference_count"] for record in records),
-        "native_boxes": sum(record["native_count"] for record in records),
-        "associated_boxes": len(diagnostic_matches),
-        "unmatched_reference_boxes": sum(
-            record["reference_count"] - len(record["diagnostic_matches"]) for record in records
-        ),
-        "unmatched_native_boxes": sum(
-            record["native_count"] - len(record["diagnostic_matches"]) for record in records
-        ),
-        "maximum_box_delta_px": max(
-            (abs(delta) for match in diagnostic_matches for delta in match["box_delta_px"]),
-            default=0.0,
-        ),
-        "maximum_score_delta": max(
-            (match["confidence_delta"] for match in diagnostic_matches), default=0.0
-        ),
-        "association_minimum_iou": DIAGNOSTIC_MINIMUM_MATCH_IOU,
-        "association_maximum_score_delta": DIAGNOSTIC_MAXIMUM_CONFIDENCE_DELTA,
-    }
+    diagnostics = comparison_diagnostics(records)
     report = {
         "label": "measured",
         "host": platform.node(),

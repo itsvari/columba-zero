@@ -40,7 +40,8 @@ trap cleanup EXIT
     cd "$HOME/columba/data"
     sha256sum --check columba-test-v2.tar.zst.sha256
 )
-tar --zstd -xf "$HOME/columba/data/columba-test-v2.tar.zst" -C "$node_data"
+cp "$HOME/columba/data/columba-test-v2.tar.zst" "$node_data/columba-test-v2.tar.zst"
+tar --zstd -xf "$node_data/columba-test-v2.tar.zst" -C "$node_data"
 tar -xf "$round_directory/old-split-proxy.tar" -C "$node_data"
 "$verification_python" -m tools.build_dataset verify-freeze \
     "$node_data/columba-test-v2" data_sources/columba-test-v2.sha256 \

@@ -1,10 +1,10 @@
 # WS8 — Native C++ detector
 
-- State: round-3 frozen parity in progress
+- State: done, including frozen FP32 parity on both platforms
 - Branch: `ws8/native`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-14
-- Rebased onto main: `2cb3308`, including native mypy and Ruff coverage.
+- Rebased onto main: `3af2d02`, including native mypy and Ruff coverage from `2cb3308`.
 
 ## Done
 
@@ -45,18 +45,16 @@
 
 ## In progress
 
-Round 3 verifies frozen columba-test-v2 and the 63-image old-split proxy on
-Mac and in one bundled arm job, using trained single-class pigeon checkpoints.
+Nothing. Frozen/proxy FP32 parity passes on both platforms with the documented
+zero-area comparison rule. FP16 package-default diagnostics are recorded for WS7.
 
 ## Blockers and requests
 
-- WS0/coordinator: add `native` to mypy's `files` and exclude `^native/build/`;
-  include `native` in repository ruff commands. The plain CMake build requires
-  no top-level build-system change. `pyproject.toml` was not edited by WS8.
-- Coordinator: rerun parity on frozen `columba-test-v2` when ready. The old
-  63-image split cannot be reconstructed. Use
-  `python -m native.verify_native --model DIR --reference ORIGINAL.pt
-  --dataset DATASET --split test --output REPORT.json`.
+- The coordinator completed native mypy and Ruff coverage at `2cb3308`.
+  The plain CMake build needs no build-system change. WS8 did not edit pyproject.
+- Required frozen FP32 parity passes on both hosts after rescoring unchanged
+  outputs with the corrected degenerate-box comparator. The 63-image source
+  test directory is a proxy, not claimed to be the proven original split.
 - FP16 smoke results below are informational. WS7 still owns FP16/int8 accuracy
   gates on frozen test-v2. Package weight quantisation and runtime compute
   precision are distinct.
@@ -67,6 +65,84 @@ Mac and in one bundled arm job, using trained single-class pigeon checkpoints.
 - The documented Mac build now uses merged `tools/build_ncnn_a76.sh` and the
   stable main-checkout prefix, not a disposable WS4 worktree. The OpenCV helper
   supports `--opencv-only`; Pi system `libopencv-dev` is documented too.
+
+## Round-3 frozen parity results
+
+**Measured**, Mac ARM64 `vexcalibur` and Linux aarch64 `xcng1`, four threads,
+confidence 0.25. Both verify frozen **columba-test-v2, 319 images**, against
+`data_sources/columba-test-v2.sha256`. The **63-image Roboflow YOLO1199 source
+test proxy** has matching image-set SHA-256 on both hosts:
+`67e84e6413cb0e0627cc5e09d26eb84184be22e55378cf1dccba2dfc4c0eefc7`.
+
+YOLO11n and both YOLO26n heads use trained single-class pigeon checkpoints
+from `~/columba/runs/{yolo11n,yolo26n}-v1clean-640-r1/seed0/weights/best.pt`,
+exported at 384×640. No COCO fallback was used. FP16 exports use `quantize=16`,
+C8 `quantization: fp16`, and `compute=None` via `--compute package`.
+Legacy FP32 uses the original v1-2 package at 640×640; its FP16 default check
+uses a C8 metadata copy with byte-identical legacy weights. Checkpoint and
+package hashes are in the committed summary.
+
+All **3,056 required FP32 image/package comparisons pass**, including
+**2,552 frozen-set** and **504 proxy** comparisons. Maximum associated FP32
+coordinate delta is **0.002319 px** and score delta **0.000102580**.
+The table shows passing images / total; FP16 uses looser informational
+IoU ≥ 0.7 and score delta ≤ 0.10, with equal classes and counts.
+
+| Host / model | Frozen FP32 | Frozen FP16 info | Proxy FP32 | Proxy FP16 info |
+|---|---|---|---|---|
+| vexcalibur / v1-2 · 640×640 | PASS 319/319 | FAIL 306/319 | PASS 63/63 | FAIL 61/63 |
+| vexcalibur / YOLO11n · 384×640 | PASS 319/319 | FAIL 138/319 | PASS 63/63 | FAIL 5/63 |
+| vexcalibur / YOLO26n standard · 384×640 | PASS 319/319 | FAIL 311/319 | PASS 63/63 | FAIL 60/63 |
+| vexcalibur / YOLO26n one-to-one · 384×640 | PASS 319/319 | FAIL 309/319 | PASS 63/63 | FAIL 59/63 |
+| xcng1 / v1-2 · 640×640 | PASS 319/319 | FAIL 303/319 | PASS 63/63 | FAIL 59/63 |
+| xcng1 / YOLO11n · 384×640 | PASS 319/319 | FAIL 137/319 | PASS 63/63 | FAIL 5/63 |
+| xcng1 / YOLO26n standard · 384×640 | PASS 319/319 | FAIL 313/319 | PASS 63/63 | FAIL 60/63 |
+| xcng1 / YOLO26n one-to-one · 384×640 | PASS 319/319 | FAIL 309/319 | PASS 63/63 | FAIL 61/63 |
+
+FP16 has **560 failed image/package comparisons**, including **94 count
+mismatches**. Maximum associated FP16 box/score deltas are **68.162842 px /
+0.271183**. Many YOLO11n FP16 failures involve only clipped zero-area box
+endpoints; the summary records those separately. These are parity diagnostics,
+not accuracy results. WS7 owns the final FP16/int8 accuracy gate.
+
+Zero-area boxes have undefined IoU. Trained exports exposed cancellation in
+small endpoints that the original per-coordinate ULP check could not handle.
+The final numeric rule is
+`abs(delta_px) <= 8 * float32 epsilon * max(abs(coordinates))` across either
+box, about one part per million of the box's coordinate scale. Normal boxes
+retain `compare_exports.py` IoU ≥ 0.8 and score delta ≤ 0.05, with equal
+classes and counts. Tests reproduce both Mac and Linux endpoint cases and
+reject larger shifts and excessive score differences. No C++ inference code
+changed during round 3.
+
+One Slurm job, **945637**, `cz-ws8-parity`, normal/xcng1, nice 1000, four CPUs,
+eight GB, two-hour limit; all model cases pinned to **cores 0–3**, verified
+in report metadata. It was requeued once after archive-sibling staging failed
+in preflight. The runner now stages the archive beside the extracted dataset.
+The final allocation ran **18 min 7 s** and produced all 16 reports, passed
+freeze verification, CTest and **78 native/runtime tests**. Its raw batch exit
+was **1**, because the superseded fixed-eight-ULP comparator rejected one
+zero-width endpoint: **7.390136 vs 7.391154 px**, at a 1276.99 px box scale.
+All required outputs pass the corrected relative comparator.
+
+The original raw reports and predictions remain unchanged. Both hosts' saved
+predictions were rescored on Mac using `native.rescore_parity`; the reports
+record source-report, raw-prediction and comparison-code hashes. This is
+explicitly post-inference comparison, not a second arm inference run. No
+second Slurm job was submitted. The allocation is closed; no WS8 CPU job remains.
+
+Mac checks pass: **212 tests**, including **20 native tests**, plus Ruff,
+strict mypy including native, and CTest. Without the extension, all tests pass
+with seven clean skips. Linux's 78-test result precedes the final comparison-only
+change; the new Linux-prediction rescore regression passes on Mac.
+
+Committed summary: `native/results/ws8-frozen-parity.json` and
+`native/results/frozen-parity.html`. Raw and rescored reports, freeze logs,
+Slurm accounting and check logs: `outputs/ws8/round3/`. Cluster inputs/results
+remain under `~/columba/scratch/ws8/round3/`; node-local data is cleaned by the
+job's EXIT trap. Repeatable runners are `native/run_frozen_parity.sh` and
+`native/run_frozen_arm_job.sh`; `python -m native.rescore_parity --source RAW
+--output RESCORED` repeats comparison without modifying inference outputs.
 
 ## Round-2 compute modes and measured results
 

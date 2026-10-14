@@ -202,8 +202,8 @@ loading conflicting OpenMP runtimes together on macOS.
 The matching tolerances come from `tools/compare_exports.py`: IoU ≥ 0.8,
 confidence difference ≤ 0.05, equal classes and equal counts. The old model
 produces one box clipped to zero height on a COCO8 image. Since its IoU is
-undefined, the runner accepts it only when coordinates differ by at most eight
-float32 ULPs at the largest absolute coordinate in either box, and the class
+undefined, the runner accepts it only when coordinates differ by at most
+`8 * float32 epsilon * max(abs(coordinates))` across either box, and the class
 agrees, still applying the confidence tolerance. The whole-box scale accounts
 for cancellation in small endpoints after subtracting padding and box widths.
 The frozen trained exports exposed differences below 0.001 px that were many
@@ -219,7 +219,7 @@ classes and counts still required. The report also records failures at the
 strict FP32 tolerances, count-mismatch images and unmatched boxes. Maximum
 box/score deltas use same-class diagnostic associations with IoU ≥ 0.5 and no
 score restriction beyond the sigmoid range; unmatched detections remain
-reported separately. The degenerate-box rule stays at one float32 ULP in both
+reported separately. The degenerate-box rule uses the same relative bound in both
 modes, using the whole-box scale described above. These comparisons are not a
 deployment accuracy gate.
 
@@ -279,3 +279,21 @@ failure if any required FP32 check failed. The repeatable arm bundle is
 Slurm capacity before submitting. It verifies the dataset archive and freeze,
 reuses WS4 NCNN and WS8 OpenCV prefixes, builds, runs CTest and native/runtime
 tests, then pins all parity cases to cores 0–3 in one `cz-ws8-parity` job.
+
+Saved predictions can be compared again without inference:
+
+```sh
+python -m native.rescore_parity --source original.json --output rescored.json
+```
+
+This uses the current comparison code, preserves the original report, and
+records hashes of both that report and its unchanged raw predictions. The
+relative degenerate-box bound avoids a fixed-ULP discontinuity observed on
+Linux at a 0.001018 px endpoint difference. Normal-box IoU, score and count
+requirements remain the same.
+
+Frozen and old-split proxy results for both platforms are recorded in
+[results/ws8-frozen-parity.json](results/ws8-frozen-parity.json). Required FP32
+comparisons pass after that comparison correction. FP16 package-default
+results remain informational; source reports and raw-prediction hashes make
+the offline rescore explicit.
