@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,7 @@ DECODERS = frozenset({"yolo11", "yolo26", "dfine", "rfdetr", "nanodet"})
 # Ultralytics applies NMS itself; for one-to-one (yolo26) heads that removes almost nothing.
 ULTRALYTICS_DECODERS = frozenset({"yolo11", "yolo26"})
 STAGE_NAMES = ("preprocess", "inference", "postprocess")
+NCNN_DIRECTORY_SUFFIX = "_ncnn_model"
 
 
 class DetectorError(RuntimeError):
@@ -157,7 +159,7 @@ class UltralyticsDetector:
         try:
             from ultralytics import YOLO
 
-            self._model = cast(PredictionModel, YOLO(str(self.model_info.path), task="detect"))
+            self._model = cast(PredictionModel, YOLO(str(self.ultralytics_path()), task="detect"))
             self.names = class_names(self._model.names)
         except DetectorError:
             raise
@@ -173,6 +175,20 @@ class UltralyticsDetector:
             )
         except ValueError as error:
             raise DetectorError(str(error)) from error
+
+    def ultralytics_path(self) -> Path:
+        """Ultralytics recognises NCNN exports only by a `_ncnn_model` directory suffix.
+
+        A C8 package (`models/<model_id>/`) is linked under such a name in a
+        temporary directory that lives as long as this detector.
+        """
+        path = self.model_info.path
+        if not path.is_dir() or path.name.endswith(NCNN_DIRECTORY_SUFFIX):
+            return path
+        self._link_directory = tempfile.TemporaryDirectory(prefix="columba-model-")
+        link = Path(self._link_directory.name) / f"{path.name}{NCNN_DIRECTORY_SUFFIX}"
+        link.symlink_to(path.resolve(), target_is_directory=True)
+        return link
 
     def warmup(self, width: int, height: int) -> None:
         import numpy

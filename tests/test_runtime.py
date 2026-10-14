@@ -204,6 +204,19 @@ class DetectorTests(unittest.TestCase):
                 with self.subTest(columba=columba), self.assertRaisesRegex(DetectorError, message):
                     load_model_info(str(path), (384, 640))
 
+    def test_package_directories_are_named_for_ultralytics(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for name, linked in (("yolo26n-v2s", True), ("best_ncnn_model", False)):
+                package = Path(directory) / name
+                package.mkdir()
+                detector = UltralyticsDetector.__new__(UltralyticsDetector)
+                detector.model_info = load_model_info(str(write_package(package)), 640)
+                path = detector.ultralytics_path()
+                with self.subTest(name=name):
+                    self.assertTrue(path.name.endswith("_ncnn_model"))
+                    self.assertEqual(path.is_symlink(), linked)
+                    self.assertEqual(path.resolve(), package.resolve())
+
     def test_multiclass_detections_and_stage_timings(self) -> None:
         detector = UltralyticsDetector.__new__(UltralyticsDetector)
         detector.image_size, detector.confidence = (384, 640), 0.5
