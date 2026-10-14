@@ -78,6 +78,11 @@ The adapter writes the C6 weights/results into `context.local_run`. Evaluation
 currently uses WS1's Ultralytics predictor; another adapter needs a compatible
 checkpoint or a coordinator-approved prediction adapter before promotion.
 
+Optional `batch_override: <positive int>` replaces the runner's memory-class
+batch on the nv lane (e.g. x-size teachers at 960, where the conservative
+heuristic picks 3). `nbs` stays 64, so gradient accumulation still targets an
+effective batch of 64. Measure memory before raising it.
+
 Only recipes whose ID begins `smoke-` may use
 `allow_missing_evaluation: true`. Missing WS1 tools then set
 `evaluation: "skipped: tools missing"`, `status: evaluation_missing`, and leave

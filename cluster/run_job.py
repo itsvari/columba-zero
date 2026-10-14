@@ -400,6 +400,8 @@ def execute(
         )
         if recipe.lane == "arm":
             batch_size = ARM_BATCH_SIZE
+        elif recipe.batch_override is not None:
+            batch_size = recipe.batch_override
         report["batch_size"] = batch_size
         report["initial_batch_size"] = batch_size
         context = TrainingContext(

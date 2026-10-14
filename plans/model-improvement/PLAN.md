@@ -73,9 +73,15 @@ baseline exists. Until then, success is relative to it.
 v1-2 trained or validated on, so its test-v2 recall (0.59 at 640, measured) is
 contaminated, and its unseen subset (3 images, 7 boxes) is too small to rank
 anything. The **comparison baseline for the section-1 accuracy rule is
-therefore WS5's round-0 `baseline-repro`** (the v1-2 recipe retrained on
-`columba-train-v1clean`, which excludes every test family), 3-seed mean and
-std of `pigeon_recall_at_p90` on `columba-test-v2`. v1-2's rows stay on the
+therefore WS5's round-0 `baseline-repro-p50`** (the v1-2 recipe retrained on
+`columba-train-v1clean`, which excludes every test family, with patience 50
+instead of v1-2's 10: patience 10 stopped one seed at epoch 11 with its epoch-1
+weights), 3-seed mean and std of `pigeon_recall_at_p90` on `columba-test-v2`.
+Because `recall_at_p90` collapses to ~0 when confuser false positives keep test
+precision below 0.90 (seen on v1clean-trained models), every comparison also
+reports test AP50 and precision/recall at the val-selected threshold. If
+neither model reaches P ≥ 0.90 on test, rank by recall at the val threshold,
+subject to the false-alarm gates. v1-2's rows stay on the
 leaderboard as `incumbent-contaminated` diagnostics. The false-alarm gates
 still apply as written; the deployed v1-2 fails them badly (measured empty FAR
 0.11, confuser FAR 0.56 at 640, all on unseen images).

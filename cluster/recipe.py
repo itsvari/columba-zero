@@ -49,6 +49,7 @@ RECIPE_FIELDS = frozenset(
         "notes",
         "test_dataset",
         "allow_missing_evaluation",
+        "batch_override",
     }
 )
 
@@ -71,6 +72,7 @@ class Recipe:
     notes: str
     test_dataset: str = "columba-test-v2"
     allow_missing_evaluation: bool = False
+    batch_override: int | None = None
 
     def constraint_for_seed(self, seed: int) -> GpuConstraint | None:
         if seed not in self.seeds:
@@ -178,6 +180,9 @@ def validate_recipe(value: JsonValue) -> Recipe:
         raise ValueError("notes must be a string; allow_missing_evaluation must be boolean")
     if allow_missing and not identifier.startswith("smoke-"):
         raise ValueError("only smoke- recipes may allow missing evaluation")
+    batch_override = raw.get("batch_override")
+    if batch_override is not None:
+        positive_integer(batch_override, "batch_override")
     return Recipe(
         identifier,
         framework,
@@ -195,6 +200,7 @@ def validate_recipe(value: JsonValue) -> Recipe:
         notes,
         component(raw.get("test_dataset", "columba-test-v2"), "test_dataset"),
         allow_missing,
+        cast(int | None, batch_override),
     )
 
 

@@ -11,7 +11,13 @@ from typing import cast
 from unittest.mock import Mock, patch
 
 from app.json_data import JsonValue
-from cluster.artifacts import LEADERBOARD_COLUMNS, REQUIRED_ARTIFACTS, mark_done, update_leaderboard
+from cluster.artifacts import (
+    LEADERBOARD_COLUMNS,
+    REQUIRED_ARTIFACTS,
+    mark_done,
+    repository_relative,
+    update_leaderboard,
+)
 from cluster.hardware import select_batch
 from cluster.recipe import load_recipe, resolve_teacher, validate_recipe
 from cluster.run_job import (
@@ -104,6 +110,14 @@ class ClusterTests(unittest.TestCase):
                 validate_recipe(
                     {**sample_recipe(), "train": {"imgsz": 640, "epochs": 5, argument: "forbidden"}}
                 )
+
+    def test_recipe_batch_override(self) -> None:
+        self.assertIsNone(validate_recipe(sample_recipe()).batch_override)
+        recipe = validate_recipe({**sample_recipe(), "batch_override": 8})
+        self.assertEqual(recipe.batch_override, 8)
+        for value in (0, -1, "8", 2.5, True):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_recipe({**sample_recipe(), "batch_override": cast(JsonValue, value)})
 
     def test_recipe_requires_square_training_and_fixed_nominal_batch(self) -> None:
         for changes in ({"imgsz": [384, 640]}, {"nbs": 32}, {"epochs": 0}, {"save": False}):
@@ -352,6 +366,19 @@ class ClusterTests(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0]["recipe_id"], "incumbent")
             self.assertEqual(rows[1]["status"], "complete")
+
+    def test_leaderboard_uses_lf_and_repository_relative_run_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "leaderboard.csv"
+            row = dict.fromkeys(LEADERBOARD_COLUMNS, "")
+            row.update({"recipe_id": "candidate", "seed": "0"})
+            update_leaderboard(path, [row])
+            self.assertNotIn(b"\r", path.read_bytes())
+        self.assertEqual(
+            repository_relative(Path("/worktrees/a/experiments/runs/recipe/seed0")),
+            "experiments/runs/recipe/seed0",
+        )
+        self.assertEqual(repository_relative(Path("/elsewhere/seed0")), "/elsewhere/seed0")
 
     def test_fetch_excludes_smoke_from_real_leaderboard_but_allows_scratch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

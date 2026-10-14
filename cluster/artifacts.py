@@ -93,6 +93,14 @@ def metric_value(metrics: Mapping[str, JsonValue], key: str, group: str | None =
     return "" if value is None else str(value)
 
 
+def repository_relative(directory: Path) -> str:
+    """Keep committed leaderboard paths independent of the checkout that ran fetch."""
+    parts = directory.parts
+    if "experiments" in parts:
+        return Path(*parts[parts.index("experiments") :]).as_posix()
+    return str(directory)
+
+
 def leaderboard_row(directory: Path) -> dict[str, str]:
     report = read_json(directory / "run.json")
     validation = (
@@ -109,7 +117,7 @@ def leaderboard_row(directory: Path) -> dict[str, str]:
     row.update(
         {
             "status": str(report.get("status", "failed")),
-            "run_path": str(directory),
+            "run_path": repository_relative(directory),
             "val_recall_at_p90": metric_value(validation, "recall_at_p90", "pigeon"),
             "test_recall_at_p90": metric_value(test, "recall_at_p90", "pigeon"),
             "test_small_recall_at_p90": metric_value(test, "small_recall_at_p90", "pigeon"),
@@ -140,7 +148,7 @@ def update_leaderboard(path: Path, rows: list[dict[str, str]]) -> None:
         indexed.update({(row["recipe_id"], row["seed"]): row for row in rows})
         temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
         with temporary.open("w", newline="", encoding="utf-8") as target:
-            writer = csv.DictWriter(target, fieldnames=LEADERBOARD_COLUMNS)
+            writer = csv.DictWriter(target, fieldnames=LEADERBOARD_COLUMNS, lineterminator="\n")
             writer.writeheader()
             writer.writerows(cast(list[dict[str, str]], list(indexed.values())))
         temporary.replace(path)
