@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(columba_bench LANGUAGES CXX)
+find_package(ncnn CONFIG REQUIRED)
+add_library(columba_bench SHARED bridge.cpp)
+target_compile_features(columba_bench PRIVATE cxx_std_17)
+target_link_libraries(columba_bench PRIVATE ncnn)
+install(TARGETS columba_bench LIBRARY DESTINATION lib)
