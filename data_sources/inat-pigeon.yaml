@@ -1,0 +1,17 @@
+# Rock pigeon (Columba livia) photos from iNaturalist for training (phase 2). Research grade,
+# not captive, photo licence CC0 / CC BY / CC BY-SA only (Q2 default), checked per photo.
+# Singapore has only ~47 such observations, so the query falls back to Malaysia (7155),
+# Indonesia (6966), Thailand (6967), Asia (97395), then anywhere. Newest observations first.
+# No source boxes: tools/auto_label.py adds YOLO11x `bird` boxes (pseudo labels, reviewed
+# on contact sheets before use). The builder prefers flocks and distant birds.
+name: inat-pigeon
+kind: inaturalist
+url: https://www.inaturalist.org/
+photo_licenses: [cc0, cc-by, cc-by-sa]
+query: {captive: "false"}
+photo_size: large
+photo_interval_s: 0.5            # photos come from the AWS open-data bucket; API stays at 1/s
+photos_per_observation: 1
+place_ids: [6734, 7155, 6966, 6967, 97395, null]
+taxa:
+  - {name: pigeon, taxon_id: 3017, limit: 3000}

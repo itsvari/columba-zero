@@ -1,0 +1,13 @@
+# COCO 2017 train images with at least one `bird` box (phase 2), licence-filtered per image
+# (CC-BY, CC-BY-SA, PDM). Human boxes, species unknown: every image is reviewed on contact
+# sheets and listed in data_sources/coco-birds-review.jsonl as feral pigeons only
+# (boxes become `pigeon`), no pigeons (boxes become `other_bird`; unlabelled background in
+# `single`), or mixed/unclear (dropped).
+name: coco-birds-train
+kind: coco
+split: train2017
+url: https://cocodataset.org/
+require_any: [bird]
+box_categories: [bird]
+classes:
+  bird: bird

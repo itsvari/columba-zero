@@ -1,0 +1,16 @@
+# Other Singapore birds (Aves minus every named C2 taxon) from iNaturalist (phase 2):
+# the `other_bird` class. Same licence and quality rules as inat-pigeon.
+name: inat-other
+kind: inaturalist
+url: https://www.inaturalist.org/
+photo_licenses: [cc0, cc-by, cc-by-sa]
+query: {captive: "false"}
+photo_size: large
+photo_interval_s: 0.5
+photos_per_observation: 1
+place_ids: [6734]
+taxa:
+  - name: other_bird
+    taxon_id: 3
+    limit: 600
+    exclude_taxon_ids: [3017, 1455918, 3607, 3393, 145095, 8031, 14965, 13851, 14623, 204510]

@@ -1,0 +1,22 @@
+# The nine non-pigeon C2 species (training/classes.yaml) from iNaturalist (phase 2).
+# Same rules as inat-pigeon. Singapore first, then Malaysia, Indonesia, Thailand, Asia.
+name: inat-species
+kind: inaturalist
+url: https://www.inaturalist.org/
+photo_licenses: [cc0, cc-by, cc-by-sa]
+query: {captive: "false"}
+photo_size: large
+photo_interval_s: 0.5
+photos_per_observation: 1
+place_ids: [6734, 7155, 6966, 6967, 97395]
+limit_per_taxon: 450
+taxa:
+  - {name: spotted_dove, taxon_id: 1455918}
+  - {name: zebra_dove, taxon_id: 3607}
+  - {name: pink_necked_green_pigeon, taxon_id: 3393}
+  - {name: javan_myna, taxon_id: 145095}
+  - {name: house_crow, taxon_id: 8031}
+  - {name: asian_glossy_starling, taxon_id: 14965}
+  - {name: eurasian_tree_sparrow, taxon_id: 13851}
+  - {name: yellow_vented_bulbul, taxon_id: 14623}
+  - {name: asian_koel, taxon_id: 204510}
