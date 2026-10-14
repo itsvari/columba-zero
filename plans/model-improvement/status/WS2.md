@@ -171,6 +171,13 @@ python -m tools.dataset_audit <dataset>/data.yaml      # also: python tools/data
 
 `$COLUMBA_DATA_ROOT` overrides `~/columba-data`.
 
+## Phase 2 published (details in the final phase 2 results below as they land)
+
+| Dataset | Published | Archive SHA-256 | Cluster |
+|---|---|---|---|
+| `columba-test-v2-styles` | 2026-10-14 | `a05b6055960dcea45dabea9ee051f44cccf0e321f7d557f708095480edb4ccab` | `~/columba/data/columba-test-v2-styles.tar.zst` |
+| `columba-train-v2` | 2026-10-14 | `90e8d09e7ad455c521ac04bcf72f7c0237e79fbf904fa3d03529e76ca1d00e9b` | `~/columba/data/columba-train-v2.tar.zst` |
+
 ## In progress
 
 Phase 2 (started 2026-10-14): iNaturalist and COCO train2017 fetches, auto-labelling, style copies, `columba-train-v2`, `-v2s`, `columba-test-v2-styles`, species variants.
