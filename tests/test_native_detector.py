@@ -222,11 +222,28 @@ class NativeDetectorTests(unittest.TestCase):
         one_ulp = float(numpy.nextafter(numpy.float32(637.0), numpy.float32(numpy.inf)))
         rounded: ExportPrediction = {**expected, "box": [0.0, 0.0, one_ulp, 0.0]}
         self.assertEqual(len(match_clipped_boxes([expected], [rounded])), 1)
-        two_ulps = float(numpy.nextafter(numpy.float32(one_ulp), numpy.float32(numpy.inf)))
-        outside_tolerance: ExportPrediction = {**expected, "box": [0.0, 0.0, two_ulps, 0.0]}
+        outside_tolerance: ExportPrediction = {**expected, "box": [0.0, 0.0, 637.001, 0.0]}
         self.assertEqual(match_clipped_boxes([expected], [outside_tolerance]), [])
         shifted: ExportPrediction = {**expected, "box": [0.0, 0.0, 638.0, 0.0]}
         self.assertEqual(match_clipped_boxes([expected], [shifted]), [])
+
+    def test_degenerate_box_rounding_uses_box_scale_before_cancellation(self) -> None:
+        expected: ExportPrediction = {
+            "label": "pigeon",
+            "confidence": 0.8,
+            "box": [427.0, 2.0595295429229736, 427.0, 638.6720581054688],
+        }
+        rounded: ExportPrediction = {
+            **expected,
+            "box": [427.0, 2.059478759765625, 427.0, 638.6719970703125],
+        }
+        self.assertEqual(len(match_clipped_boxes([expected], [rounded])), 1)
+        shifted: ExportPrediction = {**rounded, "box": [427.0, 2.06, 427.0, 638.6719970703125]}
+        self.assertEqual(len(match_clipped_boxes([expected], [shifted])), 1)
+        outside_tolerance: ExportPrediction = {**rounded, "box": [427.0, 2.07, 427.0, 638.67]}
+        self.assertEqual(match_clipped_boxes([expected], [outside_tolerance]), [])
+        low_score: ExportPrediction = {**rounded, "confidence": 0.7}
+        self.assertEqual(match_clipped_boxes([expected], [low_score]), [])
 
 
 @unittest.skipIf(columba_native is None, "columba_native is not built")

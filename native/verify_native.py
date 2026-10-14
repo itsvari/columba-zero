@@ -36,6 +36,12 @@ FP16_MINIMUM_MATCH_IOU = 0.7
 FP16_MAXIMUM_CONFIDENCE_DELTA = 0.1
 DIAGNOSTIC_MINIMUM_MATCH_IOU = 0.5
 DIAGNOSTIC_MAXIMUM_CONFIDENCE_DELTA = 1.0
+DEGENERATE_COORDINATE_ULPS = 8
+DEGENERATE_BOX_RULE = (
+    "zero-area clipped boxes require equal class and corresponding coordinates within "
+    "eight float32 ULPs at the largest absolute coordinate of either box; "
+    "the confidence tolerance still applies"
+)
 
 
 class Description(Protocol):
@@ -291,9 +297,11 @@ def match_clipped_boxes(
             confidence_delta = abs(prediction["confidence"] - candidate["confidence"])
             expected_coordinates = numpy.asarray(box, dtype=numpy.float32)
             actual_coordinates = numpy.asarray(candidate["box"], dtype=numpy.float32)
-            coordinate_tolerance = numpy.maximum(
-                numpy.spacing(expected_coordinates), numpy.spacing(actual_coordinates)
+            coordinate_scale = numpy.maximum(
+                numpy.abs(expected_coordinates).max(), numpy.abs(actual_coordinates).max()
             )
+            # subtraction can leave small endpoints whose own ULP understates upstream rounding.
+            coordinate_tolerance = DEGENERATE_COORDINATE_ULPS * numpy.spacing(coordinate_scale)
             coordinates_match = bool(
                 numpy.all(
                     numpy.abs(expected_coordinates - actual_coordinates) <= coordinate_tolerance
@@ -503,9 +511,7 @@ def main() -> None:
         "confidence": arguments.confidence,
         "min_iou": minimum_iou,
         "max_confidence_delta": maximum_confidence_delta,
-        "degenerate_box_rule": (
-            "zero-area clipped boxes require coordinates within one float32 ULP and equal class"
-        ),
+        "degenerate_box_rule": DEGENERATE_BOX_RULE,
         "records": records,
     }
     arguments.output.parent.mkdir(parents=True, exist_ok=True)

@@ -202,9 +202,13 @@ loading conflicting OpenMP runtimes together on macOS.
 The matching tolerances come from `tools/compare_exports.py`: IoU ≥ 0.8,
 confidence difference ≤ 0.05, equal classes and equal counts. The old model
 produces one box clipped to zero height on a COCO8 image. Since its IoU is
-undefined, the runner accepts it only when coordinates differ by at most one
-float32 ULP and the class agrees, still applying the confidence tolerance. It
-records this case explicitly. It never removes unmatched degenerate boxes.
+undefined, the runner accepts it only when coordinates differ by at most eight
+float32 ULPs at the largest absolute coordinate in either box, and the class
+agrees, still applying the confidence tolerance. The whole-box scale accounts
+for cancellation in small endpoints after subtracting padding and box widths.
+The frozen trained exports exposed differences below 0.001 px that were many
+ULPs at a small endpoint, despite agreement at the original coordinate scale.
+The runner records these cases explicitly and retains unmatched degenerate boxes.
 
 Parity always explicitly selects FP32 unless `--compute fp16` is supplied.
 `--compute package` passes `None` to the extension and records the resolved
@@ -216,7 +220,8 @@ strict FP32 tolerances, count-mismatch images and unmatched boxes. Maximum
 box/score deltas use same-class diagnostic associations with IoU ≥ 0.5 and no
 score restriction beyond the sigmoid range; unmatched detections remain
 reported separately. The degenerate-box rule stays at one float32 ULP in both
-modes. These smoke comparisons are not a deployment accuracy gate.
+modes, using the whole-box scale described above. These comparisons are not a
+deployment accuracy gate.
 
 Run all seven prepared packages and a baseline latency measurement with
 `bash native/run_verification.sh outputs/ws8 outputs/ws8/results-fp16 fp16`;
