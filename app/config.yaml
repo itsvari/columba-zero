@@ -29,3 +29,12 @@ confirmation:
   n: 3
   iou: 0.3
   max_age_frames: 2
+# Day/night switching is off unless a cameras list is given: exactly one day and
+# one night camera; unset values inherit from camera:. Only one camera is open.
+# cameras:
+#   - {name: wide, role: day, camera_index: 0}
+#   - {name: noir, role: night, camera_index: 1, tuning_file: imx708_noir.json, max_exposure_us: 16666}
+# camera_switch:
+#   night_below_lux: 10.0
+#   day_above_lux: 40.0
+#   hold_s: 5.0

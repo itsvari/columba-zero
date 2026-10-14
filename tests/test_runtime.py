@@ -41,7 +41,7 @@ from app.json_data import JsonValue
 from app.main import build_parser, create_detector, run
 from app.models import Detection, Frame, FramePacket
 from app.output import RunOutput
-from app.pipeline import OutputQueue, RenderJob
+from app.pipeline import FrameProcessor, OutputQueue, RenderJob
 
 TEST_FRAME_SIZE_PX = 32
 COLOUR_CHANNEL_COUNT = 3
@@ -531,6 +531,45 @@ class OutputQueueTests(unittest.TestCase):
         blocked.join(THREAD_TEST_TIMEOUT_S)
         self.assertFalse(blocked.is_alive())
         self.assertEqual(queue.take(), ([], None))
+
+
+class ProcessorTests(unittest.TestCase):
+    def test_camera_switch_events_and_tracker_reset(self) -> None:
+        source, detector, tracker = Mock(), Mock(), Mock()
+        packets = [
+            FramePacket(0, 0, create_test_frame(), camera="wide"),
+            FramePacket(1, 1, create_test_frame(), camera="wide"),
+            FramePacket(2, 2, create_test_frame(), camera="noir"),
+        ]
+        source.get.side_effect = [*packets, EndOfStream()]
+        source.dropped_frames = 0
+        detector.detect.return_value = []
+        tracker.update.return_value = Mock(detections=[], triggers=[])
+        tracker.confirmed_track_ids = frozenset()
+        switches: list[list[dict[str, JsonValue]]] = [
+            [],
+            [{"from": "wide", "to": "noir", "lux": 3.0, "reason": "dark"}],
+            [],
+        ]
+        queue = OutputQueue()
+        processor = FrameProcessor(
+            replace(AppConfig(), display=DisplayConfig(False)),
+            source,
+            detector,
+            tracker,
+            queue,
+            threading.Event(),
+            time.monotonic(),
+            camera_events=lambda: switches.pop(0),
+        )
+        processor.run()
+        self.assertEqual(processor.result.reason, "video_complete")
+        tracker.reset.assert_called_once()
+        records, _ = queue.take()
+        self.assertEqual(
+            [record.event for record in records],
+            ["frame", "frame", "camera_switch", "frame"],
+        )
 
 
 class RuntimeTests(unittest.TestCase):

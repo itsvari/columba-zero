@@ -126,6 +126,7 @@ class FrameProcessor:
         started_at_monotonic_s: float,
         max_frames: int = 0,
         capture_fps: Callable[[], float | None] = lambda: None,
+        camera_events: Callable[[], list[dict[str, JsonValue]]] = list,
     ) -> None:
         self.config = config
         self.source = source
@@ -136,6 +137,8 @@ class FrameProcessor:
         self.started_at_monotonic_s = started_at_monotonic_s
         self.max_frames = max_frames
         self.capture_fps = capture_fps
+        self.camera_events = camera_events
+        self._camera: str | None = None
         self.render_frames = config.display.enabled or config.output.record
         self.result = ProcessingResult()
         self._last_health_at_monotonic_s = started_at_monotonic_s
@@ -155,6 +158,10 @@ class FrameProcessor:
 
     def process(self, packet: FramePacket) -> None:
         result = self.result
+        if packet.camera != self._camera:
+            if self.tracker is not None and self._camera is not None:
+                self.tracker.reset()
+            self._camera = packet.camera
         inference_started_at_monotonic_s = time.monotonic()
         detections = self.detector.detect(packet)
         inference_s = time.monotonic() - inference_started_at_monotonic_s
@@ -188,6 +195,8 @@ class FrameProcessor:
         )
         for trigger in triggers:
             self.sink.event("trigger", **trigger.as_dict())
+        for camera_switch in self.camera_events():
+            self.sink.event("camera_switch", **camera_switch)
         result.triggers.extend(triggers)
         now_monotonic_s = time.monotonic()
         if (

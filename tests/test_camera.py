@@ -9,21 +9,24 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager, redirect_stderr
 from io import StringIO
 from pathlib import Path
+from typing import cast
 from unittest.mock import Mock, patch
 
 import numpy
 import yaml
 
 from app.capture import (
+    CaptureError,
     LatestFrameStream,
     Picamera2Capture,
     cap_exposure,
     read_capture_metadata,
 )
-from app.config import AppConfig, CameraConfig, ConfigError
+from app.config import AppConfig, CameraConfig, CameraSwitchConfig, ConfigError
 from app.json_data import JsonValue
-from app.main import create_camera
-from app.models import Frame
+from app.main import create_camera, create_source
+from app.models import Frame, FramePacket
+from app.switching import LuxHysteresis, SwitchingCameraStream
 
 THREAD_TEST_TIMEOUT_S = 2.0
 TUNING: dict[str, object] = {
@@ -275,6 +278,150 @@ class Picamera2CaptureTests(unittest.TestCase):
                 source.close()
         self.assertEqual((packet.camera, packet.lux, packet.delivery_ms), ("wide", 120.0, 30.0))
         self.assertIsNotNone(packet.delivered_monotonic_s)
+
+
+def lux_packet(sequence: int, lux: float | None, camera: str = "wide") -> FramePacket:
+    return FramePacket(
+        sequence, float(sequence), numpy.zeros((4, 4, 3), numpy.uint8), 0.0, camera, lux
+    )
+
+
+def fake_stream(camera: str, lux: list[float | None]) -> Mock:
+    stream = Mock(spec=LatestFrameStream)
+    stream.get.side_effect = [lux_packet(index, value, camera) for index, value in enumerate(lux)]
+    stream.captured_frames = len(lux)
+    stream.dropped_frames = 1
+    stream.capture_fps = 30.0
+    return stream
+
+
+class DayNightTests(unittest.TestCase):
+    def test_lux_hysteresis_needs_a_sustained_change(self) -> None:
+        hysteresis = LuxHysteresis(CameraSwitchConfig(10, 40, 5))
+        self.assertEqual(
+            [hysteresis.update("day", lux, now) for now, lux in ((0, 5), (4, 5), (5, 5))],
+            [None, None, "night"],
+        )
+        # a reading between the thresholds, or no reading, restarts the hold time.
+        steps = ((0, 5), (1, 20), (2, 5), (3, None), (4, 5), (8, 5), (9, 5))
+        self.assertEqual(
+            [hysteresis.update("day", lux, now) for now, lux in steps],
+            [None, None, None, None, None, None, "night"],
+        )
+        self.assertIsNone(hysteresis.update("night", 30, 0))
+        self.assertIsNone(hysteresis.update("night", 50, 10))
+        self.assertEqual(hysteresis.update("night", 50, 15), "day")
+
+    def test_switches_to_night_camera_and_back(self) -> None:
+        now = [0.0]
+        streams = {
+            "wide": [fake_stream("wide", [100, 3, 3]), fake_stream("wide", [100])],
+            "noir": [fake_stream("noir", [20, 60, 60])],
+        }
+        opened: list[str] = []
+
+        def open_stream(camera: CameraConfig) -> LatestFrameStream:
+            opened.append(camera.label)
+            return cast(LatestFrameStream, streams[camera.label].pop(0))
+
+        cameras = {
+            "day": CameraConfig(name="wide", camera_index=0),
+            "night": CameraConfig(name="noir", camera_index=1),
+        }
+        source = SwitchingCameraStream(
+            cameras, CameraSwitchConfig(10, 40, 1), open_stream, lambda: now[0]
+        )
+        source.start()
+        packets = []
+        for _ in range(7):
+            packets.append(source.get(1))
+            now[0] += 1
+        self.assertEqual(opened, ["wide", "noir", "wide"])
+        self.assertEqual([packet.sequence for packet in packets], list(range(7)))
+        self.assertEqual(
+            [packet.camera for packet in packets], ["wide"] * 3 + ["noir"] * 3 + ["wide"]
+        )
+        events = source.take_events()
+        self.assertEqual(
+            [(event["from"], event["to"], event["lux"], event["reason"]) for event in events],
+            [("wide", "noir", 3, "dark"), ("noir", "wide", 60, "bright")],
+        )
+        self.assertEqual(source.take_events(), [])
+        self.assertEqual(source.dropped_frames, 3)
+        source.close()
+
+    def test_failed_switch_keeps_previous_camera(self) -> None:
+        streams = [fake_stream("wide", [1, 1]), fake_stream("wide", [1])]
+        broken = fake_stream("noir", [])
+        broken.start.side_effect = CaptureError("noir unavailable")
+
+        def open_stream(camera: CameraConfig) -> LatestFrameStream:
+            return cast(LatestFrameStream, broken if camera.label == "noir" else streams.pop(0))
+
+        cameras = {"day": CameraConfig(name="wide"), "night": CameraConfig(name="noir")}
+        source = SwitchingCameraStream(
+            cameras, CameraSwitchConfig(10, 40, 0), open_stream, lambda: 0
+        )
+        source.start()
+        with redirect_stderr(StringIO()):
+            source.get(1)
+        broken.close.assert_called_once()
+        (event,) = source.take_events()
+        self.assertEqual((event["active"], event["error"]), ("wide", "noir unavailable"))
+        self.assertEqual(source.role, "day")
+        self.assertEqual(source.get(1).camera, "wide")
+
+    def test_cameras_config(self) -> None:
+        config = CameraConfigTests.load(
+            CameraConfigTests(),
+            {
+                "camera": {
+                    "width": 640,
+                    "height": 360,
+                    "stream": "lores",
+                    "max_exposure_us": 30000,
+                },
+                "cameras": [
+                    {"name": "wide", "role": "day", "camera_index": 0},
+                    {
+                        "name": "noir",
+                        "role": "night",
+                        "camera_index": 1,
+                        "tuning_file": "imx708_noir.json",
+                        "max_exposure_us": 16666,
+                    },
+                ],
+                "camera_switch": {"night_below_lux": 5, "day_above_lux": 50, "hold_s": 10},
+            },
+        )
+        night = config.camera_for(config.cameras[1])
+        day = config.camera_for(config.cameras[0])
+        self.assertEqual(
+            (night.label, night.camera_index, night.max_exposure_us), ("noir", 1, 16666)
+        )
+        self.assertEqual((day.max_exposure_us, day.tuning_file, day.stream), (30000, None, "lores"))
+        self.assertEqual(config.camera_switch, CameraSwitchConfig(5, 50, 10))
+        self.assertIsInstance(create_source(config, None), SwitchingCameraStream)
+        self.assertIsInstance(create_source(AppConfig(), None), LatestFrameStream)
+        self.assertEqual(AppConfig.load("app/config.yaml").cameras, ())
+        day_entry: dict[str, JsonValue] = {"name": "wide", "role": "day"}
+        night_entry: dict[str, JsonValue] = {"name": "noir", "role": "night"}
+        invalid_configurations: tuple[dict[str, JsonValue], ...] = (
+            {"cameras": [day_entry]},
+            {"cameras": [day_entry, {"name": "noir", "role": "day"}]},
+            {"cameras": [day_entry, {"name": "wide", "role": "night"}]},
+            {"cameras": [day_entry, {**night_entry, "fps": 10}]},
+            {"cameras": {"day": day_entry}},
+            {"camera_switch": {"hold_s": 1}},
+            {
+                "cameras": [day_entry, night_entry],
+                "camera_switch": {"night_below_lux": 50, "day_above_lux": 40},
+            },
+            {"cameras": [day_entry, night_entry], "camera_switch": {"hold_s": -1}},
+        )
+        for invalid in invalid_configurations:
+            with self.subTest(invalid=invalid), self.assertRaises(ConfigError):
+                CameraConfigTests.load(CameraConfigTests(), invalid)
 
 
 if __name__ == "__main__":

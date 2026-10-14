@@ -196,6 +196,10 @@ class ConfirmationTracker:
             triggers,
         )
 
+    def reset(self) -> None:
+        """Forget all tracks, e.g. after a camera switch changes the view."""
+        self.tracks = []
+
     @property
     def confirmed_track_ids(self) -> frozenset[int]:
         return frozenset(track.track_id for track in self.tracks if track.confirmed)

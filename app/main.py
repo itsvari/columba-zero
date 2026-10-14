@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from types import FrameType
-from typing import Protocol, cast
+from typing import Protocol, TypeAlias, cast
 
 from .capture import LatestFrameStream, Picamera2Capture, VideoFileCapture
 from .config import AppConfig, CameraConfig, ConfigError, ImageSize, ModelConfig
@@ -17,6 +17,7 @@ from .detector import DetectorError, FrameDetector, UltralyticsDetector, load_mo
 from .json_data import JsonValue
 from .output import RunOutput, health_snapshot
 from .pipeline import CONSUMER_POLL_S, FrameProcessor, OutputQueue
+from .switching import SwitchingCameraStream
 from .tracking import ConfirmationTracker
 
 
@@ -69,6 +70,21 @@ def create_camera(camera: CameraConfig) -> Picamera2Capture:
         camera_index=camera.camera_index,
         name=camera.label,
     )
+
+
+FrameStream: TypeAlias = VideoFileCapture | LatestFrameStream | SwitchingCameraStream
+
+
+def create_source(config: AppConfig, video: str | None) -> FrameStream:
+    if video:
+        return VideoFileCapture(video)
+    if config.cameras:
+        return SwitchingCameraStream(
+            {entry.role: config.camera_for(entry) for entry in config.cameras},
+            config.camera_switch,
+            lambda camera: LatestFrameStream(create_camera(camera), camera.label),
+        )
+    return LatestFrameStream(create_camera(config.camera), config.camera.label)
 
 
 def create_detector(model: ModelConfig) -> tuple[FrameDetector, tuple[str, ...]]:
@@ -191,7 +207,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
     config = load_configuration(options)
     stop = threading.Event()
     handlers: dict[signal.Signals, int | Callable[[int, FrameType | None], None] | None] = {}
-    source: VideoFileCapture | LatestFrameStream | None = None
+    source: FrameStream | None = None
     output: RunOutput | None = None
     queue: OutputQueue | None = None
     processor: FrameProcessor | None = None
@@ -224,15 +240,13 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             timestamp_semantics="Unix seconds at frame delivery; replay is not source time",
         )
         output.start()
-        source = (
-            VideoFileCapture(options.video)
-            if options.video
-            else LatestFrameStream(create_camera(config.camera), config.camera.label)
-        )
+        source = create_source(config, options.video)
         source.start()
         started_at_monotonic_s = time.monotonic()
         output.event("health", processed_frames=0, dropped_frames=0, **health_snapshot())
-        live_source = source if isinstance(source, LatestFrameStream) else None
+        live_source = (
+            source if isinstance(source, (LatestFrameStream, SwitchingCameraStream)) else None
+        )
         queue = OutputQueue(drop_oldest=not options.video)
         processor = FrameProcessor(
             config,
@@ -244,6 +258,9 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             started_at_monotonic_s,
             options.max_frames,
             capture_fps=(lambda: live_source.capture_fps) if live_source else lambda: None,
+            camera_events=(
+                source.take_events if isinstance(source, SwitchingCameraStream) else list
+            ),
         )
         processing = threading.Thread(target=processor.run, name="frame-processing")
         processing.start()
