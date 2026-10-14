@@ -2,7 +2,7 @@ version: 1
 id: round2-distill
 approval: confirmed
 confirmed_by: WS5
-notes: 'Confirmed by WS5 (2026-10-15): distils the same 3 combinations selected by round2-plain
+notes: 'Coordinator budget decision (2026-10-15): top_k 1 -- distil only the top-ranked round2-plain combination x 3 seeds (~60 instead of ~180 H100-hours); extend after the result if distillation helps. Confirmed by WS5 (2026-10-15): distils the combinations selected by round2-plain
   at 640 only (the imgsz-800 arms are not distilled automatically; decided after the 640 results).
   Teacher = higher val R@P90 of the two -b16/-b12 teachers; an exact tie prefers yolo11x (YOLO11
   teacher -> YOLO26 student verified in WS0). dis 6.0 (Ultralytics 8.4.175 default, no tuning
@@ -27,7 +27,7 @@ seeds:
 - 0
 - 1
 - 2
-top_k: 3
+top_k: 1
 tie_epsilon: 0.01
 minimum_small_gain: 0.04
 latency_records:

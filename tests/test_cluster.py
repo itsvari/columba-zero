@@ -16,6 +16,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from itertools import product
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock, patch
 
@@ -89,6 +90,7 @@ from cluster.transitions import (
     best_teacher,
     collect_candidates,
     completed_metric,
+    distill_selection,
     execute_transition,
     generate_recipes,
     load_rules,
@@ -1522,6 +1524,24 @@ class OrchestrationTests(unittest.TestCase):
             report_path.write_text('{"round": "other", "status": "submitted", "recipes": []}')
             with self.assertRaisesRegex(HoldRequired, "selection_from"):
                 plain_evidence(root, rules, {"upstream": "parent"})
+
+    def test_distill_selection_keeps_plain_rank_order_and_top_k(self) -> None:
+        candidates = tuple(
+            SimpleNamespace(recipe=SimpleNamespace(identifier=name)) for name in ("c", "a", "b")
+        )
+        typed = cast(Sequence[Candidate], candidates)
+        self.assertEqual(
+            [item.recipe.identifier for item in distill_selection(typed, ["a", "b", "c"], 1)],
+            ["a"],
+        )
+        self.assertEqual(
+            [item.recipe.identifier for item in distill_selection(typed, ["b", "c", "a"], 3)],
+            ["b", "c", "a"],
+        )
+        with self.assertRaisesRegex(HoldRequired, "exceeds"):
+            distill_selection(typed, ["a"], 2)
+        with self.assertRaisesRegex(HoldRequired, "do not match"):
+            distill_selection(typed, ["missing", "a"], 1)
 
     def test_transition_malformed_plan_writes_hold(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

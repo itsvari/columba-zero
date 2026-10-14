@@ -634,6 +634,19 @@ def consolidate(root: Path, rules: Rules, additional_paths: Sequence[Path] = ())
     update_leaderboard(leaderboard, rows)
 
 
+def distill_selection(
+    candidates: Sequence[Candidate], upstream_selected: Sequence[str], top_k: int
+) -> tuple[Candidate, ...]:
+    """Distil the best `top_k` of the plain stage's picks, in the plain stage's rank order."""
+    if top_k > len(upstream_selected):
+        raise HoldRequired("distillation top_k exceeds the plain stage's selection")
+    by_id = {item.recipe.identifier: item for item in candidates}
+    wanted = upstream_selected[:top_k]
+    if any(identifier not in by_id for identifier in wanted):
+        raise HoldRequired("plain selected combinations do not match distillation rules")
+    return tuple(by_id[identifier] for identifier in wanted)
+
+
 def plain_evidence(
     root: Path, rules: Rules, plan: dict[str, JsonValue]
 ) -> tuple[dict[str, JsonValue], tuple[Path, ...]]:
@@ -681,10 +694,9 @@ def execute_transition(plan_path: Path) -> None:
         candidates = collect_candidates(root, rules)
         selected = select_candidates(candidates, rules)
         if rules.stage == "distill":
-            expected_ids = cast(list[str], upstream_report["selected"])
-            selected = tuple(item for item in candidates if item.recipe.identifier in expected_ids)
-            if len(selected) != rules.top_k:
-                raise HoldRequired("plain selected combinations do not match distillation rules")
+            selected = distill_selection(
+                candidates, cast(list[str], upstream_report["selected"]), rules.top_k
+            )
             for generated_path in plain_paths:
                 generated_recipe = load_recipe(generated_path)
                 for seed in generated_recipe.seeds:
