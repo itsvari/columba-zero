@@ -166,8 +166,8 @@ def submission_for(
         }.items()
     )
     if stop_after_epoch is not None:
-        if not run.recipe.identifier.startswith("smoke-") or not 0 < stop_after_epoch < int(
-            run.recipe.train["epochs"]
+        if not run.recipe.identifier.startswith("smoke-") or not 0 < stop_after_epoch < cast(
+            int, run.recipe.train["epochs"]
         ):
             raise ValueError("--stop-after-epoch requires an unfinished smoke epoch")
         exports += f"\nexport COLUMBA_STOP_AFTER_EPOCH={stop_after_epoch}"

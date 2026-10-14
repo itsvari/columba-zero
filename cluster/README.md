@@ -39,7 +39,9 @@ three hours. The runtime rejects GPUs other than T4, Titan RTX and Titan V.
 
 `fetch` copies C6 JSON, CSV and best/last weights to `experiments/runs/` and
 upserts the C6 leaderboard by recipe and seed, preserving the incumbent.
-Missing reports are not fabricated. The header is created when absent.
+Missing reports are not fabricated. The header is created when absent. `smoke-*` runs are excluded from the real
+`experiments/leaderboard.csv`, including when that path is passed explicitly.
+To record smoke rows, pass `--leaderboard outputs/ws3/leaderboard-smoke.csv`.
 Failed and evaluation-missing reports get rows. Unsubmitted runs are skipped.
 Bootstrap failures also leave a report through the template EXIT handler. The leaderboard is owned by
 WS1; WS3 does not commit it.
@@ -59,8 +61,8 @@ Environment paths:
 - `~/columba/venvs/x86_64-cu126`
 - `~/columba/venvs/aarch64-cpu`
 
-If an nv node has a CUDA driver failure, add `--exclude-nodes xgpe6` to a
-submission. Exclusions accept only node names in the permitted lanes. They
+`xgpe6` is excluded from training by default after its CUDA driver failure.
+`--exclude-nodes` can replace the exclusion list. Exclusions accept only node names in the permitted lanes. They
 cannot broaden the GPU request or select restricted hardware.
 
 ARM export bundle:
@@ -78,3 +80,23 @@ lists starting with `bench_ncnn.py`. Commands run sequentially in one job.
 Keep project storage below 80 GB. Remove old project checkout snapshots and
 cache entries only after their jobs finish and the coordinator agrees which
 runs to retain. Dataset, weight and run paths outside `~/columba/` are rejected.
+
+Round-2 E2E and resume checks:
+
+```sh
+python -m cluster.sweep submit --recipes training/recipes/smoke-e2e.yaml --gpu-limit 2 --cpu-limit 1
+python -m cluster.sweep fetch --recipes training/recipes/smoke-e2e.yaml --leaderboard outputs/ws3/leaderboard-smoke.csv
+python -m cluster.sweep submit --recipes training/recipes/smoke-distill-resume.yaml --stop-after-epoch 1 --gpu-limit 2 --cpu-limit 1
+python -m cluster.sweep submit --recipes training/recipes/smoke-distill-resume.yaml --gpu-limit 2 --cpu-limit 1
+python -m cluster.sweep gpu-probe --probe-node xgpe6 --gpu-limit 2 --cpu-limit 1
+```
+
+The first distillation submission intentionally exits after saving epoch one.
+The second uses the unchanged recipe and last.pt, re-stages the teacher/data,
+and resumes the remaining epochs. `--stop-after-epoch` is permitted only for
+smoke IDs and must precede the final epoch. It does not become part of the
+recipe or checkpoint args. `run.json.attempts` retains both attempts, and
+`checkpoint_relocation` records the old and new data/teacher paths. The probe
+pins an approved nv node and explicitly bypasses the training exclusion list;
+it prints nvidia-smi and CUDA availability without training or changing the
+node. Its report lives in `~/columba/runs/gpu-probes/<node>/run.json`.
