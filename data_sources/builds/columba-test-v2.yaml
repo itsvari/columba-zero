@@ -1,0 +1,25 @@
+# Frozen test set (PLAN.md 5.1, WS2 task 3). Never train or tune thresholds on it.
+# Every image was looked at on contact sheets; `selection` records the decision per image.
+name: columba-test-v2
+kind: test
+taxonomy: single
+sources:
+  - {name: roboflow-yolo1199}
+  - {name: coco-birds}
+  - {name: coco-negatives}
+  - {name: inaturalist}
+selection: data_sources/columba-test-v2.selection.jsonl
+phash_max_distance: 10
+class_map: {bird: pigeon}     # only applied to `kind: pigeon` COCO images, checked to be feral pigeons
+review: >-
+  Reviewed image by image on contact sheets by Claude Opus 5.5 (image-capable agent), 2026-10-14.
+  Pigeon boxes are the sources' human boxes (Roboflow yolo1199 v1, COCO val2017); images with
+  missing, misplaced or multi-bird boxes, Roboflow mosaics and noise-augmented copies were left out.
+  NEA images were left out (stretched to 416x416 and heavily augmented). Other-bird images are
+  COCO val2017 bird images and iNaturalist research-grade photos checked to contain no pigeon;
+  empty scenes are COCO val2017 street scenes checked to contain no bird.
+notes: >-
+  classes_present lists every bird in the image (species name, or other_bird when unknown);
+  [] = empty scene. Pigeon positives come from human-labelled sources only. Whole capture
+  sessions (scene_rules in data_sources/roboflow-yolo1199.yaml, e.g. the depot site) that
+  contribute test images are excluded from every training dataset.

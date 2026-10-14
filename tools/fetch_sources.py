@@ -164,6 +164,15 @@ def roboflow_original_stem(stem: str) -> str:
     return match.group("original") if match else stem
 
 
+def scene_for(source: Record, original_stem: str) -> str:
+    """Scene id of a Roboflow original: the first matching `scene_rules` entry (a regex on the
+    original stem naming a capture session, e.g. frames of one video), else the stem itself."""
+    for rule in source.get("scene_rules", []):
+        if re.search(rule["pattern"], original_stem):
+            return f"{source['name']}-{rule['scene']}"
+    return f"{source['name']}-{original_stem}"
+
+
 def yolo_to_xyxy(line: str, width: int, height: int) -> tuple[int, list[float]] | None:
     parts = line.split()
     if len(parts) != 5:  # polygons or keypoints are not used by these sources
@@ -210,12 +219,13 @@ def roboflow_records(source: Record, export_root: Path) -> Iterator[Record]:
                     continue
                 boxes.append({"class": mapped, "xyxy": parsed[1]})
             original = roboflow_original_stem(image_path.stem)
+            scene = scene_for(source, original)
             yield {
                 "id": f"{source['name']}-{image_path.stem}",
                 "file": image_path.relative_to(export_root.parent).as_posix(),
                 "source": source["name"],
                 "source_id": image_path.stem,
-                "scene_id": f"{source['name']}-{original}",
+                "scene_id": scene,
                 "license": source["license"],
                 "attribution": source["attribution"],
                 "url": source["url"],

@@ -347,6 +347,8 @@ def build_test(spec: Record, root: Path) -> Path:
     entries = []
     for item, choice in chosen:
         item["group"] = groups[item["id"]]
+        # Images without source labels (iNaturalist) get their (empty) label from the review.
+        item["label_origin"] = choice.get("label_origin") or item.get("label_origin") or "human"
         kind = choice["kind"]
         if kind not in SELECTION_KINDS:
             raise DatasetError(f"{item['id']}: unknown selection kind {kind!r}")

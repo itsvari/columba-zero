@@ -14,3 +14,18 @@ license: CC-BY-4.0
 attribution: "yolo-bl12d, \"Pigeons Detection\" v1, Roboflow Universe, CC BY 4.0, https://universe.roboflow.com/yolo-bl12d/pigeons-detection-l7u3l"
 classes:
   Pigeon: pigeon
+# Capture sessions found by reviewing contact sheets (2026-10-14). Images of one session
+# share a scene id, so they stay in one split even when their phashes differ.
+scene_rules:
+  - {pattern: "^WhatsApp-(Image|Video)", scene: depot-site}     # one industrial depot, phone photos and video frames
+  - {pattern: "^IMG[_-]", scene: loft-img}                       # one pigeon loft, phone photos
+  - {pattern: "^c-", scene: loft-c}                              # nest-box loft
+  - {pattern: "^x-", scene: loft-x}                              # nest-box loft
+  - {pattern: "^yt-CD", scene: video-roof}                       # frames of one roof video
+  - {pattern: "^yt-LfYV", scene: video-lfyv}                     # frames of one video
+  - {pattern: "^pigeon-on-the-road", scene: web-road-series}
+  - {pattern: "^pigeon-on-the-ground", scene: web-ground-series}
+  - {pattern: "^pigeons-gather-outside", scene: web-gather-series}
+  - {pattern: "^pigeon-on-the-roof", scene: web-roof-series}
+  - {pattern: "^\\d+-2023-09-", scene: shed-camera}              # one low fixed camera by a shed, many frames
+  - {pattern: "^484\\d\\d_0$", scene: pavement-series-484}       # one phone series of a pigeon on a pavement
