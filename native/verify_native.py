@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -336,7 +337,7 @@ def main() -> None:
     parser.add_argument("--split", default="test")
     parser.add_argument("--confidence", type=float, default=0.25)
     parser.add_argument("--threads", type=int, default=4)
-    parser.add_argument("--compute", choices=("fp32", "fp16"), default="fp32")
+    parser.add_argument("--compute", choices=("fp32", "fp16", "package"), default="fp32")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--native-only", action="store_true", help=argparse.SUPPRESS)
     arguments = parser.parse_args()
@@ -358,7 +359,9 @@ def main() -> None:
         native = cast(
             NativeModel,
             columba_native.Detector(
-                str(arguments.model.resolve()), arguments.threads, compute=arguments.compute
+                str(arguments.model.resolve()),
+                arguments.threads,
+                compute=None if arguments.compute == "package" else arguments.compute,
             ),
         )
         predictions = []
@@ -406,9 +409,9 @@ def main() -> None:
         first_frame,
         arguments.confidence,
         arguments.threads,
-        arguments.compute,
+        actual_predictions["compute"],
     )
-    informational = arguments.compute == "fp16"
+    informational = actual_predictions["compute"] == "fp16"
     minimum_iou = FP16_MINIMUM_MATCH_IOU if informational else MINIMUM_MATCH_INTERSECTION_OVER_UNION
     maximum_confidence_delta = (
         FP16_MAXIMUM_CONFIDENCE_DELTA if informational else MAXIMUM_MATCH_CONFIDENCE_DELTA
@@ -475,6 +478,10 @@ def main() -> None:
         "label": "measured",
         "host": platform.node(),
         "architecture": platform.machine(),
+        "threads": arguments.threads,
+        "pinned_cores": sorted(os.sched_getaffinity(0))
+        if hasattr(os, "sched_getaffinity")
+        else None,
         "model": str(arguments.model.resolve()),
         "reference": str(arguments.reference.resolve()),
         "reference_backend": "Ultralytics NCNN"
@@ -486,6 +493,8 @@ def main() -> None:
         "decode": description.decode,
         "images": len(images),
         "compute": actual_predictions["compute"],
+        "requested_compute": arguments.compute,
+        "package_quantization": description.quantisation,
         "compute_flags": actual_predictions["compute_flags"],
         "informational": informational,
         "failures": failures,

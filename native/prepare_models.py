@@ -32,12 +32,16 @@ class ExportModel(Protocol):
 
     def save(self, filename: str) -> None: ...
     def export(
-        self, *, format: str, imgsz: tuple[int, int], device: str, quantize: None
+        self, *, format: str, imgsz: tuple[int, int], device: str, quantize: int | None
     ) -> str: ...
 
 
 def export_package(
-    checkpoint: Path, destination: Path, input_hw: tuple[int, int], one_to_one: bool
+    checkpoint: Path,
+    destination: Path,
+    input_hw: tuple[int, int],
+    one_to_one: bool,
+    quantisation: str = "fp32",
 ) -> Path:
     from ultralytics import YOLO
 
@@ -50,11 +54,19 @@ def export_package(
         head.cv2, head.cv3 = head.one2one_cv2, head.one2one_cv3
         head.one2one_cv2, head.one2one_cv3 = None, None
         model.save(str(destination))
-    exported = Path(model.export(format="ncnn", imgsz=input_hw, device="cpu", quantize=None))
+    exported = Path(
+        model.export(
+            format="ncnn",
+            imgsz=input_hw,
+            device="cpu",
+            quantize=16 if quantisation == "fp16" else None,
+        )
+    )
     metadata_path = exported / "metadata.yaml"
     metadata = cast(
         dict[str | int, MetadataValue], yaml.safe_load(metadata_path.read_text("utf-8"))
     )
+    single_class_pigeon = metadata.get("names") == {0: "pigeon"}
     metadata["columba"] = {
         "model_id": destination.stem,
         "decode": "yolo26" if one_to_one else "yolo11",
@@ -66,9 +78,9 @@ def export_package(
         "output_layout": "1x(4+nc)xN cxcywh-px sigmoid-scores",
         "nms": {"iou": 0.7, "agnostic": False},
         "max_det": 300,
-        "quantization": "fp32",
-        "taxonomy": "coco-verification-only",
-        "trigger_classes": [],
+        "quantization": quantisation,
+        "taxonomy": "single" if single_class_pigeon else "coco-verification-only",
+        "trigger_classes": ["pigeon"] if single_class_pigeon else [],
     }
     metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
     return exported
@@ -79,12 +91,17 @@ def main() -> None:
     parser.add_argument("--yolo11", type=Path, required=True)
     parser.add_argument("--yolo26", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--input-size", type=int, nargs=2, action="append", metavar=("H", "W"))
+    parser.add_argument("--quantization", choices=("fp32", "fp16"), default="fp32")
     arguments = parser.parse_args()
     arguments.output.mkdir(parents=True, exist_ok=True)
     shutil.copy2(arguments.yolo11.resolve(), arguments.output / "reference-yolo11n.pt")
     shutil.copy2(arguments.yolo26.resolve(), arguments.output / "reference-yolo26n.pt")
     torch.set_num_threads(2)
-    for input_hw in INPUT_SIZES:
+    input_sizes = (
+        [tuple(size) for size in arguments.input_size] if arguments.input_size else INPUT_SIZES
+    )
+    for input_hw in input_sizes:
         for name, checkpoint, one_to_one in (
             ("yolo11n", arguments.yolo11, False),
             ("yolo26n", arguments.yolo26, False),
@@ -92,7 +109,11 @@ def main() -> None:
         ):
             destination = arguments.output / f"{name}-{input_hw[0]}x{input_hw[1]}.pt"
             exported = export_package(
-                checkpoint.resolve(), destination.resolve(), input_hw, one_to_one
+                checkpoint.resolve(),
+                destination.resolve(),
+                input_hw,
+                one_to_one,
+                arguments.quantization,
             )
             print(exported, flush=True)
 

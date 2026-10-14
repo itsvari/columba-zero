@@ -207,6 +207,8 @@ float32 ULP and the class agrees, still applying the confidence tolerance. It
 records this case explicitly. It never removes unmatched degenerate boxes.
 
 Parity always explicitly selects FP32 unless `--compute fp16` is supplied.
+`--compute package` passes `None` to the extension and records the resolved
+mode and package quantisation. A resolved FP16 mode is informational too.
 FP16 arithmetic checks are informational, exit successfully despite reported
 mismatches, and use looser IoU ≥ 0.7 and score difference ≤ 0.10, with equal
 classes and counts still required. The report also records failures at the
@@ -258,3 +260,17 @@ image/package comparisons. FP16 has two count-mismatch pairs and a baseline
 degenerate-box mismatch; results remain informational. Native FP16 v1-2
 640×640 extract p50/p95 is 14.441/17.335 ms on the shared M2 Pro, consistent
 with WS4's 14.515/17.512 ms for the same model/size and NCNN profile.
+
+For trained pigeon checkpoints, `native.prepare_models` accepts
+`--input-size 384 640 --quantization fp32` or `fp16`. The latter exports FP16
+weights with `quantize=16` and sets the corresponding C8 package default.
+Single-class pigeon names produce `taxonomy: single` and pigeon triggers.
+
+`native/run_frozen_parity.sh ARTIFACT_ROOT FROZEN_DATASET PROXY_IMAGES REPORT_DIR`
+runs four packages against both datasets, forcing FP32 on FP32 exports and
+using the default on FP16 exports. It records every case before returning
+failure if any required FP32 check failed. The repeatable arm bundle is
+`native/run_frozen_arm_job.sh`; inspect its scratch paths and check project
+Slurm capacity before submitting. It verifies the dataset archive and freeze,
+reuses WS4 NCNN and WS8 OpenCV prefixes, builds, runs CTest and native/runtime
+tests, then pins all parity cases to cores 0–3 in one `cz-ws8-parity` job.

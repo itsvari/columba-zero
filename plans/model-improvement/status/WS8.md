@@ -1,10 +1,10 @@
 # WS8 — Native C++ detector
 
-- State: done, including round-2 precision changes
+- State: round-3 frozen parity in progress
 - Branch: `ws8/native`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-14
-- Rebased onto main: `c74cbd4`, including WS9 `b902e04` and CONTRACTS v1.6.
+- Rebased onto main: `2cb3308`, including native mypy and Ruff coverage.
 
 ## Done
 
@@ -45,8 +45,8 @@
 
 ## In progress
 
-Nothing. Round 2 includes compute precision, FP16 arithmetic smoke parity,
-Mac latency comparison and stable dependency paths. No new cluster job ran.
+Round 3 verifies frozen columba-test-v2 and the 63-image old-split proxy on
+Mac and in one bundled arm job, using trained single-class pigeon checkpoints.
 
 ## Blockers and requests
 
