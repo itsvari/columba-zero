@@ -1,6 +1,6 @@
 # WS6 — Challenger architectures
 
-- State: done, step 1 only
+- State: done — closed by coordinator after the latency gate (no challenger training)
 - Branch: `ws6/challengers`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-14
@@ -82,3 +82,14 @@ Scratch models, images, references and logs remain in
 `/Users/vari/.t3/worktrees/columba-zero/t3-7b538c13/outputs/ws6/` and cluster
 `~/columba/scratch/ws6/`. Approximate **measured Mac footprint 5 GB**.
 Pi estimates are based on YOLO calibration; challenger op mixes may differ.
+
+## Coordinator decision (2026-10-14)
+
+WS6 is closed under its time box ("stop after the latency gate if no
+challenger survives"). D-FINE-N and RF-DETR Nano fail NCNN export.
+NanoDet-Plus-m passes the 100 ms hard limit only in fp16, with ~5 ms estimated
+headroom, fails the 70 ms target, fails fp16 parity, and is ~2.6x slower than
+YOLO26n at 384x640. That is not a survivor worth 3-seed training: any accuracy
+gain would have to come with a speed cost the YOLO main line doesn't pay. No
+`chal-*` recipes will be trained. Revisit only if a later NCNN/PNNX release
+supports TopK/Gather/Tile for the DETR models.
