@@ -714,7 +714,23 @@ def build_train(spec: Record, root: Path) -> Path:
     style_report: Record = {}
     if spec.get("style_copies"):
         copies, style_report = style_copies(root, spec, entries)
+        # A copy can land near a test image by chance (e.g. a dark noir_night image); the
+        # train/test guarantee covers copies too, so those copies are dropped.
+        copy_nearest = nearest_distances(
+            {copy["id"]: [copy["phash"], copy["phash_mirror"]] for copy, *_ in copies},
+            {key: list(value) for key, value in test_hashes.items()},
+        )
+        near = {
+            key
+            for key, (distance, _) in copy_nearest.items()
+            if distance <= spec["test_exclusion_distance"]
+        }
+        copies = [entry for entry in copies if entry[0]["id"] not in near]
+        style_report["dropped_near_test"] = len(near)
         entries = [*entries, *copies]
+        kept_copy_distances = [copy_nearest[copy["id"]][0] for copy, *_ in copies]
+        if min_distance is not None and kept_copy_distances:
+            min_distance = min(min_distance, *kept_copy_distances)
     extra = {
         "composition": split_composition(
             [e for e in entries if e[0].get("style", "original") == "original"]
@@ -851,6 +867,7 @@ def make_style_entries(
             "attribution": attribution,
             "sha256": result["sha256"],
             "phash": result["phash"],
+            "phash_mirror": result["phash_mirror"],
             "width": result["width"],
             "height": result["height"],
             "style": job["style"],

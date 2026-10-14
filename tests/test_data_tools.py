@@ -671,7 +671,9 @@ class PhaseTwoBuildTests(DatasetFixture):
         originals = {r["id"]: r for r in records if r["style"] == "original"}
         copies = [r for r in records if r["style"] != "original"]
         train_originals = [r for r in originals.values() if r["split"] == "train"]
-        self.assertEqual(len(copies), len(train_originals))
+        dropped = summary["style_copies"]["dropped_near_test"]
+        self.assertEqual(len(copies) + dropped, len(train_originals))
+        self.assertGreater(summary["build_report"]["min_phash_distance_to_test"], 14)
         for copy in copies:
             original = originals[copy["derived_from"]]
             self.assertEqual((copy["split"], copy["group"]), ("train", original["group"]))
