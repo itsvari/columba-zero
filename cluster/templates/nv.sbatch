@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --partition=gpu-long
-#SBATCH --gres=gpu:nv:1
+#SBATCH --gres=gpu:1
 #SBATCH --nice=1000
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
@@ -21,8 +21,9 @@ trap finish_job EXIT
 cd "$COLUMBA_CHECKOUT"
 nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv
 bash cluster/bootstrap.sh --gpu-smoke
+environment="$(bash cluster/bootstrap.sh --gpu --print-env)"
 run_arguments=(--recipe "$COLUMBA_RECIPE" --seed "$COLUMBA_SEED")
 if [[ -n "${COLUMBA_STOP_AFTER_EPOCH:-}" ]]; then
     run_arguments+=(--stop-after-epoch "$COLUMBA_STOP_AFTER_EPOCH")
 fi
-"$HOME/columba/venvs/x86_64-cu126/bin/python" -m cluster.run_job "${run_arguments[@]}"
+"$environment/bin/python" -m cluster.run_job "${run_arguments[@]}"

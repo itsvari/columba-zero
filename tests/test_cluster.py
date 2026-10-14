@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import csv
+import io
 import json
+import tarfile
 import tempfile
 import unittest
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import cast
 from unittest.mock import Mock, patch
@@ -18,7 +21,11 @@ from cluster.artifacts import (
     repository_relative,
     update_leaderboard,
 )
-from cluster.hardware import select_batch
+from cluster.deployment import READY_FILE, publish_archive
+from cluster.environment import environment_for
+from cluster.gpu_policy import available_request, load_policy
+from cluster.gpu_selection import GPU_CONSTRAINTS, gpu_inventory, parse_inventory, request_for
+from cluster.hardware import allowed_gpu, select_batch
 from cluster.recipe import load_recipe, resolve_teacher, validate_recipe
 from cluster.run_job import (
     Trainer,
@@ -56,6 +63,18 @@ from cluster.sweep import (
 REPOSITORY = Path(__file__).resolve().parents[1]
 BASELINE_RECIPE = REPOSITORY / "training/recipes/baseline-repro.yaml"
 SMOKE_RECIPE = REPOSITORY / "training/recipes/smoke-5ep.yaml"
+
+GPU_INVENTORY = """gpu-long|xgpd[2-3]|gpu:nv:2|cuda70,titanv
+gpu-long|xgpe4|gpu:nv:1|cuda75,titanrtx
+gpu-long|xgpf[6-11]|gpu:nv:1|cuda75,t4
+gpu-long|xgpg[4-7]|gpu:a100-40:1|cuda80,a100
+gpu-long|xgph[8-9]|gpu:a100-80:1|cuda80,a100
+gpu-long|xgpi[11-12]|gpu:h100-47:4|cuda90,h100
+gpu-long|xgpi[6-10]|gpu:h100-96:2|cuda90,h100
+gpu|xgpg[4-7]|gpu:a100-40:1|cuda80,a100
+gpu|xgpj0|gpu:a100-80:1|cuda80,a100,xgpj
+gpu|xgpk0|gpu:h200-141:4|cuda80,h200
+"""
 
 
 def sample_recipe() -> dict[str, JsonValue]:
@@ -108,7 +127,7 @@ class ClusterTests(unittest.TestCase):
             ("teacher", "../../best.pt"),
             ("dataset", "columba-test-v2"),
             ("lane", "a100"),
-            ("gpu_constraint", "h100"),
+            ("gpu_constraint", "v100"),
             ("seeds", [True]),
             ("seeds", [0, 0]),
             ("allow_missing_evaluation", True),
@@ -120,6 +139,308 @@ class ClusterTests(unittest.TestCase):
                 validate_recipe(
                     {**sample_recipe(), "train": {"imgsz": 640, "epochs": 5, argument: "forbidden"}}
                 )
+
+    def test_new_gpu_recipe_selectors_and_per_seed_overrides(self) -> None:
+        for choice in GPU_CONSTRAINTS:
+            with self.subTest(choice=choice):
+                recipe = validate_recipe({**sample_recipe(), "gpu_constraint": choice})
+                self.assertEqual(recipe.constraint_for_seed(0), choice)
+        recipe = validate_recipe(
+            {
+                **sample_recipe(),
+                "seed_gpu_constraints": cast(JsonValue, {0: "a100-80", 1: "h100-47", 2: "h200"}),
+            }
+        )
+        self.assertEqual(recipe.constraint_for_seed(2), "h200")
+        any_seed = validate_recipe(
+            {
+                **sample_recipe(),
+                "gpu_constraint": "a100-80",
+                "seed_gpu_constraints": cast(JsonValue, {0: None}),
+            }
+        )
+        self.assertIsNone(any_seed.constraint_for_seed(0))
+        self.assertEqual(any_seed.constraint_for_seed(1), "a100-80")
+
+    def test_sinfo_inventory_and_every_gpu_request(self) -> None:
+        with patch(
+            "cluster.gpu_selection.subprocess.run", return_value=Mock(stdout=GPU_INVENTORY)
+        ) as process:
+            offers = gpu_inventory()
+        self.assertEqual(process.call_args.args[0][0], "sinfo")
+        expected = {
+            "t4": ("gpu:nv:1", "t4"),
+            "titanrtx": ("gpu:nv:1", "titanrtx"),
+            "titanv": ("gpu:nv:1", "titanv"),
+            "a100-40": ("gpu:a100-40:1", None),
+            "a100-80": ("gpu:a100-80:1", None),
+            "h100-47": ("gpu:h100-47:1", None),
+            "h100-96": ("gpu:h100-96:1", None),
+            "h200": ("gpu:h200-141:1", None),
+            "a100": ("gpu:1", "a100"),
+            "h100": ("gpu:1", "h100"),
+        }
+        for choice, (resources, feature) in expected.items():
+            with self.subTest(choice=choice):
+                request = request_for(choice, offers)
+                self.assertEqual(request.resources, resources)
+                self.assertEqual(request.constraint, feature)
+                self.assertEqual(
+                    request.partitions, ("gpu",) if choice == "h200" else ("gpu-long",)
+                )
+                self.assertEqual(
+                    request.time_limit, "03:00:00" if choice == "h200" else "3-00:00:00"
+                )
+        self.assertTrue(any(offer.node == "xgpf10" for offer in offers))
+        self.assertTrue(any(offer.node == "xgpj0" for offer in offers))
+
+    def test_untyped_any_gpu_includes_arm_and_short_only_h200(self) -> None:
+        offers = parse_inventory(GPU_INVENTORY)
+        request = request_for(None, offers)
+        self.assertEqual(request.resources, "gpu:1")
+        self.assertEqual(request.partitions, ("gpu-long", "gpu"))
+        self.assertEqual(request.time_limit, "03:00:00")
+        self.assertIn("h200", request.constraint or "")
+        arm = request_for("a100-80", offers, required_node="xgpj0")
+        self.assertEqual(arm.resources, "gpu:a100-80:1")
+        self.assertEqual(arm.partitions, ("gpu",))
+        self.assertEqual(arm.time_limit, "03:00:00")
+        with self.assertRaises(ValueError):
+            request_for("h100", offers, required_node="xgpj0")
+        with self.assertRaises(ValueError):
+            request_for("a100-80", offers, required_node="xgpj0", excluded_nodes=["xgpj0"])
+
+    def test_budget_counts_devices_across_types_and_nodes(self) -> None:
+        jobs = parse_queue(
+            "1|cz-a|RUNNING|gpu-long|gres/gpu:a100-80:2|2\n"
+            "2|cz-b|PENDING|gpu|gres/gpu:h100-47:3|1\n"
+            "3|moonshot-idle|RUNNING|gpu|gres/gpu:h200-141:8|1\n"
+        )
+        self.assertEqual(jobs[0].gpu_count, 4)
+        self.assertEqual(jobs[1].gpu_count, 3)
+        self.assertTrue(Budget().allows(jobs, "nv"))
+        self.assertFalse(Budget().allows(jobs, "nv", gpus_requested=2))
+        self.assertTrue(Budget().allows(jobs, "arm"))
+        self.assertFalse(
+            Budget().allows((*jobs, Job("4", "cz-c", "RUNNING", "gpu", "gpu:1")), "nv")
+        )
+        self.assertFalse(Budget().allows([Job("5", "cz-unknown", "RUNNING", "gpu", "N/A")], "nv"))
+
+    def test_scheduler_emits_typed_and_untyped_requests_without_shell_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for choice in (*GPU_CONSTRAINTS, None):
+                submission: Submission = {
+                    "name": "cz-request",
+                    "lane": "nv",
+                    "constraint": choice,
+                    "script": "unchanged script",
+                    "run_path": str(root / "columba/runs/a"),
+                }
+                with (
+                    self.subTest(choice=choice),
+                    patch("cluster.slurm.Path.home", return_value=root),
+                    patch(
+                        "cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)
+                    ),
+                    patch(
+                        "cluster.slurm.subprocess.run",
+                        side_effect=[Mock(stdout=""), Mock(stdout="123\n")],
+                    ) as process,
+                ):
+                    self.assertEqual(
+                        submit_pending([submission], Budget())[0]["status"], "submitted"
+                    )
+                command = process.call_args.args[0]
+                request = request_for(choice or "t4", parse_inventory(GPU_INVENTORY))
+                self.assertTrue(set(request.arguments()).issubset(command))
+                self.assertIn("--nice=1000", command)
+                self.assertEqual(process.call_args.kwargs["input"], "unchanged script")
+
+    def test_policy_prefers_free_capacity_and_keeps_arm_available(self) -> None:
+        policy = load_policy()
+        offers = parse_inventory(
+            "gpu-long xgph8 gpu:a100-80:1 gpu:a100-80:1(IDX:0) cuda80,a100 mixed\n"
+            "gpu-long xgpi19 gpu:h100-47:4 gpu:h100-47:3(IDX:0-2) cuda90,h100 mixed\n"
+            "gpu xgpj0 gpu:a100-80:1 gpu:a100-80:0(IDX:N/A) cuda80,a100 mixed\n"
+            "gpu xgpf2 gpu:nv:1 gpu:nv:0(IDX:N/A) cuda75,t4 idle\n"
+            "gpu-long xgpe6 gpu:nv:1 gpu:nv:0(IDX:N/A) cuda75,titanrtx idle\n"
+            "gpu xgpf0 gpu:nv:1 gpu:nv:0(IDX:N/A) cuda75,t4 reboot^\n"
+        )
+        light = available_request(
+            offers, policy.preferences("yolo11n.pt", 640, False, 1), excluded_nodes=["xgpe6"]
+        )
+        self.assertIsNotNone(light)
+        assert light is not None
+        self.assertEqual(light[0].resources, "gpu:nv:1")
+        self.assertEqual(light[0].constraint, "t4")
+        self.assertEqual(light[0].time_limit, "03:00:00")
+        self.assertEqual(light[1], ("xgpf2",))
+        heavy = available_request(offers, policy.preferences("yolo11x.pt", 640, False, 1))
+        assert heavy is not None
+        self.assertEqual(heavy[0].resources, "gpu:h100-47:1")
+        arm = available_request(offers, ["xgpj0"])
+        assert arm is not None
+        self.assertEqual(arm[1], ("xgpj0",))
+        self.assertEqual(arm[0].time_limit, "03:00:00")
+        self.assertIsNone(available_request(offers, ["a100-40"]))
+        self.assertIsNone(available_request(offers, ["t4"], allow_short_partition=False))
+        for model, size, teacher, hours in (
+            ("yolo11s.pt", 800, False, 1),
+            ("yolo11n.pt", 640, True, 1),
+            ("yolo11n.pt", 640, False, 5),
+        ):
+            self.assertEqual(policy.preferences(model, size, teacher, hours)[0], "h100-47")
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "policy.json"
+            invalid.write_text('{"light_preferences": ["v100"]}')
+            with self.assertRaises(ValueError):
+                load_policy(invalid)
+
+    def test_automatic_batch_does_not_reuse_pending_capacity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            offers = parse_inventory("gpu-long xgpf6 gpu:nv:1 gpu:nv:0(IDX:N/A) t4 idle")
+            submissions: list[Submission] = [
+                {
+                    "name": f"cz-{index}",
+                    "lane": "nv",
+                    "constraint": None,
+                    "script": "script",
+                    "run_path": str(root / f"columba/runs/{index}"),
+                }
+                for index in range(2)
+            ]
+            with (
+                patch("cluster.slurm.Path.home", return_value=root),
+                patch("cluster.slurm.gpu_inventory", return_value=offers),
+                patch("cluster.slurm.queue", return_value=()),
+                patch("cluster.slurm.subprocess.run", return_value=Mock(stdout="123\n")) as process,
+            ):
+                results = submit_pending(submissions, Budget())
+            self.assertEqual(
+                [result["status"] for result in results], ["submitted", "no free preferred GPU"]
+            )
+            self.assertEqual(process.call_count, 1)
+
+    def test_pending_retarget_only_cancels_requested_expired_pending_job(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            submission: Submission = {
+                "name": "cz-request",
+                "lane": "nv",
+                "constraint": "a100-80",
+                "script": "script",
+                "run_path": str(root / "columba/runs/example"),
+                "base_model": "yolo11x.pt",
+            }
+            pending = Job(
+                "123",
+                "cz-request",
+                "PENDING",
+                "gpu-long",
+                "gres/gpu:a100-80:1",
+                1,
+                datetime.now() - timedelta(hours=3),
+            )
+            unrelated = Job("999", "moonshot-other", "RUNNING", "gpu", "gpu:8")
+            with (
+                patch("cluster.slurm.Path.home", return_value=root),
+                patch("cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
+                patch("cluster.slurm.queue", side_effect=[(pending, unrelated), (unrelated,)]),
+                patch(
+                    "cluster.slurm.subprocess.run", side_effect=[Mock(), Mock(stdout="456\n")]
+                ) as process,
+            ):
+                result = submit_pending([submission], Budget(), 2)[0]
+            self.assertEqual(result["retargeted_from"], "123")
+            self.assertEqual(
+                process.call_args_list[0].args[0], ["scancel", "--state=PENDING", "123"]
+            )
+            self.assertIn("--gres=gpu:h100-47:1", process.call_args.args[0])
+            for active in (
+                replace(pending, state="RUNNING"),
+                replace(pending, submitted_at=datetime.now()),
+            ):
+                with (
+                    patch("cluster.slurm.Path.home", return_value=root),
+                    patch(
+                        "cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)
+                    ),
+                    patch("cluster.slurm.queue", return_value=(active,)),
+                    patch("cluster.slurm.subprocess.run") as process,
+                ):
+                    self.assertEqual(
+                        submit_pending([submission], Budget(), 2)[0]["status"], "active"
+                    )
+                    process.assert_not_called()
+            with (
+                patch("cluster.slurm.Path.home", return_value=root),
+                patch("cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
+                patch(
+                    "cluster.slurm.queue",
+                    side_effect=[(pending,), (replace(pending, state="RUNNING"),)],
+                ),
+                patch("cluster.slurm.subprocess.run") as process,
+            ):
+                self.assertEqual(submit_pending([submission], Budget(), 2)[0]["status"], "active")
+                self.assertEqual(process.call_count, 1)
+            with (
+                patch("cluster.slurm.Path.home", return_value=root),
+                patch("cluster.slurm.gpu_inventory", return_value=()),
+                patch("cluster.slurm.queue", return_value=(pending,)),
+                patch("cluster.slurm.subprocess.run") as process,
+            ):
+                self.assertEqual(submit_pending([submission], Budget(), 2)[0]["status"], "active")
+                process.assert_not_called()
+
+    def test_gpu_guards_and_large_memory_batches(self) -> None:
+        names = (
+            "NVIDIA A100-PCIE-40GB",
+            "NVIDIA A100-SXM4-80GB",
+            "NVIDIA H100 NVL",
+            "NVIDIA H100 80GB HBM3",
+            "NVIDIA H200",
+            "NVIDIA TITAN V",
+            "Tesla T4",
+        )
+        self.assertTrue(all(allowed_gpu(name) for name in names))
+        self.assertFalse(allowed_gpu("NVIDIA RTX 4090"))
+        for memory_gb, expected in ((40, 12), (47, 16), (80, 24), (96, 32), (141, 48)):
+            with self.subTest(memory_gb=memory_gb):
+                self.assertEqual(select_batch(memory_gb, "yolo11x.pt", 640), expected)
+                self.assertEqual(select_batch(memory_gb, "yolo11n.pt", 640), 64)
+
+    def test_environment_selection_preserves_cpu_and_x86_pins(self) -> None:
+        self.assertEqual(environment_for("x86_64", True).directory_name, "x86_64-cu126")
+        self.assertEqual(environment_for("x86_64", True).torch_version, "2.8.0")
+        self.assertEqual(environment_for("aarch64", True).directory_name, "aarch64-cu126")
+        self.assertEqual(environment_for("aarch64", True).torch_version, "2.9.0")
+        self.assertEqual(environment_for("aarch64", False).directory_name, "aarch64-cpu")
+        self.assertEqual(environment_for("aarch64", False).torch_version, "2.8.0")
+
+    def test_atomic_checkout_publication_never_rewrites_a_live_checkout(self) -> None:
+        buffer = io.BytesIO()
+        payload = b"original bootstrap"
+        with tarfile.open(fileobj=buffer, mode="w") as archive:
+            member = tarfile.TarInfo("cluster/bootstrap.sh")
+            member.size = len(payload)
+            archive.addfile(member, io.BytesIO(payload))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            published = publish_archive(root, "a" * 16, "commit", io.BytesIO(buffer.getvalue()))
+            script = published / "cluster/bootstrap.sh"
+            original_inode = script.stat().st_ino
+            self.assertTrue((published / READY_FILE).exists())
+            self.assertEqual(
+                publish_archive(root, "a" * 16, "commit", io.BytesIO(b"invalid")), published
+            )
+            self.assertEqual(script.stat().st_ino, original_inode)
+            self.assertEqual(script.read_bytes(), payload)
+            with self.assertRaises(tarfile.ReadError):
+                publish_archive(root, "b" * 16, "commit", io.BytesIO(b"invalid"))
+            self.assertFalse((root / ("b" * 16)).exists())
+            self.assertFalse(any(path.name.startswith(".bbbb") for path in root.iterdir()))
 
     def test_recipe_batch_override(self) -> None:
         self.assertIsNone(validate_recipe(sample_recipe()).batch_override)
@@ -207,6 +528,7 @@ class ClusterTests(unittest.TestCase):
             ]
             with (
                 patch("cluster.slurm.Path.home", return_value=root),
+                patch("cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
                 patch("cluster.slurm.subprocess.run", side_effect=calls) as process,
             ):
                 results = submit_pending([submission, second], Budget(1, 1))
@@ -232,6 +554,7 @@ class ClusterTests(unittest.TestCase):
             }
             with (
                 patch("cluster.slurm.Path.home", return_value=root),
+                patch("cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
                 patch("cluster.slurm.subprocess.run", return_value=Mock(stdout="")) as process,
             ):
                 self.assertEqual(submit_pending([submission], Budget())[0]["status"], "done")
@@ -261,7 +584,7 @@ class ClusterTests(unittest.TestCase):
         submission = submission_for(
             runs[2], Path("/home/user/columba"), Path("/checkout"), "commit"
         )
-        self.assertIn("--gres=gpu:nv:1", submission["script"])
+        self.assertIn("--gres=gpu:1", submission["script"])
         self.assertIn("--nice=1000", submission["script"])
         self.assertEqual(submission["constraint"], "titanv")
         self.assertNotEqual(job_name("x" * 100 + "a", 0), job_name("x" * 100 + "b", 0))
@@ -273,9 +596,12 @@ class ClusterTests(unittest.TestCase):
         submission = submission_for(run, root, checkout, "commit", constraint="titanv")
         self.assertEqual(submission["constraint"], "titanv")
         self.assertIn("constraint_override", submission["script"])
+        self.assertIsNone(
+            submission_for(run, root, checkout, "commit", constraint="null")["constraint"]
+        )
         self.assertEqual(submission_for(run, root, checkout, "commit")["constraint"], "titanrtx")
         with self.assertRaises(ValueError):
-            submission_for(run, root, checkout, "commit", constraint="a100")
+            submission_for(run, root, checkout, "commit", constraint="v100")
 
     def test_done_requires_all_artifacts_and_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -456,14 +782,15 @@ class ClusterTests(unittest.TestCase):
             )
         self.assertIn("xgpe6", excluded_nodes())
         self.assertIn("xgpe2", excluded_nodes())
+        self.assertNotIn("xgpj0", excluded_nodes())
 
     def test_gpu_probe_pins_only_an_allowed_nv_node(self) -> None:
         probe = probe_submission("xgpe6", Path("/home/user/columba"), Path("/checkout"))
         self.assertEqual(probe["required_node"], "xgpe6")
-        self.assertEqual(probe["constraint"], "titanrtx")
-        self.assertIn("--gres=gpu:nv:1", probe["script"])
+        self.assertIsNone(probe["constraint"])
+        self.assertIn("--gres=gpu:1", probe["script"])
         with self.assertRaises(ValueError):
-            probe_submission("xgpi6", Path("/root"), Path("/checkout"))
+            probe_submission("xgpx6", Path("/root"), Path("/checkout"))
 
     def test_final_validation_callback_does_not_add_a_sixth_training_epoch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

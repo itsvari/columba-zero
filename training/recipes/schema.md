@@ -34,10 +34,17 @@ safe single path components. Training on `columba-test*` is forbidden.
 multiples of 32. `nbs` stays 64. Seeds are unique non-negative integers.
 
 `gpu_constraint` defaults to null. `seed_gpu_constraints` overrides it for
-listed seeds using integer YAML keys. Allowed values are `t4`, `titanrtx` and
-`titanv`. ARM recipes use `lane: arm` and cannot request GPU constraints.
+listed seeds using integer YAML keys; null explicitly restores automatic
+selection. Allowed values are null, `t4`, `titanrtx`, `titanv`, `a100-40`,
+`a100-80`, `h100-47`, `h100-96`, `h200`, `a100` and `h100`. `lane: nv`
+is the GPU lane on both x86_64 and aarch64 (xgpj0). Automatic selection uses
+cluster/gpu_policy.yaml and live free units; it never queues an untyped
+any-GPU request. `sweep submit --constraint any` overrides existing pins
+without changing recipe hashes. ARM recipes use `lane: arm` and cannot request GPU constraints.
 `est_gpu_hours` is an estimate, never a measured runtime or a scheduling limit.
-The nv template limits jobs to three days; ARM jobs to three hours.
+Pinned types prefer gpu-long (three days); H200 and pinned xgpj0 use gpu
+(three hours). Automatic placement may also use short GPU nodes with resume.
+ARM CPU jobs have a three-hour limit.
 
 Optional `teacher: "teacher-recipe/seed0"` resolves to
 `$COLUMBA_RUNS_ROOT/teacher-recipe/seed0/weights/best.pt`. The runner stages it
@@ -61,9 +68,13 @@ that needs only evaluation. A changed recipe with an existing run ID fails;
 create a new ID when changing a recipe.
 
 Batch estimates at 640 for nano models are 32 on 12 GB, 48 on 16 GB and 64 on
-24 GB GPUs. Larger models, larger images and teachers reduce the starting
+24–141 GB GPUs (capped at nbs 64). X models start at 12, 16, 24, 32 and 48
+on 40, 47, 80, 96 and 141 GB classes respectively. Larger models, larger images and teachers reduce the starting
 batch. Ultralytics may lower it after an OOM; `run.json.batch_size` records the
-actual selected batch. `seconds_per_epoch` contains measured training plus
+actual selected batch. The pinned Ultralytics version permits batch changes
+on resume; the runner reapplies its current memory estimate or batch_override
+while keeping optimiser state. A fixed recipe override therefore stays fixed.
+Changing the recipe requires a fresh ID. `seconds_per_epoch` contains measured training plus
 validation times, and `attempt_wall_time_s` includes staging and evaluation.
 Neither is a Pi latency result.
 

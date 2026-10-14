@@ -1,0 +1,5 @@
+heavy_image_size_px: 800
+heavy_est_gpu_hours: 4.0
+allow_short_partition: true
+light_preferences: [t4, titanv, titanrtx, h100-47]
+heavy_preferences: [h100-47, h100-96, xgpj0, a100-80, t4, titanv, titanrtx]

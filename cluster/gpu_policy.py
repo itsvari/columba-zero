@@ -1,0 +1,118 @@
+"""Choose explicit GPU capacity without parking automatic runs in a busy queue."""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
+
+from cluster.gpu_selection import (
+    GPU_CONSTRAINTS,
+    GPU_PARTITIONS,
+    GpuOffer,
+    GpuRequest,
+    request_for,
+    resource_selection,
+    selector,
+)
+
+POLICY_PATH = Path(__file__).with_name("gpu_policy.yaml")
+
+
+@dataclass(frozen=True)
+class GpuPolicy:
+    heavy_image_size_px: int
+    heavy_est_gpu_hours: float
+    allow_short_partition: bool
+    light_preferences: tuple[str, ...]
+    heavy_preferences: tuple[str, ...]
+
+    def preferences(
+        self, model: str, image_size_px: int, teacher: bool, est_gpu_hours: float
+    ) -> tuple[str, ...]:
+        heavy = (
+            re.search(r"x(?:[-.]|$)", model) is not None
+            or image_size_px >= self.heavy_image_size_px
+            or teacher
+            or est_gpu_hours >= self.heavy_est_gpu_hours
+        )
+        return self.heavy_preferences if heavy else self.light_preferences
+
+
+def load_policy(path: Path = POLICY_PATH) -> GpuPolicy:
+    values = yaml.safe_load(path.read_text())
+    if not isinstance(values, dict):
+        raise ValueError("GPU policy must be a mapping")
+    preferences: list[tuple[str, ...]] = []
+    for key in ("light_preferences", "heavy_preferences"):
+        choices = values.get(key)
+        if (
+            not isinstance(choices, list)
+            or not choices
+            or any(
+                not isinstance(choice, str) or choice not in {*GPU_CONSTRAINTS, "xgpj0"}
+                for choice in choices
+            )
+        ):
+            raise ValueError(f"invalid GPU policy {key}")
+        preferences.append(tuple(choices))
+    image_size_px = values.get("heavy_image_size_px")
+    est_gpu_hours = values.get("heavy_est_gpu_hours")
+    allow_short = values.get("allow_short_partition")
+    if type(image_size_px) is not int or image_size_px <= 0:
+        raise ValueError("policy image size must be positive")
+    if (
+        not isinstance(est_gpu_hours, (int, float))
+        or isinstance(est_gpu_hours, bool)
+        or est_gpu_hours <= 0
+    ):
+        raise ValueError("policy hours must be positive")
+    if type(allow_short) is not bool:
+        raise ValueError("allow_short_partition must be boolean")
+    return GpuPolicy(image_size_px, float(est_gpu_hours), allow_short, *preferences)
+
+
+def offer_choice(offer: GpuOffer) -> str:
+    if offer.resource_type == "nv":
+        return next(choice for choice in ("t4", "titanv", "titanrtx") if choice in offer.features)
+    return "h200" if offer.resource_type == "h200-141" else offer.resource_type
+
+
+def available_request(
+    offers: Sequence[GpuOffer],
+    preferences: Sequence[str],
+    *,
+    excluded_nodes: Sequence[str] = (),
+    allow_short_partition: bool = True,
+    avoid: tuple[str, str] | None = None,
+) -> tuple[GpuRequest, tuple[str, ...]] | None:
+    partitions = GPU_PARTITIONS if allow_short_partition else GPU_PARTITIONS[:1]
+    for preference in preferences:
+        choice = "a100-80" if preference == "xgpj0" else preference
+        resource_type, feature = resource_selection(selector(choice))
+        eligible = [
+            offer
+            for offer in offers
+            if offer.free_units > 0
+            and offer.node not in excluded_nodes
+            and (preference != "xgpj0" or offer.node == "xgpj0")
+            and (resource_type is None or offer.resource_type == resource_type)
+            and (feature is None or feature in offer.features)
+            and (
+                avoid is None
+                or (offer_choice(offer), offer.partition) != avoid
+                and (offer.resource_type, offer.partition) != avoid
+            )
+        ]
+        for partition in partitions:
+            matched = [offer for offer in eligible if offer.partition == partition]
+            if not matched:
+                continue
+            chosen = offer_choice(matched[0])
+            matched = [offer for offer in matched if offer_choice(offer) == chosen]
+            request = request_for(chosen, matched)
+            return request, tuple(sorted({offer.node for offer in matched}))
+    return None

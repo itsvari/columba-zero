@@ -9,11 +9,23 @@ import os
 import re
 import subprocess
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, NotRequired, TypedDict, cast
 
-# Per-user QoS max (8 GPUs); raised from 4 on 15 Oct 2026 when the user freed the account.
+from cluster.gpu_policy import available_request, load_policy
+from cluster.gpu_selection import (
+    GPU_CONSTRAINTS,
+    GPU_NODE_PATTERN,
+    PARTITION_TIME_LIMIT_MINUTES,
+    GpuOffer,
+    GpuRequest,
+    gpu_inventory,
+    request_for,
+)
+
+# per-user QoS max (8 GPUs); raised from 4 on 15 Oct 2026 when the user freed the account.
 GPU_RUNNING_LIMIT = 8
 CPU_RUNNING_LIMIT = 2
 QUEUED_LIMIT = 24  # QoS allows 32 submitted; keep headroom
@@ -21,7 +33,7 @@ PROJECT_STORAGE_LIMIT_KB = 80 * 1024 * 1024
 ACTIVE_STATES = frozenset(
     {"RUNNING", "PENDING", "CONFIGURING", "COMPLETING", "SUSPENDED", "RESIZING"}
 )
-GPU_FEATURES = frozenset({"t4", "titanrtx", "titanv"})
+GPU_FEATURES = frozenset(GPU_CONSTRAINTS)
 
 
 @dataclass(frozen=True)
@@ -31,14 +43,24 @@ class Job:
     state: str
     partition: str
     resources: str
+    node_count: int = 1
+    submitted_at: datetime | None = None
 
     @property
     def owned(self) -> bool:
         return self.name.startswith("cz-")
 
     @property
+    def gpu_count(self) -> int:
+        counts = re.findall(r"(?:^|,)(?:gres/)?gpu(?::[^,:()]+)?:([0-9]+)", self.resources)
+        if counts:
+            return sum(int(count) for count in counts) * self.node_count
+        # unknown GPU requests fail closed instead of assuming a single device.
+        return GPU_RUNNING_LIMIT if "gpu" in self.resources or "gpu" in self.partition else 0
+
+    @property
     def gpu(self) -> bool:
-        return "gpu" in self.resources or "gpu" in self.partition
+        return self.gpu_count > 0
 
 
 @dataclass(frozen=True)
@@ -56,14 +78,18 @@ class Budget:
         if not 0 <= self.queued_jobs <= QUEUED_LIMIT:
             raise ValueError(f"queued budget cannot exceed {QUEUED_LIMIT}")
 
-    def allows(self, jobs: Sequence[Job], lane: str) -> bool:
+    def allows(self, jobs: Sequence[Job], lane: str, gpus_requested: int = 1) -> bool:
         owned = [job for job in jobs if job.owned and job.state in ACTIVE_STATES]
-        gpu_count = sum(job.gpu for job in owned)
-        cpu_count = len(owned) - gpu_count
+        gpu_count = sum(job.gpu_count for job in owned)
+        cpu_count = sum(not job.gpu for job in owned)
         if len(owned) >= self.queued_jobs:
             return False
         # pending jobs reserve a slot so simultaneous starts cannot exceed the running cap.
-        return gpu_count < self.gpu_jobs if lane == "nv" else cpu_count < self.cpu_jobs
+        return (
+            gpu_count + gpus_requested <= self.gpu_jobs
+            if lane == "nv"
+            else cpu_count < self.cpu_jobs
+        )
 
 
 class Submission(TypedDict):
@@ -74,6 +100,11 @@ class Submission(TypedDict):
     run_path: str
     excluded_nodes: NotRequired[list[str]]
     required_node: NotRequired[str]
+    base_model: NotRequired[str]
+    image_size_px: NotRequired[int]
+    teacher: NotRequired[bool]
+    est_gpu_hours: NotRequired[float]
+    time_limit_minutes: NotRequired[int]
 
 
 def parse_queue(output: str) -> tuple[Job, ...]:
@@ -82,15 +113,20 @@ def parse_queue(output: str) -> tuple[Job, ...]:
         if not line.strip():
             continue
         columns = line.strip().split("|")
-        if len(columns) != 5:
+        if len(columns) not in {5, 6, 7}:
             raise ValueError(f"unexpected squeue row: {line}")
-        jobs.append(Job(*columns))
+        node_count = int(columns[5]) if len(columns) >= 6 else 1
+        if node_count < 1:
+            raise ValueError("squeue node count must be positive")
+        identifier, name, state, partition, resources = columns[:5]
+        submitted_at = datetime.fromisoformat(columns[6]) if len(columns) == 7 else None
+        jobs.append(Job(identifier, name, state, partition, resources, node_count, submitted_at))
     return tuple(jobs)
 
 
 def queue() -> tuple[Job, ...]:
     completed = subprocess.run(
-        ["squeue", "-u", os.environ["USER"], "--noheader", "--format=%i|%j|%T|%P|%b"],
+        ["squeue", "-u", os.environ["USER"], "--noheader", "--format=%i|%j|%T|%P|%b|%D|%V"],
         check=True,
         text=True,
         capture_output=True,
@@ -103,8 +139,124 @@ def job_name(recipe_id: str, seed: int) -> str:
     return f"cz-{recipe_id[:55]}-s{seed}-{digest}"
 
 
-def submit_pending(submissions: Sequence[Submission], budget: Budget) -> list[dict[str, str]]:
+def request_arguments(request: GpuRequest, submission: Submission) -> tuple[str, ...]:
+    arguments = request.arguments()
+    minutes = submission.get("time_limit_minutes")
+    if minutes is None:
+        return arguments
+    maximum_minutes = min(
+        PARTITION_TIME_LIMIT_MINUTES[partition] for partition in request.partitions
+    )
+    if not 0 < minutes <= maximum_minutes:
+        raise ValueError("job time must fit its selected partition")
+    return tuple(
+        f"--time={minutes}" if argument.startswith("--time=") else argument
+        for argument in arguments
+    )
+
+
+def scheduling_request(
+    submission: Submission, offers: Sequence[GpuOffer], avoid: tuple[str, str] | None = None
+) -> tuple[tuple[str, ...], str] | None:
+    policy = load_policy()
+    preferences = policy.preferences(
+        submission.get("base_model", "yolo11n.pt"),
+        submission.get("image_size_px", 640),
+        submission.get("teacher", False),
+        submission.get("est_gpu_hours", 0),
+    )
+    automatic = (
+        submission["constraint"] is None and "required_node" not in submission
+    ) or avoid is not None
+    if automatic:
+        selected = available_request(
+            offers,
+            preferences,
+            excluded_nodes=submission.get("excluded_nodes", []),
+            allow_short_partition=policy.allow_short_partition,
+            avoid=avoid,
+        )
+        if selected is None:
+            return None
+        request, nodes = selected
+        return (
+            *request_arguments(request, submission),
+            f"--nodelist={','.join(nodes)}",
+        ), f"{request.resources}@{','.join(request.partitions)}"
+    request = request_for(
+        submission["constraint"],
+        offers,
+        required_node=submission.get("required_node"),
+        excluded_nodes=submission.get("excluded_nodes", []),
+    )
+    return request_arguments(
+        request, submission
+    ), f"{request.resources}@{','.join(request.partitions)}"
+
+
+def pending_target(job: Job, submission: Submission) -> tuple[str, str]:
+    typed = re.search(r"gpu:([^:,]+):[0-9]+", job.resources)
+    choice = typed.group(1) if typed else "unknown"
+    if choice == "nv":
+        choice = submission["constraint"] or "nv"
+    if choice == "h200-141":
+        choice = "h200"
+    return choice, job.partition
+
+
+def reserve_submitted_capacity(
+    offers: Sequence[GpuOffer], command: Sequence[str]
+) -> tuple[GpuOffer, ...]:
+    resources = next(
+        argument.removeprefix("--gres=") for argument in command if argument.startswith("--gres=")
+    )
+    feature = next(
+        (
+            argument.removeprefix("--constraint=")
+            for argument in command
+            if argument.startswith("--constraint=")
+        ),
+        None,
+    )
+    nodes = next(
+        (
+            argument.removeprefix("--nodelist=").split(",")
+            for argument in reversed(command)
+            if argument.startswith("--nodelist=")
+        ),
+        None,
+    )
+    resource_type = resources.split(":")[1] if resources.count(":") == 2 else None
+    eligible = next(
+        (
+            offer
+            for offer in offers
+            if offer.free_units > 0
+            and (nodes is None or offer.node in nodes)
+            and (resource_type is None or offer.resource_type == resource_type)
+            and (feature is None or feature in offer.features)
+        ),
+        None,
+    )
+    if eligible is None:
+        return tuple(offers)
+    return tuple(
+        replace(offer, free_units=max(0, offer.free_units - 1))
+        if offer.node == eligible.node and offer.resource_type == eligible.resource_type
+        else offer
+        for offer in offers
+    )
+
+
+def submit_pending(
+    submissions: Sequence[Submission],
+    budget: Budget,
+    retarget_pending_after_hours: float | None = None,
+) -> list[dict[str, str]]:
+    if retarget_pending_after_hours is not None and retarget_pending_after_hours <= 0:
+        raise ValueError("pending re-target timeout must be positive")
     results: list[dict[str, str]] = []
+    offers = gpu_inventory() if any(item["lane"] == "nv" for item in submissions) else ()
     for submission in submissions:
         if not submission["name"].startswith("cz-"):
             raise ValueError("only cz- jobs may be submitted")
@@ -118,13 +270,48 @@ def submit_pending(submissions: Sequence[Submission], budget: Budget) -> list[di
             .is_relative_to((Path.home() / "columba").resolve())
         ):
             raise ValueError("run paths must stay inside ~/columba")
+        excluded_nodes = submission.get("excluded_nodes", [])
+        if any(not re.fullmatch(r"xgp[d-k][0-9]+|xcng[01]", node) for node in excluded_nodes):
+            raise ValueError("excluded nodes must belong to approved GPU or ARM lanes")
+        required_node = submission.get("required_node")
+        if required_node and (
+            submission["lane"] != "nv" or not GPU_NODE_PATTERN.fullmatch(required_node)
+        ):
+            raise ValueError("GPU jobs may only pin approved GPU nodes")
         jobs = queue()
         if (Path(submission["run_path"]) / "DONE").is_file():
             results.append({"name": submission["name"], "status": "done"})
             continue
-        if any(job.name == submission["name"] and job.state in ACTIVE_STATES for job in jobs):
-            results.append({"name": submission["name"], "status": "active"})
-            continue
+        active = next(
+            (job for job in jobs if job.name == submission["name"] and job.state in ACTIVE_STATES),
+            None,
+        )
+        scheduling = None
+        retargeted_from = None
+        if active:
+            expired = (
+                retarget_pending_after_hours is not None
+                and submission["lane"] == "nv"
+                and active.state == "PENDING"
+                and active.submitted_at is not None
+                and (datetime.now() - active.submitted_at).total_seconds()
+                >= retarget_pending_after_hours * 3600
+            )
+            scheduling = (
+                scheduling_request(submission, offers, pending_target(active, submission))
+                if expired
+                else None
+            )
+            if scheduling is None:
+                results.append({"name": submission["name"], "status": "active"})
+                continue
+            # Slurm applies the state filter atomically; a job that just started is never cancelled.
+            subprocess.run(["scancel", "--state=PENDING", active.identifier], check=True)
+            jobs = queue()
+            if any(job.name == submission["name"] and job.state in ACTIVE_STATES for job in jobs):
+                results.append({"name": submission["name"], "status": "active"})
+                continue
+            retargeted_from = active.identifier
         if not budget.allows(jobs, submission["lane"]):
             results.append({"name": submission["name"], "status": "budget full"})
             continue
@@ -136,25 +323,34 @@ def submit_pending(submissions: Sequence[Submission], budget: Budget) -> list[di
             f"--output={Path.home()}/columba/logs/%x-%j.log",
             "--export=NONE",
         ]
-        excluded_nodes = submission.get("excluded_nodes", [])
-        if any(not re.fullmatch(r"xgp[def][0-9]+|xcng[01]", node) for node in excluded_nodes):
-            raise ValueError("excluded nodes must belong to permitted nv or ARM lanes")
         if excluded_nodes:
             command.append(f"--exclude={','.join(excluded_nodes)}")
         required_node = submission.get("required_node")
         if required_node:
-            if submission["lane"] != "nv" or not re.fullmatch(r"xgp[def][0-9]+", required_node):
-                raise ValueError("GPU probes may only pin nodes in the permitted nv lane")
-            command.append(f"--nodelist={required_node}")
-        if submission["constraint"]:
-            command.append(f"--constraint={submission['constraint']}")
+            if submission["lane"] != "nv" or not GPU_NODE_PATTERN.fullmatch(required_node):
+                raise ValueError("GPU jobs may only pin approved GPU nodes")
+            if retargeted_from is None:
+                command.append(f"--nodelist={required_node}")
+        if submission["lane"] == "nv":
+            scheduling = scheduling or scheduling_request(submission, offers)
+            if scheduling is None:
+                results.append({"name": submission["name"], "status": "no free preferred GPU"})
+                continue
+            command.extend(scheduling[0])
         completed = subprocess.run(
             command, input=submission["script"], text=True, check=True, capture_output=True
         )
+        if submission["lane"] == "nv":
+            offers = reserve_submitted_capacity(offers, command)
         identifier = completed.stdout.strip().split(";")[0]
         if not identifier.isdecimal():
             raise RuntimeError(f"unexpected sbatch response: {completed.stdout}")
-        results.append({"name": submission["name"], "status": "submitted", "job_id": identifier})
+        result = {"name": submission["name"], "status": "submitted", "job_id": identifier}
+        if scheduling:
+            result["gpu_request"] = scheduling[1]
+        if retargeted_from:
+            result["retargeted_from"] = retargeted_from
+        results.append(result)
     return results
 
 
@@ -176,7 +372,7 @@ def main() -> None:
     parser.add_argument("--payload", default="{}")
     arguments = parser.parse_args()
     payload = cast(
-        dict[str, str | list[Submission] | list[str] | dict[str, int]],
+        dict[str, str | float | None | list[Submission] | list[str] | dict[str, int]],
         json.loads(arguments.payload),
     )
     root = Path.home() / "columba"
@@ -191,7 +387,13 @@ def main() -> None:
                 raise RuntimeError("~/columba has reached the 80 GiB storage limit")
             budget = Budget(**cast(dict[str, int], payload["budget"]))
             print(
-                json.dumps(submit_pending(cast(list[Submission], payload["submissions"]), budget))
+                json.dumps(
+                    submit_pending(
+                        cast(list[Submission], payload["submissions"]),
+                        budget,
+                        cast(float | None, payload.get("retarget_pending_after_hours")),
+                    )
+                )
             )
         elif arguments.action == "cancel":
             print(json.dumps(cancel_jobs(cast(list[str], payload["job_ids"]))))

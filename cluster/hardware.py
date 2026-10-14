@@ -14,9 +14,19 @@ from app.json_data import JsonValue
 
 GIB_BYTES = 1024**3
 REFERENCE_IMAGE_SIZE_PX = 640
-MEMORY_CLASS_BATCHES = ((21, 64), (14, 48), (10, 32))
+MEMORY_CLASS_BATCHES = (
+    (130, 384),
+    (90, 256),
+    (70, 192),
+    (44, 128),
+    (36, 96),
+    (21, 64),
+    (14, 48),
+    (10, 32),
+)
+NOMINAL_BATCH_SIZE = 64
 MODEL_MEMORY_FACTORS = {"n": 1, "s": 2, "m": 4, "l": 6, "x": 8}
-ALLOWED_GPU_NAMES = ("TITAN V", "TITAN RTX", "T4")
+ALLOWED_GPU_NAMES = ("TITAN V", "TITAN RTX", "T4", "A100", "H100", "H200")
 
 
 def select_batch(
@@ -29,7 +39,9 @@ def select_batch(
     baseline = next((batch for minimum, batch in MEMORY_CLASS_BATCHES if memory_gb >= minimum), 8)
     area_factor = (image_size_px / REFERENCE_IMAGE_SIZE_PX) ** 2
     teacher_factor = 2 if teacher else 1
-    return max(1, int(baseline / memory_factor / area_factor / teacher_factor))
+    return min(
+        NOMINAL_BATCH_SIZE, max(1, int(baseline / memory_factor / area_factor / teacher_factor))
+    )
 
 
 def configure_ultralytics(scratch: Path) -> None:
@@ -49,6 +61,10 @@ def configure_ultralytics(scratch: Path) -> None:
     )
     os.environ["YOLO_CONFIG_DIR"] = str(settings_root)
     os.environ["YOLO_AUTOINSTALL"] = "false"
+
+
+def allowed_gpu(name: str) -> bool:
+    return any(candidate in name.upper() for candidate in ALLOWED_GPU_NAMES)
 
 
 def describe_hardware(require_gpu: bool) -> dict[str, JsonValue]:
@@ -73,11 +89,13 @@ def describe_hardware(require_gpu: bool) -> dict[str, JsonValue]:
         }:
             raise RuntimeError("arm lane must run on xcng0 or xcng1 (aarch64)")
         return report
+    if platform.machine() not in {"x86_64", "aarch64"}:
+        raise RuntimeError("GPU lane requires a supported x86_64 or aarch64 environment")
     if not torch.cuda.is_available():
         raise RuntimeError("nv lane requires a visible CUDA GPU")
     device = torch.cuda.get_device_properties(0)
-    if not any(name in device.name.upper() for name in ALLOWED_GPU_NAMES):
-        raise RuntimeError(f"GPU is outside the permitted nv lane: {device.name}")
+    if not allowed_gpu(device.name):
+        raise RuntimeError(f"GPU is outside the approved GPU types: {device.name}")
     capability = torch.cuda.get_device_capability(0)
     device_architecture = f"sm_{capability[0]}{capability[1]}"
     supported = torch.cuda.get_arch_list()

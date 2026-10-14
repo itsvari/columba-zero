@@ -19,5 +19,6 @@ finish_job() {
 }
 trap finish_job EXIT
 cd "$COLUMBA_CHECKOUT"
-bash cluster/bootstrap.sh
-"$HOME/columba/venvs/aarch64-cpu/bin/python" -m cluster.arm_bundle --models "$COLUMBA_MODELS" --action "${COLUMBA_ACTION:-export}"
+bash cluster/bootstrap.sh --cpu
+environment="$(bash cluster/bootstrap.sh --cpu --print-env)"
+"$environment/bin/python" -m cluster.arm_bundle --models "$COLUMBA_MODELS" --action "${COLUMBA_ACTION:-export}"

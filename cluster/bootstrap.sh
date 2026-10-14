@@ -3,6 +3,28 @@ set -euo pipefail
 
 project_root="${COLUMBA_ROOT:-$HOME/columba}"
 case "$project_root" in "$HOME/columba"|"$HOME/columba/"*) ;; *) echo 'COLUMBA_ROOT must be under ~/columba' >&2; exit 2 ;; esac
+architecture="$(uname -m)"
+script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+has_gpu=false
+smoke=false
+print_environment=false
+for argument in "$@"; do
+    case "$argument" in
+        --gpu-smoke) has_gpu=true; smoke=true ;;
+        --gpu) has_gpu=true ;;
+        --cpu) has_gpu=false ;;
+        --print-env) print_environment=true ;;
+        *) echo "unsupported bootstrap argument: $argument" >&2; exit 2 ;;
+    esac
+done
+if [[ "$#" == 0 ]] && command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+    has_gpu=true
+fi
+environment_arguments=(--architecture "$architecture")
+if [[ "$has_gpu" == true ]]; then environment_arguments+=(--gpu); fi
+read -r acceleration torch_version vision_version < <(python "$script_directory/environment.py" "${environment_arguments[@]}")
+environment="$project_root/venvs/$architecture-$acceleration"
+if [[ "$print_environment" == true ]]; then printf '%s\n' "$environment"; exit 0; fi
 mkdir -p "$project_root"/{venvs,weights,cache/tmp,logs,data,runs}
 export TMPDIR="$project_root/cache/tmp"
 export UV_CACHE_DIR="$project_root/cache/uv"
@@ -28,7 +50,6 @@ settings.parent.mkdir(parents=True, exist_ok=True)
 settings.write_text(json.dumps({"sync": False, "datasets_dir": str(scratch / "data"),
     "weights_dir": str(scratch / "weights"), "runs_dir": str(scratch / "runs")}))
 PYTHON
-architecture="$(uname -m)"
 uv_command="$project_root/bin/$architecture/uv"
 if [[ ! -x "$uv_command" ]]; then uv_command="$(command -v uv || true)"; fi
 if [[ -z "$uv_command" && -x "$HOME/.local/bin/uv" ]]; then uv_command="$HOME/.local/bin/uv"; fi
@@ -40,12 +61,6 @@ if [[ -z "$uv_command" ]] || ! "$uv_command" --version >/dev/null 2>&1; then
     UV_INSTALL_DIR="$install_directory" UV_NO_MODIFY_PATH=1 sh "$installer"
     uv_command="$install_directory/uv"
 fi
-case "$architecture" in
-    x86_64) acceleration=cu126; torch_version=2.8.0; vision_version=0.23.0 ;;
-    aarch64) acceleration=cpu; torch_version=2.8.0; vision_version=0.23.0 ;;
-    *) echo "unsupported architecture: $architecture" >&2; exit 2 ;;
-esac
-environment="$project_root/venvs/$architecture-$acceleration"
 # a shared lock prevents parallel smoke jobs from changing the same environment.
 exec 9>"$project_root/venvs/.$architecture-$acceleration.lock"
 flock 9
@@ -58,7 +73,7 @@ if [[ ! -f "$environment/.columba-ready" ]] || ! "$environment/bin/python" -c 'i
     touch "$environment/.columba-ready"
 fi
 flock -u 9
-if [[ "${1:-}" == --gpu-smoke ]]; then
+if [[ "$smoke" == true ]]; then
     "$environment/bin/python" -m cluster.hardware --smoke
 fi
 printf '%s\n' "$environment"

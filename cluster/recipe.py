@@ -11,12 +11,11 @@ from pathlib import Path
 from typing import Literal, cast
 
 from app.json_data import JsonValue
+from cluster.gpu_selection import GpuConstraint, selector
 
 Lane = Literal["nv", "arm"]
-GpuConstraint = Literal["t4", "titanrtx", "titanv"]
 SAFE_COMPONENT = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*\Z")
 TEACHER_REFERENCE = re.compile(r"([a-zA-Z0-9][a-zA-Z0-9_.-]*)/seed([0-9]+)\Z")
-GPU_CONSTRAINTS = ("t4", "titanrtx", "titanv")
 RUNNER_ARGUMENTS = frozenset(
     {
         "batch",
@@ -64,7 +63,7 @@ class Recipe:
     seeds: tuple[int, ...]
     lane: Lane
     gpu_constraint: GpuConstraint | None
-    seed_gpu_constraints: Mapping[int, GpuConstraint]
+    seed_gpu_constraints: Mapping[int, GpuConstraint | None]
     estimated_gpu_hours: float
     teacher: str | None
     train: Mapping[str, JsonValue]
@@ -101,9 +100,9 @@ def positive_integer(value: JsonValue, field: str) -> int:
 def constraint(value: JsonValue) -> GpuConstraint | None:
     if value is None:
         return None
-    if value not in GPU_CONSTRAINTS:
-        raise ValueError("gpu_constraint must be null, t4, titanrtx or titanv")
-    return cast(GpuConstraint, value)
+    if not isinstance(value, str):
+        raise ValueError("gpu_constraint must be a string or null")
+    return selector(value)
 
 
 def validate_recipe(value: JsonValue) -> Recipe:
@@ -134,11 +133,11 @@ def validate_recipe(value: JsonValue) -> Recipe:
     overrides = cast(dict[int | str, JsonValue], raw.get("seed_gpu_constraints", {}))
     if not isinstance(overrides, dict):
         raise ValueError("seed_gpu_constraints must map seeds to GPU constraints")
-    checked_overrides: dict[int, GpuConstraint] = {}
+    checked_overrides: dict[int, GpuConstraint | None] = {}
     for seed, gpu in overrides.items():
-        if type(seed) is not int or seed not in checked_seeds or constraint(gpu) is None:
-            raise ValueError("each seed_gpu_constraints entry needs a listed seed and GPU type")
-        checked_overrides[seed] = cast(GpuConstraint, gpu)
+        if type(seed) is not int or seed not in checked_seeds:
+            raise ValueError("each seed_gpu_constraints entry needs a listed seed")
+        checked_overrides[seed] = constraint(gpu)
     if lane == "arm" and (default_constraint or checked_overrides):
         raise ValueError("arm recipes cannot request a GPU constraint")
     hours = raw.get("est_gpu_hours")

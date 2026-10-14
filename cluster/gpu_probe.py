@@ -1,4 +1,4 @@
-"""Read-only CUDA availability probe inside a permitted nv Slurm allocation."""
+"""Read-only CUDA availability probe inside a approved GPU Slurm allocation."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import subprocess
+import sys
 from pathlib import Path
 
 from app.json_data import JsonValue
@@ -23,6 +24,9 @@ def main() -> None:
     available = torch.cuda.is_available()
     report: dict[str, JsonValue] = {
         "host": platform.node(),
+        "architecture": platform.machine(),
+        "python_executable": sys.executable,
+        "venv_path": sys.prefix,
         "job_id": os.environ["SLURM_JOB_ID"],
         "label": "measured",
         "torch_version": torch.__version__,
@@ -35,6 +39,8 @@ def main() -> None:
     }
     if available:
         report["gpu"] = torch.cuda.get_device_name(0)
+        major, minor = torch.cuda.get_device_capability(0)
+        report["compute_capability"] = f"{major}.{minor}"
         report["torch_arch_list"] = list(torch.cuda.get_arch_list())
     destination = Path(os.environ["COLUMBA_RUN_PATH"]).resolve()
     if not destination.is_relative_to((Path.home() / "columba").resolve()):

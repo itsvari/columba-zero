@@ -1,9 +1,9 @@
 # WS3 — Cluster infrastructure
 
-- State: done
+- State: in progress
 - Branch: `ws3/cluster`
 - Agent: gpt-6.1-sol via T3 delegate
-- Last updated: 2026-10-14
+- Last updated: 2026-10-15
 
 ## Done
 
@@ -268,3 +268,120 @@ Evidence in this worktree:
 Re-run commands are documented in cluster/README.md. The smoke-only runtime
 stop flag does not change recipe/checkpoint args and cannot be used with a
 production recipe. No outstanding round-2 blocker or WS1 change request.
+
+## Round 3 in progress
+
+Fast-forwarded to main a29e4aa. User-authorised all listed GPU types and xgpj0.
+Implementing inventory-based requests, counted GPU budgets, atomic deployment
+and an aarch64 CUDA environment. No xgpj0 exclusion will be added.
+Initial queue on xlogin2 has all eight WS5 GPUs running; no WS5 job was changed.
+GPU budget slots were freed under the later explicit cancellation authorisation.
+
+### Round-3 implementation and cancellation ledger
+
+- Inventory-driven selectors now cover nv, A100-40/80, H100-47/96 and H200-141,
+  with a100/h100 family selectors. Explicit types prefer gpu-long; xgpj0 and
+  H200 use gpu (three hours). xgpd0–1 and xgpf0–5 are also gpu only.
+- Automatic null/CLI any selection reads cluster/gpu_policy.yaml and sinfo
+  free units, chooses a concrete preferred type/partition and bounds its node
+  list. It skips submission when no preferred free capacity exists. PENDING
+  allocations reserve the eight-GPU budget. Multi-node typed GRES are counted
+  by device count. The CPU and total-job caps remain two and twenty-four.
+- Light preferences: T4, Titan V, Titan RTX, H100-47. Heavy preferences:
+  H100-47, H100-96, opportunistic xgpj0/A100-80, then nv. Heavy means x model,
+  imgsz >= 800, a teacher/distillation run, or estimate >= four GPU-hours.
+- --retarget-pending-after-hours opts into cancelling only requested expired
+  PENDING cz- runs when alternate free preferred capacity exists. Slurm's
+  state filter prevents cancellation if the run starts during the check.
+- xgpe2/xgpe6 remain excluded. xgpj0 is allowed, not excluded. It advertises
+  gpu and test, gpu:a100-80:1, 80 CPUs, 128000 MB, features xgpj/cuda80/a100.
+  test requires the testusers account/test QoS and is not used by our scheduler.
+- Atomic checkout publication stages a complete archive and ready marker,
+  then renames; published checkouts are never re-extracted. Snapshot updates
+  cannot invalidate a running job's bootstrap inode.
+- x86_64 CUDA remains torch 2.8.0+cu126 / torchvision 0.23.0. ARM CUDA is
+  torch 2.9.0+cu126 / torchvision 0.24.0 (2.8 CUDA SBSA wheels absent in the
+  cu126 index). ARM CPU remains 2.8.0+cpu. Ultralytics/ncnn/pnnx pins remain
+  8.4.175 / 1.0.20260526 / 20260526. Python 3.12 aarch64 ncnn and
+  opencv-python-headless wheel availability was verified from PyPI metadata.
+- ARM CUDA prewarm on xcng0, 946760: COMPLETED 0:0 in 12m55s, installed
+  ~/columba/venvs/aarch64-cu126. No GPU was requested for prewarm.
+
+Authorised cancellations (confirmed cz- names immediately before scancel;
+reported saved epoch from the runner's on_model_save heartbeat):
+
+| Job | Run | Last saved epoch | weights/last.pt |
+|---|---|---:|---|
+| 945884 | yolo11x-v2s-960-teacher/seed0 | 10 | exists |
+| 945885 | yolo26x-v2s-960-teacher/seed0 | 4 | exists |
+| 946639 | yolo11s-v2-640-r1/seed0 | 32 | exists |
+
+No other WS5 or non-cz job was cancelled. WS5 reports still say running because
+Slurm terminated the batch allocation; the queue is authoritative. Resubmission
+rewrites the report and resumes last.pt. Other WS5 jobs 946641 and 946662–665
+remain running. WS3 has not resubmitted WS5's work. Evidence:
+outputs/ws3/cancellations-round3.json and cancelled-and-distill-reports.json.
+
+### Round-3 measured results so far
+
+Same synthetic four-train/four-val C1 fixture, YOLO11n at 640. Means include
+cold startup and checkpoint persistence; warm means use epochs 2–5. These do
+not measure real-dataset throughput or pigeon accuracy.
+
+| Type / host | Job | Batch chosen | Mean s/epoch | Warm s/epoch |
+|---|---|---:|---:|---:|
+| H100-47 MIG / xgpi16 | 946777 | 64 | 2.28689 | 0.49123 |
+| A100-40 / xgpg6 | 946782 | 64 | 1.56226 | 0.77724 |
+| T4 / xgpf10 (round 1) | 945186 | 32 | 3.03522 | 1.01639 |
+| Titan V / xgpd2 (round 1) | 945188 | 32 | 3.43679 | 1.17310 |
+
+H100 and A100 bootstrap forward/backward passed with torch 2.8.0+cu126,
+sm_90 and sm_80 respectively. Both completed five epochs, real WS1 prediction
+and evaluation on val/test, all C6 artifacts and DONE, fetched into
+experiments/runs/ using outputs/ws3/leaderboard-smoke.csv. No production
+leaderboard was changed. A100 queued about eight minutes, then started;
+it did not need cancellation. Slurm's site submission hook moved its short
+20-minute gpu-long request to gpu (SubmitLine retained gpu-long).
+
+C6 listing for each successful seed0 folder: DONE, TRAINED, run.json,
+results.csv, weights/{best,last}.pt, predictions_{val,test}.json,
+predictions_{val,test}.meta.json, metrics_{val,test}.json.
+
+Cross-GPU distillation/resume:
+smoke-distill-gpu-change-r3/seed0, teacher smoke-h100-r3/seed0. Job 946798
+on Titan V xgpd4 intentionally stopped after saved epoch one, batch 16.
+946808 resumed on H100-47 xgpi16, completed epoch three with batch 64,
+val/test metrics and DONE. The report retains both attempts and rewrites
+absolute data/teacher paths from /tmp/cz-946798 to /tmp/cz-946808.
+Ultralytics 8.4.175 explicitly allows batch and device overrides on resume;
+the assertion that resume always keeps the old batch is incorrect for our pin.
+The runner reapplies its heuristic, but a recipe's fixed batch_override wins.
+The two teacher recipes currently fix batch 4 and 6, so their resumes retain
+those values; changing recipe configuration under an existing ID is rejected.
+A fresh recipe ID is required if WS5 changes those fixed overrides. Resuming
+with the current batches on faster GPUs is supported and avoids losing epochs.
+
+### Handoff commands and C5 request
+
+After merge, WS5 can resume all missing round-1/teacher runs under live policy:
+
+```sh
+python -m cluster.sweep plan --recipes training/recipes/*-v2*-640-r1.yaml training/recipes/*teacher*.yaml
+python -m cluster.sweep submit --recipes training/recipes/*-v2*-640-r1.yaml training/recipes/*teacher*.yaml --constraint any --retarget-pending-after-hours 2
+```
+
+Repeat submit as slots become free. Active runs and DONE markers are skipped.
+No worker restarted the paused auto-submitter; the coordinator owns that.
+
+C5 wording request: gpu_constraint and seed_gpu_constraints values may be
+null, t4, titanrtx, titanv, a100-40, a100-80, h100-47, h100-96, h200,
+a100 or h100. A per-seed null explicitly restores automatic selection.
+lane: nv is the GPU lane for x86_64 and aarch64. Null means the live, configured
+preference policy, rather than an untyped request that can queue anywhere.
+run.json records architecture and the selected venv. Existing recipes and
+sweep syntax remain compatible.
+
+Remaining: xgpj0 GPU probe/five-epoch CUDA smoke is pending (946781).
+A transient SSH tunnel reset paused cluster calls; the coordinator restored
+it, and calls now use ConnectTimeout=20. No password or tunnel changes were
+made by WS3. Final checks, status and commit will follow the ARM GPU result.

@@ -16,6 +16,7 @@ from typing import Literal, cast
 
 from app.json_data import JsonValue
 from cluster.artifacts import LEADERBOARD_COLUMNS, leaderboard_row, update_leaderboard
+from cluster.gpu_selection import GPU_CONSTRAINTS, GPU_NODE_PATTERN, selector
 from cluster.recipe import Recipe, load_recipe, recipe_sha256
 from cluster.slurm import (
     ACTIVE_STATES,
@@ -31,6 +32,8 @@ from cluster.slurm import (
 
 SSH_HOST = "columba-cluster"
 REPOSITORY = Path(__file__).resolve().parents[1]
+SMOKE_TIME_LIMIT_MINUTES = 20
+PROBE_TIME_LIMIT_MINUTES = 10
 EXCLUDED_NODES_FILE = REPOSITORY / "cluster/excluded_nodes.txt"
 
 
@@ -42,7 +45,7 @@ def excluded_nodes(extra: Sequence[str] = (), path: Path = EXCLUDED_NODES_FILE) 
 
 def remote(command: Sequence[str], input_bytes: bytes | None = None) -> str:
     completed = subprocess.run(
-        ["ssh", "-o", "BatchMode=yes", SSH_HOST, shlex.join(command)],
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", SSH_HOST, shlex.join(command)],
         input=input_bytes,
         check=True,
         capture_output=True,
@@ -58,7 +61,7 @@ def remote_root() -> Path:
 
 def current_queue() -> tuple[Job, ...]:
     return parse_queue(
-        remote(["sh", "-c", 'squeue -u "$USER" --noheader --format="%i|%j|%T|%P|%b"'])
+        remote(["sh", "-c", 'squeue -u "$USER" --noheader --format="%i|%j|%T|%P|%b|%D|%V"'])
     )
 
 
@@ -115,7 +118,7 @@ def plan_runs(
             if run.name in active
             else "missing",
             "lane": run.recipe.lane,
-            "constraint": run.recipe.constraint_for_seed(run.seed) or "any nv",
+            "constraint": run.recipe.constraint_for_seed(run.seed) or "any GPU",
         }
         for run in runs
     ]
@@ -141,11 +144,24 @@ def deploy(root: Path) -> tuple[Path, str]:
     content = buffer.getvalue()
     digest = hashlib.sha256(content).hexdigest()[:16]
     checkout = root / "checkouts" / digest
-    remote(["mkdir", "-p", str(checkout), str(root / "logs")])
-    remote(["tar", "-xf", "-", "-C", str(checkout)], content)
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=REPOSITORY, check=True, text=True, capture_output=True
     ).stdout.strip()
+    publication_code = (REPOSITORY / "cluster/deployment.py").read_text()
+    remote(
+        [
+            "python",
+            "-c",
+            publication_code,
+            "--root",
+            str(root / "checkouts"),
+            "--digest",
+            digest,
+            "--commit",
+            commit,
+        ],
+        content,
+    )
     return checkout, commit
 
 
@@ -156,12 +172,15 @@ def submission_for(
     commit: str,
     stop_after_epoch: int | None = None,
     constraint: str | None = None,
+    required_node: str | None = None,
 ) -> Submission:
     """Build one submission; `constraint` replaces the recipe's GPU type for this submission."""
-    if constraint is not None and (
-        run.recipe.lane != "nv" or constraint not in ("t4", "titanrtx", "titanv")
-    ):
-        raise ValueError("--constraint needs an nv recipe and one of t4, titanrtx, titanv")
+    if constraint is not None:
+        selector(None if constraint in {"any", "null"} else constraint)
+        if run.recipe.lane != "nv":
+            raise ValueError("--constraint needs a GPU recipe")
+    if required_node and (run.recipe.lane != "nv" or not GPU_NODE_PATTERN.fullmatch(required_node)):
+        raise ValueError("--node needs a GPU recipe and an approved GPU node")
     try:
         relative_recipe = run.recipe_path.relative_to(REPOSITORY)
     except ValueError as error:
@@ -200,13 +219,24 @@ def submission_for(
             raise ValueError("--stop-after-epoch requires an unfinished smoke epoch")
         exports += f"\nexport COLUMBA_STOP_AFTER_EPOCH={stop_after_epoch}"
     script = template.replace("set -euo pipefail", f"set -euo pipefail\n{exports}")
-    return {
+    submission: Submission = {
         "name": run.name,
         "lane": run.recipe.lane,
-        "constraint": constraint or run.recipe.constraint_for_seed(run.seed),
+        "constraint": (None if constraint in {"any", "null"} else constraint)
+        if constraint is not None
+        else run.recipe.constraint_for_seed(run.seed),
         "script": script,
         "run_path": str(root / "runs" / run.relative_run),
+        "base_model": run.recipe.base_model,
+        "image_size_px": cast(int, run.recipe.train["imgsz"]),
+        "teacher": run.recipe.teacher is not None or "teacher" in run.recipe.identifier,
+        "est_gpu_hours": run.recipe.estimated_gpu_hours,
     }
+    if run.recipe.identifier.startswith("smoke-"):
+        submission["time_limit_minutes"] = SMOKE_TIME_LIMIT_MINUTES
+    if required_node:
+        submission["required_node"] = required_node
+    return submission
 
 
 def fetch(root: Path, runs: Sequence[DesiredRun], destination: Path, leaderboard: Path) -> None:
@@ -221,7 +251,7 @@ def fetch(root: Path, runs: Sequence[DesiredRun], destination: Path, leaderboard
                 "-a",
                 "--prune-empty-dirs",
                 "-e",
-                "ssh -o BatchMode=yes",
+                "ssh -o BatchMode=yes -o ConnectTimeout=20",
                 "--include=weights/",
                 "--include=weights/best.pt",
                 "--include=weights/last.pt",
@@ -271,10 +301,11 @@ def main() -> None:
         help="nodes to exclude in addition to cluster/excluded_nodes.txt",
     )
     parser.add_argument("--probe-node", default="xgpe6")
+    parser.add_argument("--node", help="submit: pin an approved GPU node, including xgpj0")
     parser.add_argument("--stop-after-epoch", type=int)
     parser.add_argument(
         "--constraint",
-        choices=("t4", "titanrtx", "titanv"),
+        choices=(*GPU_CONSTRAINTS, "any", "null"),
         help="submit: override the recipe's GPU type (recipe hash unchanged; use with --seeds)",
     )
     parser.add_argument("--destination", type=Path, default=REPOSITORY / "experiments/runs")
@@ -283,7 +314,17 @@ def main() -> None:
     )
     parser.add_argument("--models", nargs="+", default=[])
     parser.add_argument("--bundle-action", choices=("export", "benchmark"), default="export")
+    parser.add_argument(
+        "--retarget-pending-after-hours",
+        type=float,
+        help="cancel expired PENDING requested cz- runs and re-target to free preferred GPUs",
+    )
     arguments = parser.parse_args()
+    if (
+        arguments.retarget_pending_after_hours is not None
+        and arguments.retarget_pending_after_hours <= 0
+    ):
+        parser.error("pending re-target timeout must be positive")
     budget = Budget(arguments.gpu_limit, arguments.cpu_limit, arguments.queue_limit)
     runs = desired_runs(arguments.recipes)
     if arguments.seeds is not None:
@@ -330,7 +371,13 @@ def main() -> None:
     else:
         submissions = [
             submission_for(
-                run, root, checkout, commit, arguments.stop_after_epoch, arguments.constraint
+                run,
+                root,
+                checkout,
+                commit,
+                arguments.stop_after_epoch,
+                arguments.constraint,
+                arguments.node,
             )
             for run in runs
             if run.relative_run not in done
@@ -341,6 +388,7 @@ def main() -> None:
         )
     payload: dict[str, JsonValue] = {
         "budget": cast(dict[str, JsonValue], asdict(budget)),
+        "retarget_pending_after_hours": arguments.retarget_pending_after_hours,
         "submissions": cast(list[JsonValue], submissions),
         "job_ids": cast(list[JsonValue], arguments.job_ids),
     }
@@ -358,19 +406,17 @@ def main() -> None:
 
 
 def probe_submission(node: str, root: Path, checkout: Path) -> Submission:
-    import re
-
-    if not re.fullmatch(r"xgp[def][0-9]+", node):
-        raise ValueError("probe node must belong to the permitted nv lane")
+    if not GPU_NODE_PATTERN.fullmatch(node):
+        raise ValueError("probe node must be an approved GPU node")
     template = (REPOSITORY / "cluster/templates/gpu-probe.sbatch").read_text()
     destination = root / "runs/gpu-probes" / node
     exports = f"export COLUMBA_CHECKOUT={shlex.quote(str(checkout))}\n"
     exports += f"export COLUMBA_RUN_PATH={shlex.quote(str(destination))}\n"
-    constraints = {"d": "titanv", "e": "titanrtx", "f": "t4"}
     return {
         "name": f"cz-ws3-probe-{node}",
+        "time_limit_minutes": PROBE_TIME_LIMIT_MINUTES,
         "lane": "nv",
-        "constraint": constraints[node[3]],
+        "constraint": None,
         "required_node": node,
         "run_path": str(destination),
         "script": template.replace("set -euo pipefail", f"set -euo pipefail\n{exports}"),
