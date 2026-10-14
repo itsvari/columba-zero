@@ -145,6 +145,12 @@ narrow it.
     300 epochs, less if patience 50 fires. Not yet measured; the data
     loader (8 CPUs) may cap it.
 
+- **Optimizer:** `optimizer: auto` picks AdamW when there are fewer than
+  10,000 iterations (v1clean) and MuSGD (lr 0.01) above that (v2/v2s at
+  150+ epochs). Read cross-dataset comparisons with that in mind. Resume
+  verified on 15 Oct: yolo11s-v2 continued from epoch 33 on an H100 NVL
+  with batch 16 → 64. nbs 64 keeps the effective batch at 64.
+
 ### ETAs (estimated, 15 Oct, from the turn-4 snapshot)
 
 - **Round 1:** the 5 runs on Titan V need ≈ 0.7–3.7 h more each (measured
