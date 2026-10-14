@@ -1,0 +1,12 @@
+{
+  "source": "inat-other",
+  "reviewed_images": 200,
+  "boxes": 200,
+  "wrong_boxes": 4,
+  "missed_birds": 2,
+  "images_with_errors": 5,
+  "dropped_images": 5,
+  "box_error_rate": 0.0297,
+  "passed": true,
+  "rule": ">= 200 images and (wrong + missed) / (boxes + missed) <= 0.05"
+}

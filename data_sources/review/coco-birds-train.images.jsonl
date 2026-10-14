@@ -1,0 +1,858 @@
+{"id": "coco-520", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-1777", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-4283", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-4901", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-5259", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-5356", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-5694", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-6066", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-7954", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-9695", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-12281", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-12464", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-12547", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-12754", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-12959", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-13040", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-14432", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-14728", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-14861", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-15260", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-16599", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-17260", "verdict": "drop", "note": "COCO crowd annotation (birds not boxed individually)"}
+{"id": "coco-19558", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-20541", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-22298", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-23255", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-23419", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-24699", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-25024", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-26713", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-27538", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-28134", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-28607", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-29465", "verdict": "drop", "note": "species unclear"}
+{"id": "coco-30565", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-30668", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-31396", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-32061", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-32468", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-33717", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-33992", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-35767", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-36414", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-36569", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-36823", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-39000", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-40884", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-41630", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-41867", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-42285", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-43780", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-44123", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-44603", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-44732", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-46078", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-50514", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-52562", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-54485", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-55272", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-55534", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-55868", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-56562", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-56850", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-56983", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-58210", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-58492", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-59451", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-59895", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-60034", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-60639", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-61399", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-61588", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-61825", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-62131", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-62250", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-62276", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-62662", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-63017", "verdict": "drop", "note": "merged box, edge pigeon unboxed"}
+{"id": "coco-64256", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-64309", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-64909", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-65063", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-65836", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-67090", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-67191", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-67342", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-67969", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-69189", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-70856", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-71145", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-71330", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-72550", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-73387", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-73537", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-73727", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-74166", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-74390", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-74798", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-75057", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-75719", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-77118", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-80835", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-81654", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-82021", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-84783", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-85945", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-86811", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-87554", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-88257", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-88621", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-88726", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-89835", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-90498", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-90744", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-91610", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-92136", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-92176", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-93795", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-95033", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-96064", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-96304", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-96459", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-96505", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-97056", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-97201", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-97211", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-98636", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-98887", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-99191", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-99297", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-99628", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-100064", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-101280", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-101772", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-102834", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-102843", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-104692", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-105385", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-105686", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-105728", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-105825", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-106387", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-106525", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-107177", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-107885", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-108124", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-108353", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-108982", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-109095", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-109361", "verdict": "drop", "note": "crowd box over flock"}
+{"id": "coco-111671", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-111867", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-112164", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-112228", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-113408", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-113787", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-114090", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-114898", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-116004", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-116123", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-117684", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-119353", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-119665", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-119779", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-120210", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-120282", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-120940", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-121193", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-122838", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-124266", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-126502", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-126732", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-127259", "verdict": "drop", "note": "many pigeons unboxed"}
+{"id": "coco-128297", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-128943", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-129586", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-129695", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-129786", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-130074", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-132656", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-132688", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-133467", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-133964", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-134778", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-135076", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-135126", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-136668", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-137420", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-137964", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-138007", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-139625", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-139660", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-142263", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-142996", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-145100", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-145179", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-145366", "verdict": "drop", "note": "COCO crowd annotation (birds not boxed individually)"}
+{"id": "coco-145426", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-145845", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-146099", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-146276", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-146611", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-148114", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-148474", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-149577", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-149915", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-150500", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-150902", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-151432", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-152327", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-152886", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-153946", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-154711", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-155885", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-156751", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-157037", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-157112", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-157435", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-158362", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-158869", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-159196", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-160014", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-160822", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-161022", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-161470", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-161762", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-162682", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-163250", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-163908", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-165798", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-166508", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-168289", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-169035", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-169282", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-171067", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-171284", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-172196", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-173538", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-174864", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-175331", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-175479", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-176904", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-177468", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-178431", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-178708", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-179532", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-180324", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-181847", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-182624", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-183107", "verdict": "drop", "note": "crowd box over flock"}
+{"id": "coco-183154", "verdict": "drop", "note": "COCO crowd annotation (birds not boxed individually)"}
+{"id": "coco-183504", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-185588", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-185593", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-187235", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-188181", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-188454", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-188637", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-188722", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-189005", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-189306", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-189394", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-190160", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-190271", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-190551", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-191014", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-191425", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-192180", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-192793", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-193315", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-196291", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-196393", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-196540", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-197652", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-198943", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-199913", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-200328", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-200980", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-201115", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-201457", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-201722", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-202129", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-202252", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-202273", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-202657", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-202964", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-203459", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-204015", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-205183", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-207005", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-207564", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-207597", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-207770", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-208535", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-209062", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-209063", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-209685", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-209940", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-210458", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-210679", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-211491", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-212174", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-212331", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-212342", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-213527", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-214022", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-214131", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-215570", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-216766", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-217229", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-219594", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-219723", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-220071", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-223458", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-224916", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-225071", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-225663", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-227218", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-227598", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-230302", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-230679", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-231362", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-231851", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-232761", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-233104", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-233956", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-234600", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-234633", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-234785", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-235522", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-236049", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-237190", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-237401", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-238980", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-239214", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-240082", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-240417", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-240500", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-240590", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-240836", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-241530", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-245431", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-246452", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-246809", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-247306", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-247368", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-248221", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-248236", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-251869", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-253227", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-253308", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-253429", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-253607", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-254119", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-254172", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-254800", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-255479", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-255877", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-256250", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-256455", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-258472", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-259556", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-259658", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-260034", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-261761", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-262201", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-262425", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-262521", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-263420", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-263588", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-263623", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-264238", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-264476", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-264555", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-266348", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-267454", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-267704", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-268150", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-269436", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-270009", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-270583", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-270906", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-271032", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-272926", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-273710", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-273808", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-274776", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-275270", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-275415", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-275932", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-277085", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-277594", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-278303", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-278306", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-278394", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-278673", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-279476", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-280094", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-281148", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-281461", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-281581", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-282385", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-283199", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-283748", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-284292", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-284582", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-284676", "verdict": "drop", "note": "COCO crowd annotation (birds not boxed individually)"}
+{"id": "coco-285037", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-286671", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-287741", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-287767", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-289866", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-291665", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-291980", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-292620", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-294875", "verdict": "drop", "note": "COCO crowd annotation (birds not boxed individually)"}
+{"id": "coco-295359", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-296523", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-296851", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-296989", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-297166", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-297419", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-298002", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-299630", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-299717", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-300086", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-300725", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-301735", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-301885", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-302318", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-303133", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-304314", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-304580", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-304691", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-305315", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-305472", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-305709", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-306161", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-306383", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-307091", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-307930", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-308021", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-308073", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-308195", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-308872", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-308919", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-309721", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-311412", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-311953", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-312024", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-312191", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-312509", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-312544", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-313218", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-314292", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-314725", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-315432", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-316016", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-316031", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-316658", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-316699", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-317274", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-318099", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-319216", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-319443", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-319611", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-320396", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-321163", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-321403", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-321511", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-322349", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-322726", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-322905", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-323093", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-324421", "verdict": "drop", "note": "COCO crowd annotation (birds not boxed individually)"}
+{"id": "coco-324554", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-325384", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-325567", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-326071", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-326357", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-326995", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-327176", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-328661", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-329078", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-331126", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-331225", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-331816", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-332125", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-333424", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-333738", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-333951", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-334259", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-334580", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-334822", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-334911", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-335615", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-335929", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-337139", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-337433", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-337730", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-341270", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-341290", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-341567", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-341822", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-341892", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-342476", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-342649", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-343490", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-343520", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-344773", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-345685", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-347099", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-347401", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-347953", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-348175", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-348469", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-349561", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-350204", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-350596", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-353480", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-353522", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-353783", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-354111", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-354690", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-354831", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-355471", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-355582", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-355860", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-356092", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-356718", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-357108", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-357602", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-357824", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-360610", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-360975", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-361332", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-361428", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-361888", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-362783", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-363039", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-363606", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-364814", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-365358", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-365677", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-366440", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-366473", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-367260", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-367699", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-368731", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-369521", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-369547", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-369638", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-369734", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-369788", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-370745", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-371256", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-371939", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-372219", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-372249", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-373292", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-373312", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-373591", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-373986", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-374791", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-375580", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-376090", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-378659", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-379558", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-380086", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-380912", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-381186", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-381254", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-382214", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-382630", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-384308", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-385473", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-386788", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-387007", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-387083", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-387597", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-388293", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-388391", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-389129", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-389404", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-389869", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-389964", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-390956", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-391496", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-391979", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-392035", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-393656", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-393811", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-394359", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-395551", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-395592", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-396252", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-396779", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-396924", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-398756", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-398757", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-399016", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-399177", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-400975", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-401434", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-402000", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-402987", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-403916", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-404751", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-405574", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-406744", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-409182", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-409918", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-410108", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-411541", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-412355", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-412693", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-412896", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-413088", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-413107", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-415265", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-419125", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-420530", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-420536", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-421596", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-421626", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-423770", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-424219", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-424940", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-425988", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-427165", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-427252", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-427389", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-427868", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-429260", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-429462", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-429490", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-429758", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-429898", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-432994", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-433787", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-434028", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-435242", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-436044", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-436695", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-437100", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-437994", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-438707", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-439628", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-439709", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-439988", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-440177", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-440706", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-440894", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-442197", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-442901", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-443360", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-443400", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-443749", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-444272", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-444578", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-444893", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-445427", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-445628", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-445814", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-447879", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-449315", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-449338", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-449537", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-449657", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-450631", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-450841", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-451915", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-454219", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-456589", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-456900", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-457383", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-457442", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-458240", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-459747", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-460879", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-461201", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-461301", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-462341", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-463114", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-463172", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-463430", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-463567", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-467959", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-468354", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-468443", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-468730", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-470032", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-471500", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-472143", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-473295", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-474720", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-474920", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-475169", "verdict": "drop", "note": "many pigeons unboxed"}
+{"id": "coco-475407", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-475888", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-478056", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-478665", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-478717", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-479325", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-480205", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-481521", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-481628", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-482967", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-484002", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-487020", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-488277", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-489482", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-492540", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-494240", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-494346", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-494578", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-494584", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-494675", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-495088", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-495134", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-495541", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-495695", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-495734", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-496522", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-496831", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-497094", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-497117", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-497537", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-498555", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-499082", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-499931", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-500690", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-501846", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-502470", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-503321", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-503441", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-503660", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-503703", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-504400", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-504891", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-504921", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-504974", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-505122", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-506429", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-506856", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-508311", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-508695", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-509579", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-510167", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-510644", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-510899", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-511694", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-512175", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-513968", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-514025", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-514581", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-514955", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-516633", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-516914", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-518604", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-519398", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-519528", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-523098", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-523405", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-523737", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-524361", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-524881", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-527173", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-527464", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-527526", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-528886", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-529261", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-529360", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-530786", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-531662", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-533050", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-533807", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-534070", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-534286", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-534443", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-534776", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-534784", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-534954", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-535340", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-535483", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-536204", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-536720", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-536806", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-537301", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-537652", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-538976", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-539226", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-539283", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-539557", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-539604", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-540265", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-540285", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-541768", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-542205", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-542304", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-542637", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-542969", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-543490", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-543713", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-544082", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-545253", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-546296", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-546298", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-547391", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-548296", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-548562", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-549188", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-549377", "verdict": "pigeon", "note": "all boxed birds are feral pigeons"}
+{"id": "coco-550341", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-551596", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-551597", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-552420", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-553165", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-554783", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-554828", "verdict": "drop", "note": "COCO crowd annotation (birds not boxed individually)"}
+{"id": "coco-555318", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-555843", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-555847", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-556683", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-558108", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-558169", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-558765", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-559127", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-559225", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-560566", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-560580", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-561180", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-564068", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-564545", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-564563", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-565087", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-565332", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-566331", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-566729", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-567536", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-570660", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-572017", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-572409", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-573762", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-575074", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-575173", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-576098", "verdict": "drop", "note": "COCO crowd annotation (birds not boxed individually)"}
+{"id": "coco-578383", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-578396", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-578703", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-579198", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-579815", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-579982", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-580084", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-580257", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-580510", "verdict": "drop", "note": "tiny/unidentifiable birds, art, toys, captive or unclear boxes"}
+{"id": "coco-580585", "verdict": "other_bird", "note": "no pigeon among the birds"}
+{"id": "coco-581702", "verdict": "other_bird", "note": "no pigeon among the birds"}

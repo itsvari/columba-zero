@@ -229,6 +229,82 @@ def split_groups(
     return assignment
 
 
+def image_kind(present: Sequence[str]) -> str:
+    """C4 image kinds: `pigeon` (a pigeon present), `other_bird` (only other birds), `empty`."""
+    if "pigeon" in present:
+        return "pigeon"
+    return "other_bird" if present else "empty"
+
+
+def split_by_kind(
+    items: Sequence[Record],
+    val_fraction: float,
+    seed: int,
+    val_mix: dict[str, float] | None,
+    train_only_sources: Iterable[str] = (),
+) -> tuple[dict[str, str], Record]:
+    """Group split whose val split has a chosen image-kind mix (e.g. test-v2's).
+
+    A group's kind is the strongest kind among its images (pigeon > other_bird > empty).
+    Pigeon groups go to val with `val_fraction`; each other kind gets the fraction that makes
+    val's kind counts follow `val_mix` (capped at 0.5 of that kind). Within a kind, groups are
+    stratified by source (and, for other birds, by species) as in `split_groups`. Groups with
+    an image from `train_only_sources` always go to train. Without `val_mix`, this is
+    `split_groups`.
+    """
+    train_only = set(train_only_sources)
+    groups: dict[str, list[Record]] = defaultdict(list)
+    for item in items:
+        groups[item["group"]].append(item)
+    rank = {"pigeon": 0, "other_bird": 1, "empty": 2}
+    kind_of = {
+        group: min((image_kind(item["_present"]) for item in members), key=rank.__getitem__)
+        for group, members in groups.items()
+    }
+    forced = {
+        group
+        for group, members in groups.items()
+        if any(i["source"] in train_only for i in members)
+    }
+    assignment = {group: "train" for group in forced}
+    eligible = [item for item in items if item["group"] not in forced]
+    if not val_mix:
+        assignment.update(split_groups(eligible, val_fraction, seed))
+        return assignment, {}
+    by_kind: dict[str, list[Record]] = defaultdict(list)
+    for item in eligible:
+        stratum = item["source"]
+        if kind_of[item["group"]] == "other_bird":
+            stratum += ":" + ",".join(item["_present"][:1])
+        by_kind[kind_of[item["group"]]].append({**item, "_stratum": stratum})
+    pigeon_val = val_fraction * len(by_kind["pigeon"])
+    fractions = {"pigeon": val_fraction}
+    for kind in ("other_bird", "empty"):
+        wanted = pigeon_val * val_mix.get(kind, 0.0) / val_mix["pigeon"]
+        available = len(by_kind[kind])
+        fractions[kind] = min(0.5, wanted / available) if available else 0.0
+    for kind, kind_items in by_kind.items():
+        assignment.update(split_groups(kind_items, fractions[kind], seed, "_stratum"))
+    return assignment, {"val_mix_target": val_mix, "kind_val_fractions": fractions}
+
+
+def split_composition(entries: Sequence[tuple[Record, str, list[Record], list[str]]]) -> Record:
+    """Per split: image counts by kind and their fractions (C4 empty/confuser definitions)."""
+    result: Record = {}
+    for split in sorted({entry[1] for entry in entries}):
+        kinds = Counter(image_kind(present) for _, s, _, present in entries if s == split)
+        total = sum(kinds.values())
+        result[split] = {
+            "images": total,
+            "pigeon_images": kinds["pigeon"],
+            "confuser_images": kinds["other_bird"],
+            "empty_images": kinds["empty"],
+            "confuser_fraction": round(kinds["other_bird"] / total, 4) if total else 0.0,
+            "empty_fraction": round(kinds["empty"] / total, 4) if total else 0.0,
+        }
+    return result
+
+
 # --- build ----------------------------------------------------------------------------------
 
 
@@ -612,7 +688,10 @@ def build_train(spec: Record, root: Path) -> Path:
         else:
             kept.append(item)
     kept = apply_caps(kept, spec["sources"], report["per_source"])
-    assignment = split_groups(kept, spec["val_fraction"], spec["seed"])
+    train_only = [source["name"] for source in spec["sources"] if source.get("train_only")]
+    assignment, split_report = split_by_kind(
+        kept, spec["val_fraction"], spec["seed"], spec.get("val_mix"), train_only
+    )
     entries = [(item, assignment[item["group"]], item["_boxes"], item["_present"]) for item in kept]
     for item in kept:
         report["per_source"][item["source"]][f"kept_{assignment[item['group']]}"] += 1
@@ -625,6 +704,10 @@ def build_train(spec: Record, root: Path) -> Path:
         copies, style_report = style_copies(root, spec, entries)
         entries = [*entries, *copies]
     extra = {
+        "composition": split_composition(
+            [e for e in entries if e[0].get("style", "original") == "original"]
+        ),
+        "split": split_report,
         "folded_classes": folded,
         "style_copies": style_report,
         "build_report": {

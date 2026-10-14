@@ -22,6 +22,8 @@ from tools.build_dataset import (
     build_test_styles,
     build_train,
     freeze,
+    image_kind,
+    split_by_kind,
     split_groups,
     validate_dataset,
     verify_freeze,
@@ -205,6 +207,29 @@ class DedupeTests(unittest.TestCase):
         self.assertEqual(len(clusters), 3)
         reversed_groups, _ = assign_groups(list(reversed(items)), PHASH_MAX_DISTANCE)
         self.assertEqual(groups, reversed_groups)
+
+    def test_val_mix_follows_the_test_composition_and_train_only_sources(self) -> None:
+        items: list[dict[str, Any]] = []
+        for index in range(600):
+            kind = ("pigeon", "other_bird", "empty")[index % 3]
+            present = {"pigeon": ["pigeon"], "other_bird": ["zebra_dove"], "empty": []}[kind]
+            source = "nea" if kind == "pigeon" and index % 9 == 0 else f"s-{kind}"
+            items.append(
+                {
+                    "id": f"i{index}",
+                    "group": f"g{index % 3}-{index // 6}",  # two images of one kind
+                    "source": source,
+                    "_present": present,
+                }
+            )
+        mix = {"pigeon": 0.5, "other_bird": 0.2, "empty": 0.3}
+        assignment, report = split_by_kind(items, 0.2, 0, mix, ["nea"])
+        val = [item for item in items if assignment[item["group"]] == "val"]
+        kinds = Counter(image_kind(item["_present"]) for item in val)
+        self.assertAlmostEqual(kinds["empty"] / len(val), 0.3, delta=0.05)
+        self.assertAlmostEqual(kinds["other_bird"] / len(val), 0.2, delta=0.05)
+        self.assertFalse(any(item["source"] == "nea" for item in val))
+        self.assertEqual(report["val_mix_target"], mix)
 
     def test_split_keeps_groups_together(self) -> None:
         items = [
