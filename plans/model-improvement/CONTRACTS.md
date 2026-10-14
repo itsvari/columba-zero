@@ -1,9 +1,10 @@
 # Shared contracts
 
-Version: **v1.1**. Changes go through the coordinator and bump the version.
+Version: **v1.2**. Changes go through the coordinator and bump the version.
 
 Changelog:
 
+- v1.2 (2026-10-14, coordinator): C7 accepts WS4's optional extensions.
 - v1.1 (2026-10-14, coordinator): C4 gains exact evaluator semantics from WS1
   (AP method, matching, ties, threshold sentinel, small recall, undefined rates,
   subsets). C3 meta gains optional `ncnn_compute`.
@@ -376,6 +377,12 @@ test_empty_far,test_confuser_far,operating_threshold,git_commit,run_path
   "label": "measured | estimated"
 }
 ```
+
+Optional C7 fields (v1.2, written by `tools/bench_ncnn.py`): `samples_ms`
+(paired end-to-end samples, used by `tools/reaction_budget.py`), camera frame
+size, class count, confidence, model file hashes, load averages, software
+versions, raw CPU feature report, Slurm allocation, timing boundaries, and
+int8 calibration provenance (`latency-only` vs deployment calibration).
 
 Calibration records live in `experiments/latency/calibration.json`, with
 `id`, `factor`, `method`, `source` and `date`.

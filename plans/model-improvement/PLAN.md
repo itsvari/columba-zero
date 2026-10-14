@@ -175,6 +175,25 @@ Carlo over frame-level hits. Starting budget:
 | Confirmation | k = 2 of n = 3 frames per track (k = 3 of n = 5 only if the false-alarm gate fails) |
 | Result | ≈ 250–350 ms typical and ≤ 500 ms p95, if per-frame recall on visible pigeons is ≥ 0.8 |
 
+Recomputed by WS4 (14 Oct 2026) from **measured** xcng0 distributions scaled
+to an **estimated** Pi 5 (factor 1.53, `cal-v0-published`), **simulated**
+reaction times (20k trials, 30 FPS, recall 0.8). FP16 NCNN, end-to-end with
+Python pre/post-processing. Full table: `experiments/latency/reaction_budget.md`.
+
+| Model | Input | Est. Pi frame p95 | k2/n3 p50 | k2/n3 p95 | k3/n5 p95 | k2/n3 p95, correlated misses (ρ = 0.6, assumed) |
+|---|---|---:|---:|---:|---:|---:|
+| v1-2 (YOLO11n, 1 class) | 352×608 | 29 ms | 120 ms | 200 ms | 240 ms | 299 ms |
+| v1-2 (YOLO11n, 1 class) | 384×640 | 33 ms | 123 ms | 203 ms | 243 ms | 302 ms |
+| v1-2 (YOLO11n, 1 class) | 448×800 | 49 ms | 174 ms | 274 ms | 330 ms | 380 ms |
+| v1-2 (YOLO11n, 1 class) | 640×640 | 54 ms | 189 ms | 305 ms | 369 ms | 398 ms |
+| YOLO26n (COCO) | 384×640 | 37 ms | 141 ms | 223 ms | 262 ms | 324 ms |
+
+Implications (estimates until WS10 measures on the Pi): nano models at every
+16:9 size fit the 70 ms target with headroom, so per section 4's last bullet
+the headroom goes to accuracy (s-size models, 448×800). FP16 beats int8 on
+both measured hosts. A nano model at 352×608 or 384×640 is close to the 35 ms
+needed for processing both cameras at once (Q1).
+
 Consequences:
 
 - Only one camera is processed at a time by default: Wide by day, NoIR with
