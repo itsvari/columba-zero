@@ -98,7 +98,7 @@ small boxes come from one depot session.
 | Trigger classes | Pigeons only. Native doves and pigeons (e.g. spotted dove, zebra dove, pink-necked green pigeon) are confusers and must not trigger. |
 | Other species | Secondary. Ship only if they don't hurt pigeon accuracy or latency (section 5.4). |
 | Reaction time target | About 0.5 s, p95. |
-| GPU budget | At most **4 GPUs** at a time for this project. |
+| GPU budget | At most **8 GPUs** at a time (the per-user QoS maximum), nv lane only. Raised from 4 on 15 Oct 2026 when the user reported the high-priority project idle; drop back to 4 if the user says it needs GPUs again. |
 | ARM node use | `xcng0-1` may be used for anything where it fits better than the Mac, including latency estimates. Avoid queueing many jobs; prefer local Mac work for quick iteration. |
 | Restricted hardware | A100, H100, H200 and `xgpj0` belong to a higher-priority project. Do not use them. |
 | Native code | C++ preferred over Rust (section 7, WS8). |
@@ -160,7 +160,7 @@ SoC cluster (`ssh columba-cluster`, see section 6):
 | Item | Fact |
 |---|---|
 | Per-user QoS | Max **16 running** jobs, **32 submitted**; max **8 GPUs total**, 256 CPUs. Shared with the user's high-priority project (jobs named `moonshot-*`). |
-| This project's budget | ≤ 4 GPUs, ≤ 2 CPU jobs, ≤ 12 jobs in queue at a time. |
+| This project's budget | ≤ 8 GPUs, ≤ 2 CPU jobs, ≤ 24 jobs in queue at a time (from 15 Oct 2026; was 4 / 2 / 12). |
 | Priority | Multifactor, dominated by fair-share; usage half-life 10 days; the user's fair-share is already low. |
 | Billing weights | `nv` GPU 4, a100-40 6, a100-80 12, h100-47 8, h100-96 16, h200 48; CPU 0.5 each. |
 | `gpu` partition | 3 h limit. |
@@ -325,7 +325,7 @@ unlabelled negatives, and record the decision in `status/WS5.md`.
   - **nv lane**: `-p gpu-long --gres=gpu:nv:1`, optionally `--constraint=t4|titanrtx|titanv`, ≤ 8 CPUs, ≤ 64 GB RAM.
   - **arm lane**: `-p normal -w xcng0` or `xcng1` (3 h limit), ≤ 32 CPUs.
   - Nothing else without explicit user approval.
-- Budget: ≤ 4 GPU jobs running, ≤ 2 CPU jobs running, ≤ 12 jobs queued in total
+- Budget: ≤ 8 GPU jobs running, ≤ 2 CPU jobs running, ≤ 24 jobs queued in total
   for this project. `cluster/sweep.py` enforces this. Do not bypass it with
   manual `sbatch` except for single smoke tests.
 - Bundle small tasks (e.g. all latency benchmarks) into one job instead of

@@ -13,9 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, NotRequired, TypedDict, cast
 
-GPU_RUNNING_LIMIT = 4
+# Per-user QoS max (8 GPUs); raised from 4 on 15 Oct 2026 when the user freed the account.
+GPU_RUNNING_LIMIT = 8
 CPU_RUNNING_LIMIT = 2
-QUEUED_LIMIT = 12
+QUEUED_LIMIT = 24  # QoS allows 32 submitted; keep headroom
 PROJECT_STORAGE_LIMIT_KB = 80 * 1024 * 1024
 ACTIVE_STATES = frozenset(
     {"RUNNING", "PENDING", "CONFIGURING", "COMPLETING", "SUSPENDED", "RESIZING"}
@@ -53,7 +54,7 @@ class Budget:
         ):
             raise ValueError("budget may lower but cannot raise the project caps")
         if not 0 <= self.queued_jobs <= QUEUED_LIMIT:
-            raise ValueError("queued budget cannot exceed 12")
+            raise ValueError(f"queued budget cannot exceed {QUEUED_LIMIT}")
 
     def allows(self, jobs: Sequence[Job], lane: str) -> bool:
         owned = [job for job in jobs if job.owned and job.state in ACTIVE_STATES]

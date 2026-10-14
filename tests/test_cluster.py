@@ -32,6 +32,9 @@ from cluster.run_job import (
     run,
 )
 from cluster.slurm import (
+    CPU_RUNNING_LIMIT,
+    GPU_RUNNING_LIMIT,
+    QUEUED_LIMIT,
     Budget,
     Job,
     Submission,
@@ -161,24 +164,28 @@ class ClusterTests(unittest.TestCase):
     def test_budget_caps_running_and_reserves_pending_slots(self) -> None:
         gpu_jobs = tuple(
             Job(str(index), f"cz-gpu-{index}", "RUNNING", "gpu-long", "gpu:nv:1")
-            for index in range(4)
+            for index in range(GPU_RUNNING_LIMIT)
         )
         cpu_jobs = tuple(
             Job(str(index + 10), f"cz-cpu-{index}", "RUNNING", "normal", "N/A")
-            for index in range(2)
+            for index in range(CPU_RUNNING_LIMIT)
         )
         self.assertFalse(Budget().allows(gpu_jobs, "nv"))
         self.assertFalse(Budget().allows(cpu_jobs, "arm"))
-        self.assertTrue(Budget().allows(gpu_jobs[:3], "nv"))
+        self.assertTrue(Budget().allows(gpu_jobs[:-1], "nv"))
         pending = replace(gpu_jobs[-1], state="PENDING")
-        self.assertFalse(Budget().allows((*gpu_jobs[:3], pending), "nv"))
+        self.assertFalse(Budget().allows((*gpu_jobs[:-1], pending), "nv"))
         self.assertFalse(Budget(3, 1).allows(gpu_jobs[:3], "nv"))
         all_pending = tuple(
             Job(str(index), f"cz-pending-{index}", "PENDING", "normal", "N/A")
-            for index in range(12)
+            for index in range(QUEUED_LIMIT)
         )
         self.assertFalse(Budget().allows(all_pending, "nv"))
-        for values in ((5, 2, 12), (4, 3, 12), (4, 2, 13)):
+        for values in (
+            (GPU_RUNNING_LIMIT + 1, CPU_RUNNING_LIMIT, QUEUED_LIMIT),
+            (GPU_RUNNING_LIMIT, CPU_RUNNING_LIMIT + 1, QUEUED_LIMIT),
+            (GPU_RUNNING_LIMIT, CPU_RUNNING_LIMIT, QUEUED_LIMIT + 1),
+        ):
             with self.assertRaises(ValueError):
                 Budget(*values)
 

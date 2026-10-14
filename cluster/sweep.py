@@ -17,7 +17,17 @@ from typing import Literal, cast
 from app.json_data import JsonValue
 from cluster.artifacts import LEADERBOARD_COLUMNS, leaderboard_row, update_leaderboard
 from cluster.recipe import Recipe, load_recipe, recipe_sha256
-from cluster.slurm import ACTIVE_STATES, Budget, Job, Submission, job_name, parse_queue
+from cluster.slurm import (
+    ACTIVE_STATES,
+    CPU_RUNNING_LIMIT,
+    GPU_RUNNING_LIMIT,
+    QUEUED_LIMIT,
+    Budget,
+    Job,
+    Submission,
+    job_name,
+    parse_queue,
+)
 
 SSH_HOST = "columba-cluster"
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -250,9 +260,9 @@ def main() -> None:
     )
     parser.add_argument("--recipes", nargs="+", type=Path, default=[])
     parser.add_argument("--seeds", nargs="+", type=int)
-    parser.add_argument("--gpu-limit", type=int, default=4)
-    parser.add_argument("--cpu-limit", type=int, default=2)
-    parser.add_argument("--queue-limit", type=int, default=12)
+    parser.add_argument("--gpu-limit", type=int, default=GPU_RUNNING_LIMIT)
+    parser.add_argument("--cpu-limit", type=int, default=CPU_RUNNING_LIMIT)
+    parser.add_argument("--queue-limit", type=int, default=QUEUED_LIMIT)
     parser.add_argument("--job-ids", nargs="+", default=[])
     parser.add_argument(
         "--exclude-nodes",
