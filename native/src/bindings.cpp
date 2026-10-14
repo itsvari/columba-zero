@@ -1,6 +1,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/map.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/unique_ptr.h>
 #include <nanobind/stl/pair.h>
@@ -231,16 +232,31 @@ nb::dict timing_values(const columba::Timings& timings) {
     return values;
 }
 
+std::optional<columba::Compute> parse_compute(const std::optional<std::string>& compute) {
+    if (!compute) {
+        return std::nullopt;
+    }
+    if (*compute == "fp16") {
+        return columba::Compute::fp16;
+    }
+    if (*compute == "fp32") {
+        return columba::Compute::fp32;
+    }
+    throw std::invalid_argument("compute must be fp16, fp32 or None");
+}
+
 }
 
 NB_MODULE(columba_native, module) {
     module.doc() = "CPU NCNN detector with C8 metadata and Ultralytics-compatible preprocessing.";
     nb::class_<columba::Detector>(module, "Detector")
-        .def("__init__", [](columba::Detector* self, const std::string& directory, int threads) {
+        .def("__init__", [](columba::Detector* self, const std::string& directory, int threads,
+                           const std::optional<std::string>& compute) {
+            const auto mode = parse_compute(compute);
             auto settings = read_settings(directory);
             nb::gil_scoped_release release;
-            new (self) columba::Detector(directory, std::move(settings), threads);
-        }, nb::arg("model_dir"), nb::arg("threads") = 4)
+            new (self) columba::Detector(directory, std::move(settings), threads, mode);
+        }, nb::arg("model_dir"), nb::arg("threads") = 4, nb::arg("compute") = nb::none())
         .def("detect", [](const columba::Detector& detector, const Frame& frame, float confidence) {
             return prediction_array(run(detector, frame, confidence).detections);
         }, nb::arg("frame").noconvert(), nb::arg("conf"))
@@ -253,6 +269,17 @@ NB_MODULE(columba_native, module) {
             return std::make_pair(input.height_px, input.width_px);
         })
         .def_prop_ro("names", [](const columba::Detector& detector) { return detector.settings().names; })
+        .def_prop_ro("compute", [](const columba::Detector& detector) {
+            return detector.compute() == columba::Compute::fp16 ? "fp16" : "fp32";
+        })
+        .def_prop_ro("compute_flags", [](const columba::Detector& detector) {
+            const auto& options = detector.options();
+            nb::dict flags;
+            flags["use_fp16_packed"] = options.use_fp16_packed;
+            flags["use_fp16_storage"] = options.use_fp16_storage;
+            flags["use_fp16_arithmetic"] = options.use_fp16_arithmetic;
+            return flags;
+        })
         .def_prop_ro("decode", [](const columba::Detector& detector) {
             return detector.settings().decode == columba::Decode::yolo11 ? "yolo11" : "yolo26";
         });

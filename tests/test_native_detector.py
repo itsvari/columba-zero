@@ -84,7 +84,7 @@ class NativeDetectorTests(unittest.TestCase):
 
     def test_legacy_package_and_lazy_loading(self) -> None:
         detector = self.detector()
-        self.constructor.assert_called_once_with(str(self.model), threads=2)
+        self.constructor.assert_called_once_with(str(self.model), threads=2, compute=None)
         self.assertEqual(detector.names, {0: "pigeon"})
         with patch(
             "app.native_detector.importlib.import_module", side_effect=ImportError("missing")
@@ -176,7 +176,23 @@ class NativeDetectorTests(unittest.TestCase):
             cast(NativeDetector, detector).last_stage_ms,
             {"preprocess": 1.0, "inference": 2.0, "postprocess": 3.0},
         )
-        self.constructor.assert_called_once_with(str(self.model), threads=2)
+        self.constructor.assert_called_once_with(str(self.model), threads=2, compute=None)
+
+    def test_compute_override_forwarding_and_validation(self) -> None:
+        for compute in (None, "fp16", "fp32"):
+            with self.subTest(compute=compute):
+                self.constructor.reset_mock()
+                with patch.dict(sys.modules, {"columba_native": self.extension}):
+                    NativeDetector(str(self.model), 640, 0.5, threads=2, compute=compute)
+                self.constructor.assert_called_once_with(
+                    str(self.model), threads=2, compute=compute
+                )
+        for compute in ("", "auto", "FP16", "int8"):
+            with self.subTest(compute=compute):
+                with patch("app.native_detector.importlib.import_module") as importer:
+                    with self.assertRaisesRegex(DetectorError, "compute must be"):
+                        NativeDetector(str(self.model), 640, 0.5, compute=compute)
+                    importer.assert_not_called()
 
     def test_warmup_and_inference_errors(self) -> None:
         detector = self.detector()
@@ -275,6 +291,44 @@ class NativeExtensionTests(unittest.TestCase):
         self.assertEqual(set(timings), {"preprocess", "extract", "postprocess", "total"})
         self.assertTrue(all(value >= 0 for value in timings.values()))
         self.assertGreaterEqual(timings["total"], timings["extract"])
+
+    def test_compute_defaults_and_overrides_set_loaded_network_options(self) -> None:
+        extension = cast(ModuleType, columba_native)
+        for quantisation in (None, "fp32", "fp16", "int8"):
+            if quantisation is None:
+                self.metadata.pop("columba", None)
+            else:
+                self.metadata["columba"] = {
+                    "input_hw": [640, 640],
+                    "decode": "yolo11",
+                    "quantization": quantisation,
+                }
+            self.write_metadata()
+            for compute in (None, "fp16", "fp32"):
+                with self.subTest(quantisation=quantisation, compute=compute):
+                    detector = extension.Detector(str(self.model), threads=2, compute=compute)
+                    expected = compute or ("fp16" if quantisation in ("fp16", "int8") else "fp32")
+                    self.assertEqual(detector.compute, expected)
+                    self.assertEqual(
+                        detector.compute_flags,
+                        {
+                            name: expected == "fp16"
+                            for name in (
+                                "use_fp16_packed",
+                                "use_fp16_storage",
+                                "use_fp16_arithmetic",
+                            )
+                        },
+                    )
+
+    def test_extension_rejects_invalid_compute(self) -> None:
+        extension = cast(ModuleType, columba_native)
+        for compute in ("", "auto", "FP16", "int8"):
+            with self.subTest(compute=compute):
+                with self.assertRaisesRegex(ValueError, "compute must be"):
+                    extension.Detector(str(self.model), compute=compute)
+        with self.assertRaises(TypeError):
+            extension.Detector(str(self.model), compute=16)
 
     def test_extension_validates_metadata_threads_and_confidence(self) -> None:
         extension = cast(ModuleType, columba_native)

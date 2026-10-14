@@ -37,6 +37,7 @@ class BenchmarkOptions:
     threads: int
     confidence: float
     frame_hw: tuple[int, int]
+    compute: str
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,10 @@ def backend_sampler(backend: Backend, options: BenchmarkOptions) -> Callable[[],
     if backend == "native":
         import columba_native
 
-        native = cast(NativeModel, columba_native.Detector(str(options.model), options.threads))
+        native = cast(
+            NativeModel,
+            columba_native.Detector(str(options.model), options.threads, compute=options.compute),
+        )
 
         def native_sample() -> Sample:
             started_ns = time.perf_counter_ns()
@@ -90,7 +94,7 @@ def backend_sampler(backend: Backend, options: BenchmarkOptions) -> Callable[[],
     torch.set_num_threads(options.threads)
     description = describe_package(options.model)
     reference = load_reference(
-        options.model, description, frame, options.confidence, options.threads
+        options.model, description, frame, options.confidence, options.threads, options.compute
     )
     original_extract = cast(
         Callable[[NcnnExtractor, str], tuple[int, NcnnMatrix]], ncnn.Extractor.extract
@@ -181,6 +185,7 @@ def main() -> None:
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--image", type=Path, required=True)
     parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument("--compute", choices=("fp32", "fp16"), default="fp32")
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--confidence", type=float, default=0.5)
@@ -198,6 +203,7 @@ def main() -> None:
         arguments.threads,
         arguments.confidence,
         tuple(arguments.frame_size),
+        arguments.compute,
     )
     records = measure(options, arguments.warmup, arguments.iterations)
     affinity = sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None
@@ -207,6 +213,11 @@ def main() -> None:
         "architecture": platform.machine(),
         "shared_machine_noise": platform.system() == "Darwin",
         "threads": options.threads,
+        "compute": options.compute,
+        "compute_flags": {
+            name: options.compute == "fp16"
+            for name in ("use_fp16_packed", "use_fp16_storage", "use_fp16_arithmetic")
+        },
         "pinned_cores": affinity,
         "model": str(options.model),
         "input_hw": description.input_hw,

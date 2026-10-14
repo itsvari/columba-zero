@@ -7,20 +7,26 @@ NumPy and PyYAML. The application wrapper imports the extension only when a
 
 ## Build on macOS ARM64
 
-Run from the repository root. The development helper clones NCNN and OpenCV
-`5.0.0` into the ignored `native/build/sources/` directory and installs static
-libraries into separate prefixes. Homebrew `libomp` supplies OpenMP on this Mac.
+Run from the main checkout. The merged WS4 script builds NCNN tag `20260526`
+with Vulkan and post-A76 CPU features disabled, installing its CMake package in
+`native/build/ncnn-mac-a76compat/lib/cmake/ncnn`. The OpenCV helper clones
+`5.0.0` into ignored `native/build/sources/opencv`, builds core/imgproc and
+installs static libraries in `native/build/opencv-mac-arm64`. `--opencv-only`
+avoids building a second NCNN prefix. Homebrew `libomp` supplies OpenMP.
 The architecture flags also handle an x86_64 CMake binary running under Rosetta.
 
 ```sh
-native_python=/Users/vari/Developer/columba-zero/.venv/bin/python
-BUILD_THREADS=4 bash native/build_dependencies.sh mac-arm64
+cd /Users/vari/Developer/columba-zero
+native_python="$PWD/.venv/bin/python"
+brew install libomp
+bash tools/build_ncnn_a76.sh --profile mac-a76compat --jobs 4
+BUILD_THREADS=4 bash native/build_dependencies.sh mac-arm64 --opencv-only
 cmake -S native -B native/build/mac-arm64 \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_OSX_ARCHITECTURES=arm64 \
     -DCMAKE_APPLE_SILICON_PROCESSOR=arm64 \
     -DPython_EXECUTABLE="$native_python" \
-    -Dncnn_DIR="$PWD/native/build/ncnn-mac-arm64/lib/cmake/ncnn" \
+    -Dncnn_DIR="$PWD/native/build/ncnn-mac-a76compat/lib/cmake/ncnn" \
     -DOpenCV_DIR="$PWD/native/build/opencv-mac-arm64/lib/cmake/opencv5"
 cmake --build native/build/mac-arm64 --parallel 4
 ctest --test-dir native/build/mac-arm64 --output-on-failure
@@ -57,11 +63,11 @@ The direct build commands, inside the allocated arm job, are:
 
 ```sh
 native_python="$HOME/columba/scratch/ws8/venv/bin/python"
-BUILD_THREADS=8 bash native/build_dependencies.sh linux-aarch64
+BUILD_THREADS=8 bash native/build_dependencies.sh linux-aarch64 --opencv-only
 cmake -S native -B native/build/linux-aarch64 \
     -DCMAKE_BUILD_TYPE=Release \
     -DPython_EXECUTABLE="$native_python" \
-    -Dncnn_DIR="$PWD/native/build/ncnn-linux-aarch64/lib/cmake/ncnn" \
+    -Dncnn_DIR="$HOME/columba/scratch/ws4/ncnn-xcng/lib/cmake/ncnn" \
     -DOpenCV_DIR="$PWD/native/build/opencv-linux-aarch64/lib/cmake/opencv5"
 cmake --build native/build/linux-aarch64 --parallel 8
 ctest --test-dir native/build/linux-aarch64 --output-on-failure
@@ -69,53 +75,26 @@ export PYTHONPATH="$PWD/native/build/linux-aarch64:$PWD"
 "$native_python" -m unittest discover -s tests -v
 ```
 
-A WS4 prefix can replace the development NCNN prefix using
-`-Dncnn_DIR=<prefix>/lib/cmake/ncnn`; no NCNN source checkout is required by
-`native/CMakeLists.txt`. Vulkan is disabled. OpenCV may likewise come from an
-existing installation via `OpenCV_DIR`.
+CMake accepts `-Dncnn_DIR=<prefix>/lib/cmake/ncnn`; it never fetches NCNN.
+For a fresh Linux aarch64 prefix, run
+`bash tools/build_ncnn_a76.sh --profile xcng --jobs 4` from the checkout and use
+`$PWD/native/build/ncnn-xcng/lib/cmake/ncnn`. Work stays under `~/columba/` on
+the cluster. Existing WS4 installations can be reused without modification.
 
-## Build against WS4 prefixes
-
-The Mac prefix is
-`/Users/vari/.t3/worktrees/columba-zero/t3-206c9967/native/build/ncnn-mac-a76compat`;
-the arm-lane prefix is `~/columba/scratch/ws4/ncnn-xcng`. Both export the `ncnn`
-CMake target and were built from the same pinned tag with post-A76 options off.
-They are inputs to the build; this extension does not change either prefix.
-
-```sh
-ncnn_prefix=/Users/vari/.t3/worktrees/columba-zero/t3-206c9967/native/build/ncnn-mac-a76compat
-cmake -S native -B native/build/mac-ws4 \
-    -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 \
-    -DCMAKE_APPLE_SILICON_PROCESSOR=arm64 \
-    -DPython_EXECUTABLE=/Users/vari/Developer/columba-zero/.venv/bin/python \
-    -Dncnn_DIR="$ncnn_prefix/lib/cmake/ncnn" \
-    -DOpenCV_DIR="$PWD/native/build/opencv-mac-arm64/lib/cmake/opencv5"
-cmake --build native/build/mac-ws4 --parallel 4
-ctest --test-dir native/build/mac-ws4 --output-on-failure
-```
-
-Inside an allocated Linux aarch64 job:
-
-```sh
-ncnn_prefix="$HOME/columba/scratch/ws4/ncnn-xcng"
-cmake -S native -B native/build/linux-ws4 \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DPython_EXECUTABLE="$HOME/columba/scratch/ws8/venv/bin/python" \
-    -Dncnn_DIR="$ncnn_prefix/lib/cmake/ncnn" \
-    -DOpenCV_DIR="$PWD/native/build/opencv-linux-aarch64/lib/cmake/opencv5"
-cmake --build native/build/linux-ws4 --parallel 4
-ctest --test-dir native/build/linux-ws4 --output-on-failure
-```
-
-The recorded overhead measurements use WS8's original development prefixes.
-WS4-prefix builds are additional compatibility checks, with separate logs.
+On a Raspberry Pi, `sudo apt install libopencv-dev` supplies OpenCV core/imgproc
+and its CMake config, usually under `/usr/lib/aarch64-linux-gnu/cmake/opencv4`.
+Build NCNN with `bash tools/build_ncnn_a76.sh --profile pi5 --jobs 4`, then use
+`-Dncnn_DIR="$PWD/native/build/ncnn-pi5/lib/cmake/ncnn"` and omit `OpenCV_DIR`
+if CMake finds the system installation; otherwise set it to that OpenCV config
+directory. The extension supports OpenCV 4 or 5. The recorded byte-exact
+letterbox tests use OpenCV 5.0.0; a physical Pi build is a WS10 follow-up.
 
 ## Python interfaces
 
 ```python
 from columba_native import Detector
 
-detector = Detector(model_dir, threads=4)
+detector = Detector(model_dir, threads=4, compute=None)
 rows = detector.detect(frame, conf=0.5)
 ```
 
@@ -126,7 +105,8 @@ call. The GIL is released during preprocessing, inference and decoding.
 
 `rows` is an owned, C-contiguous `float32` N×6 array. Columns are
 `x1, y1, x2, y2, score, class_id` in original-frame pixels; an empty result has
-shape `(0, 6)`. Properties are `input_hw`, `names` and `decode`.
+shape `(0, 6)`. Properties are `input_hw`, `names`, `decode`, effective `compute`
+and `compute_flags`, the three actual NCNN FP16 options on the loaded network.
 
 `detect_with_timings(frame, conf)` additionally returns a dictionary with
 `preprocess`, `extract`, `postprocess`, `total`, all in milliseconds.
@@ -140,7 +120,7 @@ The application API is:
 ```python
 from app.native_detector import NativeDetector
 
-detector = NativeDetector(model_path, image_size, confidence, threads=4)
+detector = NativeDetector(model_path, image_size, confidence, threads=4, compute=None)
 detector.warmup(width, height)
 detections = detector.detect(packet)
 ```
@@ -151,8 +131,9 @@ mapping. `last_stage_ms` is updated on every successful call with `preprocess`,
 inference errors are `DetectorError`. The wrapper uses main's shared package validation, including the restriction
 that only pigeon may trigger. All species detections above the confidence
 threshold are returned with lower-case metadata labels and `class_id` keywords.
-It matches WS9's factory and C9 timing contract after rebasing onto main
-`d57919a`.
+It matches WS9's factory and C9 timing contract. The optional compute argument
+preserves that factory's existing positional calls; a config override is not
+currently wired, so runtime construction uses the package default.
 
 ## Metadata and decoding
 
@@ -178,11 +159,13 @@ contract are rejected. Boxes are clipped after NMS. The installed 8.4.175
 `scale_boxes` uses separate gains from rounded resized width and height; the
 native decoder follows that source, including odd padding.
 
-C8 `quantization: fp32` and legacy packages use FP32 activations. `fp16` permits
-half storage/packing with FP32 arithmetic; `int8` leaves NCNN's int8 kernels
-enabled. FP16 arithmetic is disabled because it changed a one-to-one score
-from 0.286 to 0.226 on a real COCO8 image during verification. Real-model parity
-in this workstream covers FP32 packages; int8 needs WS7's separate parity gate.
+`compute` accepts `None`, `"fp16"` or `"fp32"`. `None` selects the package
+default: C8 `quantization: fp16` and `int8` turn on FP16 packing, storage and
+arithmetic; `fp32` and legacy packages turn all three off. An explicit override
+sets all three together, independently of stored weight quantisation. Int8
+kernels remain enabled. The FP16 options match WS4's latency bridge exactly.
+FP16 arithmetic can shift scores and confidence-threshold counts; WS7 owns the
+final FP16/int8 accuracy gate on frozen test-v2.
 
 ## Repeatable verification
 
@@ -206,6 +189,7 @@ original YOLO26 checkpoint with `nms=False`, not the swapped checkpoint.
     --model /absolute/path/to/package \
     --reference /absolute/path/to/original.pt \
     --dataset /absolute/path/to/columba-test-v2 --split test \
+    --compute fp32 \
     --output outputs/ws8/parity.json
 ```
 
@@ -222,11 +206,26 @@ undefined, the runner accepts it only when coordinates differ by at most one
 float32 ULP and the class agrees, still applying the confidence tolerance. It
 records this case explicitly. It never removes unmatched degenerate boxes.
 
+Parity always explicitly selects FP32 unless `--compute fp16` is supplied.
+FP16 arithmetic checks are informational, exit successfully despite reported
+mismatches, and use looser IoU ≥ 0.7 and score difference ≤ 0.10, with equal
+classes and counts still required. The report also records failures at the
+strict FP32 tolerances, count-mismatch images and unmatched boxes. Maximum
+box/score deltas use same-class diagnostic associations with IoU ≥ 0.5 and no
+score restriction beyond the sigmoid range; unmatched detections remain
+reported separately. The degenerate-box rule stays at one float32 ULP in both
+modes. These smoke comparisons are not a deployment accuracy gate.
+
+Run all seven prepared packages and a baseline latency measurement with
+`bash native/run_verification.sh outputs/ws8 outputs/ws8/results-fp16 fp16`;
+the optional third argument defaults to `fp32`.
+
 ```sh
 taskset -c 0-3 "$native_python" -m native.benchmark_native \
     --model /absolute/path/to/package \
     --image /absolute/path/to/bus.jpg --threads 4 \
     --warmup 20 --iterations 100 --frame-size 480 640 \
+    --compute fp16 \
     --output outputs/ws8/overhead.json
 ```
 
@@ -236,7 +235,8 @@ Timers exclude process communication. Both NCNN networks receive matching
 thread and precision options before model loading, because NCNN caches kernel
 choices then. Overhead is each full call minus its own instrumented extract.
 The JSON includes every sample and p50/p95/mean/std. Mac results are labelled
-as shared-machine measurements, never Pi measurements.
+as shared-machine measurements, never Pi measurements. `--compute` defaults
+to `fp32`; use `fp16` to compare against WS4's FP16 arithmetic measurements.
 
 Python verification commands include the new source directory, excluding its
 ignored dependency checkouts from mypy:
@@ -251,3 +251,10 @@ The Python tests mock `columba_native` for the wrapper. Extension-only tests
 skip cleanly when it is absent and use a tiny synthetic NCNN graph when it is
 present. C++ tests cover letterbox geometry, channel order, normalisation,
 synthetic decode, clipping, per-class/agnostic NMS and one-to-one top-k.
+
+Measured round-2 summaries are in [results/ws8-compute-modes.json](results/ws8-compute-modes.json)
+and [WS8 status](../plans/model-improvement/status/WS8.md). FP32 passes 91/91
+image/package comparisons. FP16 has two count-mismatch pairs and a baseline
+degenerate-box mismatch; results remain informational. Native FP16 v1-2
+640×640 extract p50/p95 is 14.441/17.335 ms on the shared M2 Pro, consistent
+with WS4's 14.515/17.512 ms for the same model/size and NCNN profile.

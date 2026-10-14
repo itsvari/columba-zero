@@ -13,16 +13,20 @@ using Milliseconds = std::chrono::duration<double, std::milli>;
 
 }
 
-Detector::Detector(const std::filesystem::path& model_directory, ModelSettings settings, int threads)
-    : settings_(std::move(settings)) {
+Detector::Detector(const std::filesystem::path& model_directory, ModelSettings settings, int threads,
+                   std::optional<Compute> compute)
+    : settings_(std::move(settings)),
+      compute_(compute.value_or(settings_.quantisation == Quantisation::fp32
+                                   ? Compute::fp32 : Compute::fp16)) {
     if (threads <= 0) {
         throw std::invalid_argument("threads must be positive");
     }
     network_.opt.num_threads = threads;
     network_.opt.use_vulkan_compute = false;
-    network_.opt.use_fp16_packed = settings_.quantisation == Quantisation::fp16;
-    network_.opt.use_fp16_storage = settings_.quantisation == Quantisation::fp16;
-    network_.opt.use_fp16_arithmetic = false;
+    const bool use_fp16 = compute_ == Compute::fp16;
+    network_.opt.use_fp16_packed = use_fp16;
+    network_.opt.use_fp16_storage = use_fp16;
+    network_.opt.use_fp16_arithmetic = use_fp16;
     if (network_.load_param((model_directory / "model.ncnn.param").string().c_str()) != 0) {
         throw std::runtime_error("cannot load model.ncnn.param");
     }
@@ -62,6 +66,14 @@ InferenceResult Detector::detect(const std::uint8_t* pixels, ImageSize original,
 
 const ModelSettings& Detector::settings() const noexcept {
     return settings_;
+}
+
+Compute Detector::compute() const noexcept {
+    return compute_;
+}
+
+const ncnn::Option& Detector::options() const noexcept {
+    return network_.opt;
 }
 
 }

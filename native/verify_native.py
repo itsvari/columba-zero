@@ -31,6 +31,11 @@ from tools.compare_exports import (
     match_predictions,
 )
 
+FP16_MINIMUM_MATCH_IOU = 0.7
+FP16_MAXIMUM_CONFIDENCE_DELTA = 0.1
+DIAGNOSTIC_MINIMUM_MATCH_IOU = 0.5
+DIAGNOSTIC_MAXIMUM_CONFIDENCE_DELTA = 1.0
+
 
 class Description(Protocol):
     @property
@@ -42,6 +47,10 @@ class Description(Protocol):
 
 
 class NativeModel(Description, Protocol):
+    @property
+    def compute(self) -> str: ...
+    @property
+    def compute_flags(self) -> dict[str, bool]: ...
     def detect(self, frame: Frame, conf: float) -> NDArray[numpy.float32]: ...
     def detect_with_timings(
         self, frame: Frame, conf: float
@@ -59,7 +68,22 @@ class ModelDescription:
 class NativeOutput(TypedDict):
     input_hw: list[int]
     decode: str
+    compute: str
+    compute_flags: dict[str, bool]
     predictions: list[list[ExportPrediction]]
+
+
+class ParityRecord(TypedDict):
+    image: str
+    reference_count: int
+    native_count: int
+    reference: list[ExportPrediction]
+    native: list[ExportPrediction]
+    matches: list[MatchedDetection]
+    diagnostic_matches: list[MatchedDetection]
+    degenerate_matches: int
+    passed: bool
+    strict_passed: bool
 
 
 def describe_package(model: Path) -> ModelDescription:
@@ -140,7 +164,12 @@ class ReferenceModel(Protocol):
 
 
 def load_reference(
-    path: Path, description: ModelDescription, frame: Frame, confidence: float, threads: int
+    path: Path,
+    description: ModelDescription,
+    frame: Frame,
+    confidence: float,
+    threads: int,
+    compute: str = "fp32",
 ) -> ReferenceModel:
     from ultralytics import YOLO
 
@@ -155,9 +184,9 @@ def load_reference(
     def network_with_options() -> RuntimeNetwork:
         network = original_network()
         network.opt.num_threads = threads
-        network.opt.use_fp16_packed = description.quantisation == "fp16"
-        network.opt.use_fp16_storage = description.quantisation == "fp16"
-        network.opt.use_fp16_arithmetic = False
+        network.opt.use_fp16_packed = compute == "fp16"
+        network.opt.use_fp16_storage = compute == "fp16"
+        network.opt.use_fp16_arithmetic = compute == "fp16"
         return network
 
     with (
@@ -239,9 +268,18 @@ def native_predictions(
 
 
 def match_clipped_boxes(
-    expected: Sequence[ExportPrediction], actual: Sequence[ExportPrediction]
+    expected: Sequence[ExportPrediction],
+    actual: Sequence[ExportPrediction],
+    *,
+    minimum_intersection_over_union: float = MINIMUM_MATCH_INTERSECTION_OVER_UNION,
+    maximum_confidence_delta: float = MAXIMUM_MATCH_CONFIDENCE_DELTA,
 ) -> list[MatchedDetection]:
-    matches = match_predictions(expected, actual)
+    matches = match_predictions(
+        expected,
+        actual,
+        minimum_intersection_over_union=minimum_intersection_over_union,
+        maximum_confidence_delta=maximum_confidence_delta,
+    )
     matched_expected = {match["pt_index"] for match in matches}
     matched_actual = {match["ncnn_index"] for match in matches}
     for expected_index, prediction in enumerate(expected):
@@ -264,7 +302,7 @@ def match_clipped_boxes(
                 actual_index in matched_actual
                 or prediction["label"] != candidate["label"]
                 or not coordinates_match
-                or confidence_delta > MAXIMUM_MATCH_CONFIDENCE_DELTA
+                or confidence_delta > maximum_confidence_delta
             ):
                 continue
             matches.append(
@@ -298,6 +336,7 @@ def main() -> None:
     parser.add_argument("--split", default="test")
     parser.add_argument("--confidence", type=float, default=0.25)
     parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument("--compute", choices=("fp32", "fp16"), default="fp32")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--native-only", action="store_true", help=argparse.SUPPRESS)
     arguments = parser.parse_args()
@@ -317,7 +356,10 @@ def main() -> None:
         import columba_native
 
         native = cast(
-            NativeModel, columba_native.Detector(str(arguments.model.resolve()), arguments.threads)
+            NativeModel,
+            columba_native.Detector(
+                str(arguments.model.resolve()), arguments.threads, compute=arguments.compute
+            ),
         )
         predictions = []
         for image in images:
@@ -330,6 +372,8 @@ def main() -> None:
                 {
                     "input_hw": native.input_hw,
                     "decode": native.decode,
+                    "compute": native.compute,
+                    "compute_flags": native.compute_flags,
                     "predictions": predictions,
                 }
             ),
@@ -362,14 +406,32 @@ def main() -> None:
         first_frame,
         arguments.confidence,
         arguments.threads,
+        arguments.compute,
     )
-    records = []
+    informational = arguments.compute == "fp16"
+    minimum_iou = FP16_MINIMUM_MATCH_IOU if informational else MINIMUM_MATCH_INTERSECTION_OVER_UNION
+    maximum_confidence_delta = (
+        FP16_MAXIMUM_CONFIDENCE_DELTA if informational else MAXIMUM_MATCH_CONFIDENCE_DELTA
+    )
+    records: list[ParityRecord] = []
     for image, actual in zip(images, actual_predictions["predictions"], strict=True):
         frame = cast(Frame | None, cv2.imread(str(image)))
         if frame is None:
             raise ValueError(f"cannot read image: {image}")
         expected = reference_predictions(reference, frame, description, arguments.confidence)
-        matches = match_clipped_boxes(expected, actual)
+        matches = match_clipped_boxes(
+            expected,
+            actual,
+            minimum_intersection_over_union=minimum_iou,
+            maximum_confidence_delta=maximum_confidence_delta,
+        )
+        strict_matches = match_clipped_boxes(expected, actual)
+        diagnostic_matches = match_clipped_boxes(
+            expected,
+            actual,
+            minimum_intersection_over_union=DIAGNOSTIC_MINIMUM_MATCH_IOU,
+            maximum_confidence_delta=DIAGNOSTIC_MAXIMUM_CONFIDENCE_DELTA,
+        )
         records.append(
             {
                 "image": str(image),
@@ -378,11 +440,37 @@ def main() -> None:
                 "reference": expected,
                 "native": actual,
                 "matches": matches,
+                "diagnostic_matches": diagnostic_matches,
                 "degenerate_matches": sum(match["iou"] == 0.0 for match in matches),
                 "passed": len(matches) == len(expected) == len(actual),
+                "strict_passed": len(strict_matches) == len(expected) == len(actual),
             }
         )
     failures = sum(not record["passed"] for record in records)
+    diagnostic_matches = [match for record in records for match in record["diagnostic_matches"]]
+    diagnostics = {
+        "count_mismatch_images": sum(
+            record["reference_count"] != record["native_count"] for record in records
+        ),
+        "reference_boxes": sum(record["reference_count"] for record in records),
+        "native_boxes": sum(record["native_count"] for record in records),
+        "associated_boxes": len(diagnostic_matches),
+        "unmatched_reference_boxes": sum(
+            record["reference_count"] - len(record["diagnostic_matches"]) for record in records
+        ),
+        "unmatched_native_boxes": sum(
+            record["native_count"] - len(record["diagnostic_matches"]) for record in records
+        ),
+        "maximum_box_delta_px": max(
+            (abs(delta) for match in diagnostic_matches for delta in match["box_delta_px"]),
+            default=0.0,
+        ),
+        "maximum_score_delta": max(
+            (match["confidence_delta"] for match in diagnostic_matches), default=0.0
+        ),
+        "association_minimum_iou": DIAGNOSTIC_MINIMUM_MATCH_IOU,
+        "association_maximum_score_delta": DIAGNOSTIC_MAXIMUM_CONFIDENCE_DELTA,
+    }
     report = {
         "label": "measured",
         "host": platform.node(),
@@ -397,10 +485,15 @@ def main() -> None:
         "input_hw": description.input_hw,
         "decode": description.decode,
         "images": len(images),
+        "compute": actual_predictions["compute"],
+        "compute_flags": actual_predictions["compute_flags"],
+        "informational": informational,
         "failures": failures,
+        "strict_failures": sum(not record["strict_passed"] for record in records),
+        "diagnostics": diagnostics,
         "confidence": arguments.confidence,
-        "min_iou": MINIMUM_MATCH_INTERSECTION_OVER_UNION,
-        "max_confidence_delta": MAXIMUM_MATCH_CONFIDENCE_DELTA,
+        "min_iou": minimum_iou,
+        "max_confidence_delta": maximum_confidence_delta,
         "degenerate_box_rule": (
             "zero-area clipped boxes require coordinates within one float32 ULP and equal class"
         ),
@@ -410,10 +503,21 @@ def main() -> None:
     arguments.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(
         json.dumps(
-            {key: report[key] for key in ("host", "decode", "input_hw", "images", "failures")}
+            {
+                key: report[key]
+                for key in (
+                    "host",
+                    "decode",
+                    "input_hw",
+                    "compute",
+                    "images",
+                    "failures",
+                    "diagnostics",
+                )
+            }
         )
     )
-    raise SystemExit(1 if failures else 0)
+    raise SystemExit(1 if failures and not informational else 0)
 
 
 if __name__ == "__main__":

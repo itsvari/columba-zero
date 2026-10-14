@@ -60,6 +60,7 @@ class NativeDetector:
         image_size: int | tuple[int, int],
         confidence: float,
         threads: int = 4,
+        compute: str | None = None,
     ) -> None:
         self.model_info = _check_package(model_path, image_size)
         path = self.model_info.path
@@ -68,12 +69,16 @@ class NativeDetector:
             raise DetectorError("confidence must be finite and between 0 and 1")
         if threads <= 0:
             raise DetectorError("threads must be positive")
+        if compute is not None and compute not in ("fp16", "fp32"):
+            raise DetectorError("compute must be fp16, fp32 or None")
         self.image_size = image_size
         self.confidence = confidence
         self.last_stage_ms: dict[str, float] = {}
         try:
             extension = importlib.import_module("columba_native")
-            self._model = cast(NativeModel, extension.Detector(str(path), threads=threads))
+            self._model = cast(
+                NativeModel, extension.Detector(str(path), threads=threads, compute=compute)
+            )
             self.names = class_names(self._model.names)
             if self.names != self.model_info.names:
                 raise DetectorError("model class names differ from metadata.yaml")

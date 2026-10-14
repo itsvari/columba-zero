@@ -1,0 +1,718 @@
+{
+  "label": "measured",
+  "date": "2026-10-14",
+  "host": "vexcalibur",
+  "shared_machine_noise": true,
+  "main_base": "c74cbd4",
+  "cluster_rerun": false,
+  "dataset": "same 13-image local smoke set: 8 COCO8, 2 Ultralytics, 2 historical, 1 blank",
+  "ncnn": {
+    "tag": "20260526",
+    "profile": "mac-a76compat",
+    "vulkan": false,
+    "prefix": "/Users/vari/Developer/columba-zero/native/build/ncnn-mac-a76compat"
+  },
+  "compute_mapping": {
+    "package_default": {
+      "fp16": "fp16",
+      "int8": "fp16",
+      "fp32": "fp32",
+      "legacy": "fp32"
+    },
+    "fp16": {
+      "use_fp16_packed": true,
+      "use_fp16_storage": true,
+      "use_fp16_arithmetic": true
+    },
+    "fp32": {
+      "use_fp16_packed": false,
+      "use_fp16_storage": false,
+      "use_fp16_arithmetic": false
+    }
+  },
+  "delta_scope": "above confidence 0.25; same-class diagnostic associations IoU >= 0.5, score delta <= 1.0; unmatched boxes reported separately; degenerate coordinates require one float32 ULP",
+  "accuracy_gate": "FP16 informational only; WS7 owns frozen test-v2 FP16/int8 accuracy gate",
+  "parity": {
+    "fp32": [
+      {
+        "report": "outputs/ws8/results-round2-fp32/parity-baseline-640x640.json",
+        "model": "baseline-640x640",
+        "compute": "fp32",
+        "compute_flags": {
+          "use_fp16_packed": false,
+          "use_fp16_storage": false,
+          "use_fp16_arithmetic": false
+        },
+        "decode": "yolo11",
+        "input_hw": [
+          640,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": false,
+        "min_iou": 0.8,
+        "max_confidence_delta": 0.05,
+        "failures": 0,
+        "strict_failures": 0,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 13,
+          "native_boxes": 13,
+          "associated_boxes": 13,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 0.00030517578125,
+          "maximum_score_delta": 9.834766387939453e-07,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp32/parity-yolo11n-384x640.json",
+        "model": "yolo11n-384x640",
+        "compute": "fp32",
+        "compute_flags": {
+          "use_fp16_packed": false,
+          "use_fp16_storage": false,
+          "use_fp16_arithmetic": false
+        },
+        "decode": "yolo11",
+        "input_hw": [
+          384,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": false,
+        "min_iou": 0.8,
+        "max_confidence_delta": 0.05,
+        "failures": 0,
+        "strict_failures": 0,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 31,
+          "native_boxes": 31,
+          "associated_boxes": 31,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 0.0040435791015625,
+          "maximum_score_delta": 2.0265579223632812e-06,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp32/parity-yolo11n-640x640.json",
+        "model": "yolo11n-640x640",
+        "compute": "fp32",
+        "compute_flags": {
+          "use_fp16_packed": false,
+          "use_fp16_storage": false,
+          "use_fp16_arithmetic": false
+        },
+        "decode": "yolo11",
+        "input_hw": [
+          640,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": false,
+        "min_iou": 0.8,
+        "max_confidence_delta": 0.05,
+        "failures": 0,
+        "strict_failures": 0,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 31,
+          "native_boxes": 31,
+          "associated_boxes": 31,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 0.000274658203125,
+          "maximum_score_delta": 5.9604644775390625e-06,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp32/parity-yolo26n-384x640.json",
+        "model": "yolo26n-384x640",
+        "compute": "fp32",
+        "compute_flags": {
+          "use_fp16_packed": false,
+          "use_fp16_storage": false,
+          "use_fp16_arithmetic": false
+        },
+        "decode": "yolo11",
+        "input_hw": [
+          384,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": false,
+        "min_iou": 0.8,
+        "max_confidence_delta": 0.05,
+        "failures": 0,
+        "strict_failures": 0,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 28,
+          "native_boxes": 28,
+          "associated_boxes": 28,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 0.000732421875,
+          "maximum_score_delta": 1.4007091522216797e-06,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp32/parity-yolo26n-640x640.json",
+        "model": "yolo26n-640x640",
+        "compute": "fp32",
+        "compute_flags": {
+          "use_fp16_packed": false,
+          "use_fp16_storage": false,
+          "use_fp16_arithmetic": false
+        },
+        "decode": "yolo11",
+        "input_hw": [
+          640,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": false,
+        "min_iou": 0.8,
+        "max_confidence_delta": 0.05,
+        "failures": 0,
+        "strict_failures": 0,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 32,
+          "native_boxes": 32,
+          "associated_boxes": 32,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 0.00091552734375,
+          "maximum_score_delta": 5.4836273193359375e-06,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp32/parity-yolo26n-one2one-384x640.json",
+        "model": "yolo26n-one2one-384x640",
+        "compute": "fp32",
+        "compute_flags": {
+          "use_fp16_packed": false,
+          "use_fp16_storage": false,
+          "use_fp16_arithmetic": false
+        },
+        "decode": "yolo26",
+        "input_hw": [
+          384,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": false,
+        "min_iou": 0.8,
+        "max_confidence_delta": 0.05,
+        "failures": 0,
+        "strict_failures": 0,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 26,
+          "native_boxes": 26,
+          "associated_boxes": 26,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 0.0003662109375,
+          "maximum_score_delta": 1.6987323760986328e-06,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp32/parity-yolo26n-one2one-640x640.json",
+        "model": "yolo26n-one2one-640x640",
+        "compute": "fp32",
+        "compute_flags": {
+          "use_fp16_packed": false,
+          "use_fp16_storage": false,
+          "use_fp16_arithmetic": false
+        },
+        "decode": "yolo26",
+        "input_hw": [
+          640,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": false,
+        "min_iou": 0.8,
+        "max_confidence_delta": 0.05,
+        "failures": 0,
+        "strict_failures": 0,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 31,
+          "native_boxes": 31,
+          "associated_boxes": 31,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 0.00079345703125,
+          "maximum_score_delta": 6.0498714447021484e-06,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      }
+    ],
+    "fp16": [
+      {
+        "report": "outputs/ws8/results-round2-fp16/parity-baseline-640x640.json",
+        "model": "baseline-640x640",
+        "compute": "fp16",
+        "compute_flags": {
+          "use_fp16_packed": true,
+          "use_fp16_storage": true,
+          "use_fp16_arithmetic": true
+        },
+        "decode": "yolo11",
+        "input_hw": [
+          640,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": true,
+        "min_iou": 0.7,
+        "max_confidence_delta": 0.1,
+        "failures": 1,
+        "strict_failures": 1,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 13,
+          "native_boxes": 13,
+          "associated_boxes": 12,
+          "unmatched_reference_boxes": 1,
+          "unmatched_native_boxes": 1,
+          "maximum_box_delta_px": 1.072021484375,
+          "maximum_score_delta": 0.009265363216400146,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": [
+          {
+            "image": "000000000009.jpg",
+            "reference_count": 3,
+            "native_count": 3
+          }
+        ]
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp16/parity-yolo11n-384x640.json",
+        "model": "yolo11n-384x640",
+        "compute": "fp16",
+        "compute_flags": {
+          "use_fp16_packed": true,
+          "use_fp16_storage": true,
+          "use_fp16_arithmetic": true
+        },
+        "decode": "yolo11",
+        "input_hw": [
+          384,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": true,
+        "min_iou": 0.7,
+        "max_confidence_delta": 0.1,
+        "failures": 0,
+        "strict_failures": 0,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 31,
+          "native_boxes": 31,
+          "associated_boxes": 31,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 36.47651672363281,
+          "maximum_score_delta": 0.01907515525817871,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp16/parity-yolo11n-640x640.json",
+        "model": "yolo11n-640x640",
+        "compute": "fp16",
+        "compute_flags": {
+          "use_fp16_packed": true,
+          "use_fp16_storage": true,
+          "use_fp16_arithmetic": true
+        },
+        "decode": "yolo11",
+        "input_hw": [
+          640,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": true,
+        "min_iou": 0.7,
+        "max_confidence_delta": 0.1,
+        "failures": 0,
+        "strict_failures": 0,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 31,
+          "native_boxes": 31,
+          "associated_boxes": 31,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 1.6800537109375,
+          "maximum_score_delta": 0.03225302696228027,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp16/parity-yolo26n-384x640.json",
+        "model": "yolo26n-384x640",
+        "compute": "fp16",
+        "compute_flags": {
+          "use_fp16_packed": true,
+          "use_fp16_storage": true,
+          "use_fp16_arithmetic": true
+        },
+        "decode": "yolo11",
+        "input_hw": [
+          384,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": true,
+        "min_iou": 0.7,
+        "max_confidence_delta": 0.1,
+        "failures": 0,
+        "strict_failures": 1,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 28,
+          "native_boxes": 28,
+          "associated_boxes": 28,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 11.656005859375,
+          "maximum_score_delta": 0.05286484956741333,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp16/parity-yolo26n-640x640.json",
+        "model": "yolo26n-640x640",
+        "compute": "fp16",
+        "compute_flags": {
+          "use_fp16_packed": true,
+          "use_fp16_storage": true,
+          "use_fp16_arithmetic": true
+        },
+        "decode": "yolo11",
+        "input_hw": [
+          640,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": true,
+        "min_iou": 0.7,
+        "max_confidence_delta": 0.1,
+        "failures": 0,
+        "strict_failures": 0,
+        "diagnostics": {
+          "count_mismatch_images": 0,
+          "reference_boxes": 32,
+          "native_boxes": 32,
+          "associated_boxes": 32,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 4.7449951171875,
+          "maximum_score_delta": 0.01352781057357788,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": []
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp16/parity-yolo26n-one2one-384x640.json",
+        "model": "yolo26n-one2one-384x640",
+        "compute": "fp16",
+        "compute_flags": {
+          "use_fp16_packed": true,
+          "use_fp16_storage": true,
+          "use_fp16_arithmetic": true
+        },
+        "decode": "yolo26",
+        "input_hw": [
+          384,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": true,
+        "min_iou": 0.7,
+        "max_confidence_delta": 0.1,
+        "failures": 1,
+        "strict_failures": 1,
+        "diagnostics": {
+          "count_mismatch_images": 1,
+          "reference_boxes": 26,
+          "native_boxes": 27,
+          "associated_boxes": 26,
+          "unmatched_reference_boxes": 0,
+          "unmatched_native_boxes": 1,
+          "maximum_box_delta_px": 6.63067626953125,
+          "maximum_score_delta": 0.021513819694519043,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": [
+          {
+            "image": "bus.jpg",
+            "reference_count": 5,
+            "native_count": 6
+          }
+        ]
+      },
+      {
+        "report": "outputs/ws8/results-round2-fp16/parity-yolo26n-one2one-640x640.json",
+        "model": "yolo26n-one2one-640x640",
+        "compute": "fp16",
+        "compute_flags": {
+          "use_fp16_packed": true,
+          "use_fp16_storage": true,
+          "use_fp16_arithmetic": true
+        },
+        "decode": "yolo26",
+        "input_hw": [
+          640,
+          640
+        ],
+        "images": 13,
+        "confidence": 0.25,
+        "informational": true,
+        "min_iou": 0.7,
+        "max_confidence_delta": 0.1,
+        "failures": 1,
+        "strict_failures": 1,
+        "diagnostics": {
+          "count_mismatch_images": 1,
+          "reference_boxes": 31,
+          "native_boxes": 30,
+          "associated_boxes": 30,
+          "unmatched_reference_boxes": 1,
+          "unmatched_native_boxes": 0,
+          "maximum_box_delta_px": 4.01129150390625,
+          "maximum_score_delta": 0.02767777442932129,
+          "association_minimum_iou": 0.5,
+          "association_maximum_score_delta": 1.0
+        },
+        "mismatch_images": [
+          {
+            "image": "000000000009.jpg",
+            "reference_count": 5,
+            "native_count": 4
+          }
+        ]
+      }
+    ]
+  },
+  "benchmarks": {
+    "fp32": {
+      "report": "outputs/ws8/results-round2-fp32/overhead-baseline-640x640.json",
+      "label": "measured",
+      "host": "vexcalibur",
+      "architecture": "arm64",
+      "shared_machine_noise": true,
+      "threads": 4,
+      "pinned_cores": null,
+      "compute": "fp32",
+      "compute_flags": {
+        "use_fp16_packed": false,
+        "use_fp16_storage": false,
+        "use_fp16_arithmetic": false
+      },
+      "input_hw": [
+        640,
+        640
+      ],
+      "frame_hw": [
+        480,
+        640
+      ],
+      "warmup": 20,
+      "iterations": 100,
+      "milliseconds": {
+        "native": {
+          "total": {
+            "p50": 23.976895499999998,
+            "p95": 27.2457705,
+            "mean": 24.465198270000005,
+            "std": 1.7680292759745462
+          },
+          "extract": {
+            "p50": 23.6724375,
+            "p95": 26.91817565,
+            "mean": 24.153101210000003,
+            "std": 1.7631766682764227
+          },
+          "overhead": {
+            "p50": 0.31797849999999883,
+            "p95": 0.3447632000000011,
+            "mean": 0.31209706,
+            "std": 0.05203458901765635
+          }
+        },
+        "ultralytics": {
+          "total": {
+            "p50": 24.765583499999998,
+            "p95": 26.70623125,
+            "mean": 25.090642489999997,
+            "std": 1.1559620403246251
+          },
+          "extract": {
+            "p50": 23.5919165,
+            "p95": 25.43847085,
+            "mean": 23.88085495,
+            "std": 1.1251771349678803
+          },
+          "overhead": {
+            "p50": 1.1941454999999994,
+            "p95": 1.3561315500000009,
+            "mean": 1.2097875399999998,
+            "std": 0.13690703330971885
+          }
+        }
+      }
+    },
+    "fp16": {
+      "report": "outputs/ws8/results-round2-fp16/overhead-baseline-640x640.json",
+      "label": "measured",
+      "host": "vexcalibur",
+      "architecture": "arm64",
+      "shared_machine_noise": true,
+      "threads": 4,
+      "pinned_cores": null,
+      "compute": "fp16",
+      "compute_flags": {
+        "use_fp16_packed": true,
+        "use_fp16_storage": true,
+        "use_fp16_arithmetic": true
+      },
+      "input_hw": [
+        640,
+        640
+      ],
+      "frame_hw": [
+        480,
+        640
+      ],
+      "warmup": 20,
+      "iterations": 100,
+      "milliseconds": {
+        "native": {
+          "total": {
+            "p50": 14.7286665,
+            "p95": 17.67705655,
+            "mean": 15.063959149999999,
+            "std": 1.0330010095868865
+          },
+          "extract": {
+            "p50": 14.4412085,
+            "p95": 17.33503125,
+            "mean": 14.745192089999996,
+            "std": 0.9725179919871211
+          },
+          "overhead": {
+            "p50": 0.30985449999999926,
+            "p95": 0.3599163500000001,
+            "mean": 0.31876705999999994,
+            "std": 0.1451963435171022
+          }
+        },
+        "ultralytics": {
+          "total": {
+            "p50": 15.741896,
+            "p95": 18.25497225,
+            "mean": 16.047735409999998,
+            "std": 0.9695329603230115
+          },
+          "extract": {
+            "p50": 14.362688,
+            "p95": 17.0184917,
+            "mean": 14.693763330000001,
+            "std": 0.9359360504216305
+          },
+          "overhead": {
+            "p50": 1.3065420000000003,
+            "p95": 1.6077271499999999,
+            "mean": 1.3539720800000004,
+            "std": 0.37606162717221436
+          }
+        }
+      }
+    }
+  },
+  "ws4_comparison": {
+    "reference": "experiments/latency/vexcalibur-pigeon_baseline_v1-2-ncnn-fp16-640x640.json",
+    "model_id": "pigeon_baseline_v1-2",
+    "input_hw": [
+      640,
+      640
+    ],
+    "frame_hw": [
+      480,
+      640
+    ],
+    "threads": 4,
+    "warmup": 20,
+    "iterations": 200,
+    "weights_sha256": "50463d299ed5d373aa6a32f23e58f603a67f3c214718242678911e4f677776e6",
+    "same_weights_sha256": true,
+    "ws4_inference_ms": {
+      "p50": 14.515146,
+      "p95": 17.51169824999999,
+      "mean": 15.03836832,
+      "std": 1.5622580535242498
+    },
+    "native_extract_ms": {
+      "p50": 14.4412085,
+      "p95": 17.33503125,
+      "mean": 14.745192089999996,
+      "std": 0.9725179919871211
+    },
+    "native_to_ws4_p50_ratio": 0.9949061828244787,
+    "native_to_ws4_p95_ratio": 0.9899114867400144,
+    "boundary_note": "WS4 includes C++ Mat copy and extractor input; native extract excludes those. Same weights, model family, input/frame sizes, threads and NCNN profile; different param hash.",
+    "native_fp32_to_fp16_extract_p50_ratio": 1.6392282889621046
+  }
+}

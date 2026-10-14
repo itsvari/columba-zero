@@ -2,6 +2,12 @@
 set -euo pipefail
 
 profile="${1:-host}"
+build_ncnn=true
+case "${2:-}" in
+    "") ;;
+    --opencv-only) build_ncnn=false ;;
+    *) printf 'usage: build_dependencies.sh [PROFILE] [--opencv-only]\n' >&2; exit 2 ;;
+esac
 build_threads="${BUILD_THREADS:-4}"
 native_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 build_directory="$native_directory/build"
@@ -9,7 +15,7 @@ ncnn_prefix="$build_directory/ncnn-$profile"
 opencv_prefix="$build_directory/opencv-$profile"
 
 mkdir -p "$build_directory/sources"
-if [[ ! -d "$build_directory/sources/ncnn/.git" ]]; then
+if [[ "$build_ncnn" == true && ! -d "$build_directory/sources/ncnn/.git" ]]; then
     git clone --depth 1 --branch 20260526 https://github.com/Tencent/ncnn.git \
         "$build_directory/sources/ncnn"
 fi
@@ -35,13 +41,15 @@ if [[ "$(uname -s)" == Darwin && -d /opt/homebrew/opt/libomp ]]; then
     )
 fi
 
-cmake -S "$build_directory/sources/ncnn" -B "$build_directory/ncnn-$profile-build" \
-    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$ncnn_prefix" \
-    -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DNCNN_VULKAN=OFF \
-    -DNCNN_BUILD_TOOLS=OFF -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF \
-    -DNCNN_BUILD_TESTS=OFF "${openmp_options[@]}" "${architecture_options[@]}"
-cmake --build "$build_directory/ncnn-$profile-build" --parallel "$build_threads"
-cmake --install "$build_directory/ncnn-$profile-build"
+if [[ "$build_ncnn" == true ]]; then
+    cmake -S "$build_directory/sources/ncnn" -B "$build_directory/ncnn-$profile-build" \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$ncnn_prefix" \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DNCNN_VULKAN=OFF \
+        -DNCNN_BUILD_TOOLS=OFF -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF \
+        -DNCNN_BUILD_TESTS=OFF "${openmp_options[@]}" "${architecture_options[@]}"
+    cmake --build "$build_directory/ncnn-$profile-build" --parallel "$build_threads"
+    cmake --install "$build_directory/ncnn-$profile-build"
+fi
 
 cmake -S "$build_directory/sources/opencv" -B "$build_directory/opencv-$profile-build" \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$opencv_prefix" \
@@ -56,5 +64,7 @@ cmake -S "$build_directory/sources/opencv" -B "$build_directory/opencv-$profile-
 cmake --build "$build_directory/opencv-$profile-build" --parallel "$build_threads"
 cmake --install "$build_directory/opencv-$profile-build"
 
-printf 'ncnn_DIR=%s/lib/cmake/ncnn\nOpenCV_DIR=%s/lib/cmake/opencv5\n' \
-    "$ncnn_prefix" "$opencv_prefix"
+if [[ "$build_ncnn" == true ]]; then
+    printf 'ncnn_DIR=%s/lib/cmake/ncnn\n' "$ncnn_prefix"
+fi
+printf 'OpenCV_DIR=%s/lib/cmake/opencv5\n' "$opencv_prefix"
