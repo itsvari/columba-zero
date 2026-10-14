@@ -35,7 +35,7 @@ Working rules for worktree agents:
 4. Before declaring done: `python -m unittest discover -s tests -v`,
    `python -m ruff check app tests tools`, `python -m ruff format --check app
    tests tools`, and `python -m mypy` all pass. Include any new Python
-   directories that exist (`cluster`, `training`) in the ruff commands. Add tests
+   directories that exist (`cluster`, `training`, `native`) in the ruff commands. Add tests
    for new code the way the existing tests do.
 5. Worktrees start from committed `main`. If you depend on another
    workstream's output, check that it has been merged first; do not copy
