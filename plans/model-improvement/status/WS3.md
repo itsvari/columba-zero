@@ -284,7 +284,7 @@ GPU budget slots were freed under the later explicit cancellation authorisation.
   H200 use gpu (three hours). xgpd0–1 and xgpf0–5 are also gpu only.
 - Automatic null/CLI any selection reads cluster/gpu_policy.yaml and sinfo
   free units, chooses a concrete preferred type/partition and bounds its node
-  list. It skips submission when no preferred free capacity exists. PENDING
+  list to one node. It skips submission when no preferred free capacity exists. PENDING
   allocations reserve the eight-GPU budget. Multi-node typed GRES are counted
   by device count. The CPU and total-job caps remain two and twenty-four.
 - Light preferences: T4, Titan V, Titan RTX, H100-47. Heavy preferences:
@@ -385,3 +385,13 @@ Remaining: xgpj0 GPU probe/five-epoch CUDA smoke is pending (946781).
 A transient SSH tunnel reset paused cluster calls; the coordinator restored
 it, and calls now use ConnectTimeout=20. No password or tunnel changes were
 made by WS3. Final checks, status and commit will follow the ARM GPU result.
+
+Live re-target test exposed an initial node-list bug: Slurm interprets every
+entry in --nodelist as required, rather than alternatives. Own pending job
+946824 (smoke-policy-retarget-r3/seed0, epoch 0, no last.pt) was cancelled by
+the pending-state filter; its replacement 946836 erroneously requested six
+nodes/GPUs and stayed PENDING/QOSMaxGRESPerUser. This transient request exceeded
+the project pending-GPU budget; it never ran. Confirmed its cz- name and
+immediately cancelled 946836 (same run, epoch 0, no last.pt). The correction
+selects one free node and explicitly sends --nodes=1. A regression test checks
+multiple free nodes still produce one GPU/node. The live check will be repeated.

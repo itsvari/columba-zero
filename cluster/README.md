@@ -57,7 +57,7 @@ this scheduler does not use. xgpd0–1 and xgpf0–5 are `gpu` only. H200 xgpk0 
 also `gpu` only. Slurm accepts untyped GPU requests against typed GRES, and
 feature OR lists, but rejects a 72-hour request spanning gpu-long and gpu.
 Automatic placement therefore selects one explicit type/partition and restricts
-its node list to nodes with free units at submission time.
+its node list to one node with free units at submission time.
 
 `cluster/gpu_policy.yaml` controls automatic selection. Light jobs prefer T4,
 Titan V, Titan RTX, then H100-47. X models, images at least 800 px, distillation

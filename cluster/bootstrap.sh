@@ -6,6 +6,9 @@ case "$project_root" in "$HOME/columba"|"$HOME/columba/"*) ;; *) echo 'COLUMBA_R
 architecture="$(uname -m)"
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 has_gpu=false
+if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+    has_gpu=true
+fi
 smoke=false
 print_environment=false
 for argument in "$@"; do
@@ -17,9 +20,6 @@ for argument in "$@"; do
         *) echo "unsupported bootstrap argument: $argument" >&2; exit 2 ;;
     esac
 done
-if [[ "$#" == 0 ]] && command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
-    has_gpu=true
-fi
 environment_arguments=(--architecture "$architecture")
 if [[ "$has_gpu" == true ]]; then environment_arguments+=(--gpu); fi
 read -r acceleration torch_version vision_version < <(python "$script_directory/environment.py" "${environment_arguments[@]}")

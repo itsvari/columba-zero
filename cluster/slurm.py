@@ -178,10 +178,10 @@ def scheduling_request(
         )
         if selected is None:
             return None
-        request, nodes = selected
+        request, node = selected
         return (
             *request_arguments(request, submission),
-            f"--nodelist={','.join(nodes)}",
+            f"--nodelist={node}",
         ), f"{request.resources}@{','.join(request.partitions)}"
     request = request_for(
         submission["constraint"],
@@ -332,6 +332,7 @@ def submit_pending(
             if retargeted_from is None:
                 command.append(f"--nodelist={required_node}")
         if submission["lane"] == "nv":
+            command.append("--nodes=1")
             scheduling = scheduling or scheduling_request(submission, offers)
             if scheduling is None:
                 results.append({"name": submission["name"], "status": "no free preferred GPU"})

@@ -88,7 +88,7 @@ def available_request(
     excluded_nodes: Sequence[str] = (),
     allow_short_partition: bool = True,
     avoid: tuple[str, str] | None = None,
-) -> tuple[GpuRequest, tuple[str, ...]] | None:
+) -> tuple[GpuRequest, str] | None:
     partitions = GPU_PARTITIONS if allow_short_partition else GPU_PARTITIONS[:1]
     for preference in preferences:
         choice = "a100-80" if preference == "xgpj0" else preference
@@ -111,8 +111,8 @@ def available_request(
             matched = [offer for offer in eligible if offer.partition == partition]
             if not matched:
                 continue
-            chosen = offer_choice(matched[0])
-            matched = [offer for offer in matched if offer_choice(offer) == chosen]
-            request = request_for(chosen, matched)
-            return request, tuple(sorted({offer.node for offer in matched}))
+            chosen_offer = max(matched, key=lambda offer: offer.free_units)
+            chosen = offer_choice(chosen_offer)
+            request = request_for(chosen, [chosen_offer])
+            return request, chosen_offer.node
     return None

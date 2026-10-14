@@ -3,12 +3,15 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
+import subprocess
 import tarfile
 import tempfile
 import unittest
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timedelta
+from itertools import product
 from pathlib import Path
 from typing import cast
 from unittest.mock import Mock, patch
@@ -255,6 +258,7 @@ class ClusterTests(unittest.TestCase):
                 request = request_for(choice or "t4", parse_inventory(GPU_INVENTORY))
                 self.assertTrue(set(request.arguments()).issubset(command))
                 self.assertIn("--nice=1000", command)
+                self.assertIn("--nodes=1", command)
                 self.assertEqual(process.call_args.kwargs["input"], "unchanged script")
 
     def test_policy_prefers_free_capacity_and_keeps_arm_available(self) -> None:
@@ -275,13 +279,13 @@ class ClusterTests(unittest.TestCase):
         self.assertEqual(light[0].resources, "gpu:nv:1")
         self.assertEqual(light[0].constraint, "t4")
         self.assertEqual(light[0].time_limit, "03:00:00")
-        self.assertEqual(light[1], ("xgpf2",))
+        self.assertEqual(light[1], "xgpf2")
         heavy = available_request(offers, policy.preferences("yolo11x.pt", 640, False, 1))
         assert heavy is not None
         self.assertEqual(heavy[0].resources, "gpu:h100-47:1")
         arm = available_request(offers, ["xgpj0"])
         assert arm is not None
-        self.assertEqual(arm[1], ("xgpj0",))
+        self.assertEqual(arm[1], "xgpj0")
         self.assertEqual(arm[0].time_limit, "03:00:00")
         self.assertIsNone(available_request(offers, ["a100-40"]))
         self.assertIsNone(available_request(offers, ["t4"], allow_short_partition=False))
@@ -296,6 +300,30 @@ class ClusterTests(unittest.TestCase):
             invalid.write_text('{"light_preferences": ["v100"]}')
             with self.assertRaises(ValueError):
                 load_policy(invalid)
+
+    def test_automatic_multiple_free_nodes_selects_one_node(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            submission: Submission = {
+                "name": "cz-one-node",
+                "lane": "nv",
+                "constraint": None,
+                "script": "script",
+                "run_path": str(root / "columba/runs/example"),
+            }
+            with (
+                patch("cluster.slurm.Path.home", return_value=root),
+                patch("cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
+                patch("cluster.slurm.queue", return_value=()),
+                patch("cluster.slurm.subprocess.run", return_value=Mock(stdout="123\n")) as process,
+            ):
+                submit_pending([submission], Budget())
+            command = process.call_args.args[0]
+            node = next(argument for argument in command if argument.startswith("--nodelist="))
+            self.assertEqual(node, "--nodelist=xgpf6")
+            self.assertNotIn(",", node)
+            self.assertIn("--nodes=1", command)
+            self.assertIn("--gres=gpu:nv:1", command)
 
     def test_automatic_batch_does_not_reuse_pending_capacity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -418,6 +446,38 @@ class ClusterTests(unittest.TestCase):
         self.assertEqual(environment_for("aarch64", True).torch_version, "2.9.0")
         self.assertEqual(environment_for("aarch64", False).directory_name, "aarch64-cpu")
         self.assertEqual(environment_for("aarch64", False).torch_version, "2.8.0")
+
+    def test_bootstrap_print_env_detects_gpu_unless_cpu_is_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            binaries = Path(directory)
+            combinations = product(
+                ("x86_64", "aarch64"), (True, False), ((), ("--cpu",), ("--gpu",))
+            )
+            for architecture, gpu_available, flags in combinations:
+                for name, output in (
+                    ("uname", f"echo {architecture}"),
+                    ("nvidia-smi", "exit 0" if gpu_available else "exit 1"),
+                ):
+                    executable = binaries / name
+                    executable.write_text(f"#!/bin/sh\n{output}\n")
+                    executable.chmod(0o755)
+                environment = {
+                    **os.environ,
+                    "PATH": str(binaries) + os.pathsep + os.environ["PATH"],
+                }
+                expected_gpu = gpu_available if not flags else flags == ("--gpu",)
+                with self.subTest(architecture=architecture, gpu=gpu_available, flags=flags):
+                    result = subprocess.run(
+                        ["bash", str(REPOSITORY / "cluster/bootstrap.sh"), *flags, "--print-env"],
+                        env=environment,
+                        check=True,
+                        text=True,
+                        capture_output=True,
+                    )
+                    self.assertEqual(
+                        Path(result.stdout.strip()).name,
+                        environment_for(architecture, expected_gpu).directory_name,
+                    )
 
     def test_atomic_checkout_publication_never_rewrites_a_live_checkout(self) -> None:
         buffer = io.BytesIO()
