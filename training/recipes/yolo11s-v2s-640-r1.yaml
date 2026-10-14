@@ -1,0 +1,31 @@
+id: yolo11s-v2s-640-r1
+framework: ultralytics
+base_model: yolo11s.pt
+dataset: columba-train-v2s
+taxonomy: single
+seeds:
+- 0
+lane: nv
+gpu_constraint: null
+est_gpu_hours: 7.0
+teacher: null
+train:
+  epochs: 150
+  patience: 50
+  imgsz: 640
+  nbs: 64
+  cos_lr: true
+  close_mosaic: 15
+  cache: ram
+  workers: 6
+  save_period: 5
+  plots: false
+deploy_sizes:
+- - 352
+  - 608
+- - 384
+  - 640
+- - 448
+  - 800
+notes: 'WS5 round 1 screening: 1 seed, 150 epochs at 640, single taxonomy. Other train args
+  are Ultralytics 8.4.175 defaults (optimizer auto). Any nv GPU; run.json records it.'
