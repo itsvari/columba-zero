@@ -213,4 +213,7 @@ def resolve_teacher(reference: str | None, runs_root: Path) -> Path | None:
         return None
     if not TEACHER_REFERENCE.fullmatch(reference):
         raise ValueError("teacher must be <recipe_id>/seed<k>")
-    return (runs_root / reference / "weights/best.pt").resolve()
+    resolved = (runs_root / reference / "weights/best.pt").resolve()
+    if not resolved.is_relative_to(runs_root.resolve()):
+        raise ValueError("teacher path escapes the runs root")
+    return resolved

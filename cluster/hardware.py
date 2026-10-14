@@ -14,7 +14,7 @@ from app.json_data import JsonValue
 
 GIB_BYTES = 1024**3
 REFERENCE_IMAGE_SIZE_PX = 640
-MEMORY_CLASS_BATCHES = ((22, 64), (15, 48), (10, 32))
+MEMORY_CLASS_BATCHES = ((21, 64), (14, 48), (10, 32))
 MODEL_MEMORY_FACTORS = {"n": 1, "s": 2, "m": 4, "l": 6, "x": 8}
 ALLOWED_GPU_NAMES = ("TITAN V", "TITAN RTX", "T4")
 
