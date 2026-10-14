@@ -43,8 +43,8 @@ predictions use file order within an image and enter a threshold together.
 recall_at_p90 is the highest pigeon recall at a score threshold with overall
 pigeon precision >= 0.90. small_recall_at_p90 uses the same eligible thresholds
 and matching, counting only matched small pigeon ground truths; large matches
-still contribute to overall precision. Small means GT short side < 32 pixels
-multiplied by min(input_height/image_height, input_width/image_width).
+still contribute to overall precision. Small means min(GT width, GT height)
+multiplied by min(input_height/image_height, input_width/image_width) < 32 pixels.
 Thresholds include predictions with score >= threshold. Selection chooses the
 lowest observed score meeting precision >= 0.90, on val only. Test selection
 is refused. If unattainable, selection writes a finite threshold just above 1,
