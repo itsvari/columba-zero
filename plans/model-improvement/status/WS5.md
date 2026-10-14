@@ -47,41 +47,52 @@
     yolo26x on Titan RTX with `batch_override: 6`. Results in
     `~/columba/runs/ws5-probes/teacher-mem.json`; the script is
     `~/columba/scratch/ws5/teacher_mem.py` (local copy in `outputs/ws5/probe/`).
+11. Round 0 complete. `baseline-repro-p50` seed 1 (945876, Titan V) DONE
+    and fetched. Section-1 baseline, mean ± sd over 3 seeds: test R@P90
+    **0.246 ± 0.035**, test AP50 0.604 ± 0.031, val R@P90 0.473 ± 0.066.
+12. `yolo11n-v2-640-r1` (945886, T4) DONE and fetched: test R@P90
+    **0.691**, AP50 0.788, confuser FAR 0.041, empty FAR 0.000.
 
 ## In progress
 
-Turn 3 (v2/v2s published). Measured on the cluster; not Pi results.
+Turn 4 (15 Oct): budget is now 8 GPUs and 24 queued, all GPU types. WS3
+cancelled 945884, 945885 and 946639.
 
-| Job | Run | GPU | State when last seen | s/epoch |
+| Job | Run | Placement | State | s/epoch (measured) |
 |---|---|---|---|---:|
-| 945876 | baseline-repro-p50 s1 | Titan V xgpd2 (moved from titanrtx with `--constraint titanv`) | running, epoch 10+ | 5.1–5.3 |
-| 945884 | yolo11x-v2s-960-teacher | Titan V xgpd3, batch 4 | running, staging / epoch 1 | not yet |
-| 945885 | yolo26x-v2s-960-teacher | titanrtx, batch 6 | pending (waits for xgpe4) | – |
-| 945886 | yolo11n-v2-640-r1 | T4 xgpf7, batch 48 | running, epoch 3+ | 58.7–59.8 |
+| 946961 | yolo11x-v2s-960-teacher-b16 (new, fresh) | h100-96, gpu-long | pending | – |
+| 946962 | yolo26x-v2s-960-teacher-b12 (new, fresh) | h100-96, gpu-long | pending | – |
+| 946963 | yolo11s-v2-640-r1 (resumes from epoch 32) | h100-47, gpu (3 h) | pending | 61.6 on Titan V |
+| 946641 | yolo11n-v2s-640-r1 | Titan V xgpd2 | running, epoch 60 | 83.3 |
+| 946662 | yolo11s-v2s-640-r1 | Titan V xgpd5 | running, epoch 39 | 118.5 |
+| 946663 | yolo26n-v2-640-r1 | Titan V xgpd6 | running, epoch 100 | 47.0 |
+| 946664 | yolo26n-v2s-640-r1 | Titan V xgpd7 | running, epoch 50 | 91.3 |
+| 946665 | yolo26s-v2-640-r1 | Titan V xgpd8 | running, epoch 62 | 75.0 |
+| – | yolo26s-v2s-640-r1 | not yet submitted (budget full: 8 of 8) | – | – |
 
-- 945774 (seed 1 on titanrtx) was cancelled and resubmitted on Titan V as
-  945876. The constraint override leaves the recipe hash unchanged, and
-  run.json records the GPU. The baseline therefore has 2 Titan V seeds and
-  1 T4 seed, with no Titan RTX.
-- The other 7 round-1 recipes were refused with "budget full". Pending jobs
-  count against the 4-GPU cap, and the teachers hold 2 slots for days.
-  Resubmitting the same command fills free slots and skips active or DONE
-  runs:
-  `python -m cluster.sweep submit --recipes training/recipes/{yolo26n-v2,yolo11n-v2s,yolo26n-v2s,yolo11s-v2,yolo26s-v2,yolo11s-v2s,yolo26s-v2s}-640-r1.yaml`
-- The cluster SSH tunnel (127.0.0.1:22022) started refusing connections
-  during turn 3, so cluster work stopped there. Not yet verified: the
-  yolo11x teacher's epoch 1 and its s/epoch.
+- **Teacher decision:** restart fresh under new IDs (`-b16`, `-b12`)
+  instead of resuming:
+  - Raising `batch_override` changes the recipe hash, and
+    `run_job.validate_existing_run` then raises "recipe changed under an
+    existing run".
+  - Only 10 epochs (yolo11x) and 4 epochs (yolo26x) were lost.
+  - The old runs (`yolo11x-v2s-960-teacher`, cancelled at epoch 10;
+    `yolo26x-v2s-960-teacher`, cancelled at epoch 4) are superseded and
+    must not be resubmitted. Their run.json still says `running`, so I did
+    not fetch them into the leaderboard as running rows.
+- **For the auto-submitter:** keep the teachers out of the `--constraint any`
+  command. `--constraint any` overrides recipe pins and the policy could put
+  them on `xgpj0` (3-hour slices). Teachers:
+  `python -m cluster.sweep submit --recipes training/recipes/yolo11x-v2s-960-teacher-b16.yaml training/recipes/yolo26x-v2s-960-teacher-b12.yaml`
+  (no `--constraint`). Round 1: `python -m cluster.sweep submit --recipes
+  training/recipes/*-v2*-640-r1.yaml --constraint any
+  --retarget-pending-after-hours 2`.
+- ETAs are in `experiments/reports/WS5-plan.md`: round 1 ≈ 5–8 h, teachers
+  ≈ 1–1.5 days, round 2 ≈ 2–2.5 days.
 
 ## Blockers and requests
 
-- **Blocker (turn 3): cluster SSH is down.** `ssh -o BatchMode=yes
-  columba-cluster` first returned "Connection reset by peer" and then
-  "connect to host 127.0.0.1 port 22022: Connection refused". Later
-  attempts hung. Cluster work stopped as the rules require. While cleaning
-  up my hung retries I ran `pkill -f columba-cluster`, which would also
-  have ended any other local ssh process with that name in its command
-  line, including a ControlMaster. The tunnel was already refusing
-  connections before that. Please check the tunnel and ControlMaster.
+- Turn 3 SSH outage: resolved by turn 4.
 - Bad nodes: **xgpe6** and **xgpe2** (Titan RTX, "No devices were found";
   probe 945282, job 945409). **xgpe3** is down ("Node unexpectedly
   rebooted"). Only **xgpe4** is a working Titan RTX.

@@ -2,7 +2,8 @@
 
 Last updated 2026-10-14. Recipes live in `training/recipes/`. Commands run
 from the repo root with the shared venv. Bad nodes are excluded by default
-via `cluster/excluded_nodes.txt` (xgpe6, xgpe2).
+via `cluster/excluded_nodes.txt` (xgpe6, xgpe2). From 15 Oct the budget is
+8 GPUs, 24 queued, all GPU types (CONTRACTS v1.7, `cluster/gpu_policy.yaml`).
 
 ## Baseline (section 1)
 
@@ -20,13 +21,19 @@ P/R are at the val-selected threshold.
 | Run | GPU | Epochs | val R@P90 | test R@P90 | test AP50 | test P / R | empty FAR | confuser FAR |
 |---|---|---:|---:|---:|---:|---|---:|---:|
 | baseline-repro-p50 s0 | T4 | 151 | 0.529 | 0.283 | 0.571 | 0.855 / 0.334 | 0.000 | 0.219 |
-| baseline-repro-p50 s1 | Titan RTX | – | – | – | – | – | – | – |
+| baseline-repro-p50 s1 | Titan V (moved from Titan RTX) | 124 | 0.400 | 0.238 | 0.609 | 0.888 / 0.246 | 0.000 | 0.151 |
+| **p50 mean ± sd (3 seeds)** | | | **0.473 ± 0.066** | **0.246 ± 0.035** | **0.604 ± 0.031** | 0.853 / 0.308 | 0.000 | 0.242 |
 | baseline-repro-p50 s2 | Titan V | 137 | 0.489 | 0.215 | 0.633 | 0.818 / 0.343 | 0.000 | 0.356 |
 | baseline-repro s0 | T4 | 11 | 0.071 | 0.006 | 0.131 | 0.467 / 0.020 | 0.024 | 0.068 |
 | baseline-repro s2 | Titan V | 53 | 0.468 | 0.218 | 0.564 | 0.833 / 0.269 | 0.008 | 0.205 |
 
-- `baseline-repro-p50` s1 is job 945774, pending on a Titan RTX. Its first
-  attempt, 945409, failed on xgpe2 with no visible GPU.
+- `baseline-repro-p50` s1 ran as job 945876 on a Titan V. Earlier attempts
+  failed or never started: 945409 hit xgpe2 with no GPU visible, and 945774
+  was cancelled while still pending for the only working Titan RTX. The
+  section-1 baseline is therefore 2 Titan V seeds plus 1 T4 seed.
+- **Promotion bar (section 1):** test R@P90 > 0.246 + max(0.035, the
+  candidate's sd). Each comparison also reports test AP50 (baseline
+  0.604 ± 0.031) and P/R at the val threshold.
 - `baseline-repro` (patience 10, v1-2's own args) is kept as a recorded
   round-0 reproduction with **2 seeds only**. Its seed 1 (945341) was
   cancelled by the coordinator. Patience 10 stopped T4 seed 0 at epoch 11,
@@ -74,17 +81,28 @@ Observations:
 - None of these v1clean runs is a round-2 candidate by itself. They give the
   model-size baseline for the v2/v2s comparison.
 
+## Round 1 on v2/v2s (in progress)
+
+The first result, measured: `yolo11n-v2-640-r1` (T4, 137 epochs)
+- val R@P90 0.770 (v2 val includes negatives).
+- test R@P90 **0.691**, test small R@P90 0.438, test AP50 0.788.
+- P/R at val threshold 0.889 / 0.703, empty FAR 0.000, confuser FAR
+  **0.041**.
+
+That is a test R@P90 gain of about 0.45 over the baseline, and the first
+run under the 0.05 confuser gate. Data matters more than the model change.
+
 ## Rounds and recipes
 
 | Round | Recipes | Seeds | Runs | Est. nv GPU-h |
 |---|---|---|---:|---:|
 | 0 | `baseline-repro`, `baseline-repro-p50` (YOLO11n, 640, v1clean; seeds pinned to T4 / Titan RTX / Titan V) | 3 + 3 | 6 | 3 |
-| Teachers | `yolo11x-v2s-960-teacher` (Titan V, batch 4), `yolo26x-v2s-960-teacher` (Titan RTX, batch 6); 960, 300 ep, patience 50, no RAM cache | 1 | 2 | 170 |
+| Teachers | `yolo11x-v2s-960-teacher-b16`, `yolo26x-v2s-960-teacher-b12` (H100 family, gpu-long; 960, 300 ep, patience 50, no RAM cache) | 1 | 2 | 40–70 |
 | 1 | `{yolo11n,yolo26n,yolo11s,yolo26s}-{v1clean,v2,v2s}-640-r1` (150 ep, patience 50, cos_lr, close_mosaic 15) | 1 | 12 | 50 |
-| 2 | top 3 model × data from round 1 × {plain, distilled from best teacher}, 300 ep; plus an imgsz-800 variant per model that passes the 448×800 latency gate | 3 | 18 (+) | 150–270 |
+| 2 | top 3 model × data from round 1 × {plain, distilled from best teacher}, 300 ep; plus a nano `imgsz 800` variant per nano combination | 3 | 18 + 9 | 150–250 |
 | 3 | round-2 winner with `species` taxonomy | 3 | 3 | 15–30 |
 
-Total **estimated** ≈ 400–550 nv GPU-h (refined with v2/v2s sizes, see below), above PLAN's 250. Most of that is
+Total **estimated** ≈ 300–450 GPU-h across GPU types (from 15 Oct: 8-GPU budget, all GPU types), above PLAN's 250. Most of that is
 teachers and round 2, and both depend on v2s's size. Round-1 timings will
 narrow it.
 
@@ -103,38 +121,52 @@ narrow it.
   (7× v1clean's).
 - **Measured** on v2: `yolo11n-v2-640-r1` on T4, batch 48, takes
   ≈ 59 s/epoch (8× v1clean), so ≈ 2.7 h per 150-epoch run.
-- Extrapolated per run on T4, using v1clean's s/n ratio of 1.65:
-  - nano: ≈ 2.7 h on v2, ≈ 5 h on v2s.
-  - s: ≈ 4.4 h on v2, ≈ 8.5 h on v2s.
-  - Remaining round 1 (7 runs): ≈ 39 GPU-h.
-  - With the teachers holding 2 of 4 slots, that is ≈ 20 h of wall time if
-    each wave is resubmitted promptly.
-- **Teachers:** probe 945775 measured peak memory and step time on a Titan V
-  at 960 (AMP, v1clean data, 25 steps):
-  - yolo11x: ≈ 2.1 GiB/sample; batch 4 peaks at 8.9 GiB, 0.22 s/step
-    (≈ 18 img/s).
-  - yolo26x: ≈ 2.6 GiB/sample; batch 4 peaks at 10.4 GiB, 0.25 s/step
-    (≈ 16 img/s).
-  - Batch 6 OOMs on 12 GB for both; Ultralytics silently retried at 3.
+- **Measured** round-1 speeds on Titan V (batch 32 nano, 16 s), s/epoch:
+  - yolo26n-v2 47, yolo11n-v2s 83, yolo26n-v2s 91.
+  - yolo11s-v2 62, yolo26s-v2 75, yolo11s-v2s 118.5.
+- **Teachers, first attempt** (cancelled 15 Oct to move to H100s): measured
+  946 s/epoch for yolo11x on Titan V at batch 4 and 972 s/epoch for yolo26x
+  on Titan RTX at batch 6. At that pace 300 epochs take about 80 h.
+- **Teachers, now:** fresh runs under new IDs `-b16` / `-b12`, pinned to the
+  H100 family on gpu-long. Both were placed on **h100-96** (a full H100 NVL).
+  - Batches come from probe 945775 (Titan V, 960, AMP, v1clean): yolo11x
+    ≈ 2.1 GiB/sample, yolo26x ≈ 2.6 GiB/sample.
+  - Batch 16 and batch 12 peak at ≈ 34 and ≈ 31 GiB, so they fit the
+    46.4 GB h100-47 MIG slice as well as h100-96. If memory runs out,
+    Ultralytics retries at half the batch.
+  - Why fresh rather than resumed: a changed `batch_override` changes the
+    recipe hash, and `run_job.validate_existing_run` rejects that for an
+    existing run. Only 10 and 4 epochs were lost.
+  - Not on `xgpj0`/H200: those are only in the 3-hour `gpu` partition, so a
+    multi-day teacher would re-stage 4.9 GB of v2s on every slice.
+  - RAM cache stays off: at 960, v2s needs up to ≈ 44 GB of the 64 GB job
+    limit.
+  - **Estimated** at 4–5× Titan V speed: ≈ 200–250 s/epoch, so ≈ 17–21 h for
+    300 epochs, less if patience 50 fires. Not yet measured; the data
+    loader (8 CPUs) may cap it.
 
-  Chosen settings:
-  - yolo11x on Titan V, `batch_override: 4`.
-  - yolo26x on Titan RTX, `batch_override: 6`: ≈ 15.8 GiB of 23.6
-    (extrapolated), headroom for v2s images with more boxes.
+### ETAs (estimated, 15 Oct, from the turn-4 snapshot)
 
-  Estimated on v2s (15,865 images): ≈ 15–18 min/epoch, so ≈ 80–90 h for 300
-  epochs if patience 50 never fires. That exceeds the 3-day limit, so each
-  teacher needs one resubmission, which resumes from `last.pt`. RAM caching
-  is off for the teachers: at 960, v2s needs up to ≈ 44 GB of the 64 GB job
-  limit, and GPU speed limits them anyway.
-  - Only xgpe4 is a working Titan RTX: xgpe3 is down, and xgpe2 and xgpe6
-    show no GPU. That is why yolo11x runs on a Titan V (most are idle)
-    rather than queueing behind yolo26x on xgpe4. If xgpe4 is still busy
-    when v2s lands, move yolo26x to a Titan V at batch 3 (≈ 8 GiB).
-- **Round 2** (on v2s, 300 epochs, measured nano speed ≈ 2 min/epoch on T4):
-  plain nano ≈ 10 h and s ≈ 17 h per run. Distillation adds one teacher
-  forward pass per batch,
-  assumed ≈ 1.5–2× step time (not yet measured on a GPU).
+- **Round 1:** the 5 runs on Titan V need ≈ 0.7–3.7 h more each (measured
+  pace, 150-epoch cap).
+  - yolo11s-v2 resumes from epoch 32 on h100-47 (3-hour `gpu` partition).
+  - yolo26s-v2s has not started: ≈ 6 h on Titan V, or 2 h-slices on an
+    H100.
+  - Round 1 should be all DONE in ≈ 5–8 h, assuming the auto-submitter
+    places yolo26s-v2s within ≈ 2 h.
+- **Teachers:** ≈ 17–21 h after they start. They are queued behind ~14
+  h100-96 jobs, so expect DONE about 1–1.5 days from now.
+- **Round 2 with 8 GPUs** (v2s, 300 epochs, 3 seeds):
+  - Nano runs take ≈ 7.5 h on Titan V (measured 90 s/epoch) or ≈ 3–4 h on
+    H100/A100-class GPUs (estimated).
+  - Start the **plain** arms (9 runs + 9 nano `imgsz 800` runs) as soon as
+    round 1 is ranked, without waiting for the teachers. That is about
+    3 waves of 8, ≈ 1 day.
+  - Add the 9 **distilled** arms when the better teacher is DONE.
+    Distillation runs the teacher at 640 on the student's batch, adding
+    ≈ 1.5–2× step time (not yet measured on a GPU).
+  - Round 2 complete ≈ 2–2.5 days from now; round 3 (species, 3 runs) adds
+    ≈ 0.5 day.
 
 ## Selection rules
 
