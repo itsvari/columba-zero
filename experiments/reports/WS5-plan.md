@@ -32,6 +32,15 @@ only show what that val-chosen threshold does on test. v2/v2s val contains
 negatives. Compare FAR only between runs whose val splits have the same
 composition.
 
+Second caveat (measured): v1clean-trained models get confuser false
+positives on test-v2, so their test precision sits near 0.9. Test recall@p90
+then swings between ≈ 0 and ≈ 0.3 on small differences.
+`yolo26n-v1clean-640-r1` has val recall@p90 0.664 but test recall@p90 0.006:
+its test precision peaks at ≈ 0.87, while test AP50 is 0.643 and recall at
+the val threshold is 0.496. The section-1 rule should therefore report test
+AP50 and recall at the val threshold next to the 3-seed recall@p90 mean.
+Expect a large std for the v1clean baseline.
+
 ## Rounds and recipes
 
 | Round | Recipes | Seeds | Runs | Est. nv GPU-h |

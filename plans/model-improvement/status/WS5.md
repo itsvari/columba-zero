@@ -31,16 +31,18 @@
 7. Leaderboard rows for `baseline-repro` and `baseline-repro-p50` seeds 0
    and 2, added via `sweep.py fetch`.
 8. Round 1: `yolo11n-v1clean-640-r1` (945490) and `yolo26n-v1clean-640-r1`
-   (945491) submitted.
+   (945491) DONE and fetched.
 
 ## In progress
 
-- Pending/running jobs: `baseline-repro` s1 (945341) and
-  `baseline-repro-p50` s1 (945409), both waiting for Titan RTX. Round 1:
-  945490 and 945491.
-- `yolo11s-v1clean-640-r1` and `yolo26s-v1clean-640-r1` were refused with
-  "budget full": pending jobs count against the 4-GPU cap. Submit them when
-  a slot frees.
+- `baseline-repro` s1 (945341) and `baseline-repro-p50` s1 (945409) are
+  pending for Titan RTX.
+- `yolo11s-v1clean-640-r1` (945564) and `yolo26s-v1clean-640-r1` (945565)
+  submitted after the nano runs freed their slots. Both run on xgpf11
+  (T4, batch 24). Measured: ≈ 12.1 s/epoch (yolo11s) and ≈ 14.4 s/epoch
+  (yolo26s), so ≈ 35 min each for 150 epochs.
+- Waiting for WS2's `columba-train-v2` and `-v2s` before the other 8 round-1
+  recipes and the teachers.
 
 ## Blockers and requests
 
@@ -74,8 +76,16 @@ start-up) is excluded. These are not Pi results.
 | baseline-repro-p50/seed0 | 945408 | xgpf11 / T4 | 48 | 7.0 | 151 (patience 50) | 0.529 | 0.283 | 0.571 | 0.000 | 0.219 |
 | baseline-repro-p50/seed2 | 945410 | xgpd2 / Titan V | 32 | 5.4 | 137 (patience 50) | 0.489 | 0.215 | 0.633 | 0.000 | 0.356 |
 
-Round 1 first epochs (measured, T4 xgpf10/xgpf11, batch 48):
-yolo11n-v1clean ≈ 7.4 s/epoch, yolo26n-v1clean ≈ 8.3 s/epoch.
+Round 1 (measured, T4 xgpf10/xgpf11, batch 48, 150-epoch budget):
+
+| Run | Job | s/epoch | Epochs | val R@P90 | test R@P90 | test AP50 | test empty FAR | test confuser FAR |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| yolo11n-v1clean-640-r1/seed0 | 945490 | 7.4 | 117 | 0.507 | 0.238 | 0.591 | 0.008 | 0.219 |
+| yolo26n-v1clean-640-r1/seed0 | 945491 | 8.3 | 136 | 0.664 | 0.006 | 0.643 | 0.000 | 0.301 |
+
+yolo26n's test precision never reaches 0.9 (precision 0.866 and recall 0.496
+at the val threshold), so test R@P90 collapses. See the caveat in
+`experiments/reports/WS5-plan.md`.
 
 Every run in the table has test small-pigeon recall@P90 = 0.0 (measured).
 v1clean val has no empty or confuser images. Its selected thresholds
