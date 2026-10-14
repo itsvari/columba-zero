@@ -172,6 +172,11 @@ class RunOutput:
         )
         self._log.flush()
 
+    def write_json(self, name: str, data: JsonValue) -> Path:
+        path = self.directory / name
+        path.write_text(json.dumps(data, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        return path
+
     def start(self) -> None:
         if self.config.display.enabled:
             import cv2

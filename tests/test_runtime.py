@@ -6,7 +6,9 @@ import threading
 import time
 import unittest
 from collections.abc import Callable, Sequence
+from contextlib import redirect_stdout
 from dataclasses import replace
+from io import StringIO
 from pathlib import Path
 from types import FrameType, ModuleType
 from typing import cast
@@ -39,10 +41,11 @@ from app.detector import (
     validate_names,
 )
 from app.json_data import JsonValue
-from app.main import build_parser, create_detector, run
+from app.main import CommandOptions, build_parser, create_detector, load_configuration, run
 from app.models import Detection, Frame, FramePacket
 from app.output import RunOutput
 from app.pipeline import FrameProcessor, OutputQueue, RenderJob
+from app.reaction import ReactionAnalysis, ReactionPlan, ReactionTest, StimulusSchedule
 from app.tracking import ConfirmationTracker
 from tools.summarize_run import summarize_log
 
@@ -680,6 +683,147 @@ class InstrumentationTests(unittest.TestCase):
         self.assertAlmostEqual(cast(dict[str, float], distributions["reaction"])["max"], 300)
         self.assertEqual((summary["triggers"], summary["camera_switches"]), (1, 1))
         self.assertEqual(summary["frames_by_camera"], {"wide": 89, "noir": 11})
+
+
+class ReactionTests(unittest.TestCase):
+    def test_schedule_alternates_and_waits_for_late_triggers(self) -> None:
+        schedule = StimulusSchedule(
+            ReactionPlan(trials=2, show_s=3, gap_min_s=4, gap_max_s=4, settle_s=5, grace_s=1)
+        )
+        schedule.begin(0)
+        steps = [(4.9, None), (5, "on"), (7.9, None), (8, "off"), (11.9, None), (12, "on")]
+        steps += [(15, "off"), (15.5, None)]
+        for now_s, expected in steps:
+            with self.subTest(now_s=now_s):
+                self.assertEqual(schedule.advance(now_s), expected)
+        self.assertFalse(schedule.done)
+        self.assertIsNone(schedule.advance(16))
+        self.assertTrue(schedule.done)
+        self.assertEqual(schedule.trial, 2)
+
+    def test_analysis_matches_triggers_to_trials(self) -> None:
+        analysis = ReactionAnalysis(ReactionPlan(grace_s=1))
+        pigeon: list[JsonValue] = [{"label": "pigeon"}]
+        analysis.stimulus(1, "on", 100.0)
+        analysis.observe("frame", {"captured_at": 99.9, "decided_at": 100.1, "detections": pigeon})
+        analysis.observe(
+            "frame", {"captured_at": 100.2, "decided_at": 100.25, "detections": pigeon}
+        )
+        analysis.observe("trigger", {"confirmed_at": 100.4, "track_id": 3})
+        analysis.observe("trigger", {"confirmed_at": 100.9, "track_id": 4})
+        analysis.stimulus(1, "off", 103.0)
+        analysis.observe("trigger", {"confirmed_at": 103.5, "track_id": 5})
+        analysis.observe("trigger", {"confirmed_at": 106.0, "track_id": 6})
+        analysis.stimulus(2, "on", 108.0)
+        analysis.stimulus(2, "off", 111.0)
+        report = analysis.report()
+        self.assertEqual(
+            (report["trials"], report["triggered"], report["missed"], report["false_triggers"]),
+            (2, 1, 1, 1),
+        )
+        trials = cast(list[dict[str, JsonValue]], report["per_trial"])
+        self.assertAlmostEqual(cast(float, trials[0]["reaction_s"]), 0.4)
+        self.assertAlmostEqual(cast(float, trials[0]["first_detection_s"]), 0.25)
+        self.assertEqual(trials[0]["track_id"], 3)
+        self.assertIsNone(trials[1]["reaction_s"])
+        self.assertEqual(cast(dict[str, JsonValue], report["reaction_s"])["count"], 1)
+
+    def test_stimulus_window(self) -> None:
+        import cv2
+
+        clock = iter([0.0, 4.0, 5.0, 5.01, 8.0, 8.02])
+        with (
+            patch.object(cv2, "imread", return_value=numpy.full((4, 4, 3), 255, numpy.uint8)),
+            patch.object(cv2, "namedWindow"),
+            patch.object(cv2, "setWindowProperty") as fullscreen,
+            patch.object(cv2, "imshow") as show,
+            patch.object(cv2, "waitKey", return_value=-1),
+            patch.object(cv2, "destroyWindow") as destroy,
+        ):
+            test = ReactionTest(
+                "pigeon.jpg",
+                ReactionPlan(trials=1, show_s=3, settle_s=5),
+                clock=lambda: next(clock),
+            )
+            test.start()
+            self.assertIsNone(test.tick())
+            self.assertEqual(test.tick(), {"trial": 1, "state": "on", "displayed_at": 5.01})
+            self.assertEqual(test.tick(), {"trial": 1, "state": "off", "displayed_at": 8.02})
+            test.close()
+            test.close()
+        fullscreen.assert_called_once()
+        self.assertEqual([call.args[1].max() for call in show.call_args_list], [0, 255, 0])
+        destroy.assert_called_once()
+        with patch.object(cv2, "imread", return_value=None), self.assertRaises(ValueError):
+            ReactionTest("missing.jpg", ReactionPlan())
+
+    def test_reaction_options(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "pigeon.jpg"
+            image.write_bytes(b"jpeg")
+            options = CommandOptions(reaction_test=str(image))
+            config = load_configuration(options)
+            self.assertFalse(config.display.enabled)
+            self.assertTrue(config.confirmation.enabled)
+            for invalid in (
+                replace(options, video="clip.avi"),
+                replace(options, reaction_test=str(Path(directory) / "missing.jpg")),
+                replace(options, reaction_trials=0),
+            ):
+                with self.subTest(invalid=invalid), self.assertRaises(ConfigError):
+                    load_configuration(invalid)
+        arguments = build_parser().parse_args(
+            ["--reaction-test", "p.jpg", "--reaction-trials", "3"]
+        )
+        self.assertEqual((arguments.reaction_test, arguments.reaction_trials), ("p.jpg", 3))
+
+    def test_run_reports_reaction_times(self) -> None:
+        class Camera:
+            def start(self) -> None:
+                pass
+
+            def read(self) -> Frame:
+                time.sleep(0.001)
+                return create_test_frame()
+
+            def close(self) -> None:
+                pass
+
+        reaction = Mock()
+        reaction.finished = False
+
+        def tick() -> dict[str, JsonValue]:
+            reaction.finished = True
+            return {"trial": 1, "state": "off", "displayed_at": 1.0}
+
+        reaction.tick.side_effect = tick
+        reaction.analysis.report.return_value = {
+            key: None for key in ("trials", "triggered", "missed", "false_triggers")
+        } | {"reaction_s": None, "first_detection_s": None}
+        detector, output = Mock(), Mock()
+        detector.detect.return_value = []
+        detector.trigger_classes = ("pigeon",)
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "pigeon.jpg"
+            image.write_bytes(b"jpeg")
+            with (
+                patch("app.main.UltralyticsDetector", return_value=detector),
+                patch("app.main.Picamera2Capture", return_value=Camera()),
+                patch("app.main.RunOutput", return_value=output),
+                patch("app.main.ReactionTest", return_value=reaction) as factory,
+                patch("app.main.health_snapshot", return_value={}),
+                redirect_stdout(StringIO()),
+            ):
+                status = run(build_parser().parse_args(["--reaction-test", str(image)]))
+        self.assertEqual(status, 0)
+        self.assertEqual(factory.call_args.args[2], ("pigeon",))
+        reaction.start.assert_called_once()
+        reaction.close.assert_called_once()
+        names = [call.args[0] for call in output.event.call_args_list]
+        self.assertIn("stimulus", names)
+        self.assertEqual(names[-2:], ["reaction_test", "run_end"])
+        self.assertEqual(output.event.call_args.kwargs["reason"], "reaction_test_complete")
+        output.write_json.assert_called_once()
 
 
 class RuntimeTests(unittest.TestCase):

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import signal
 import sys
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
+from pathlib import Path
 from types import FrameType
 from typing import Protocol, TypeAlias, cast
 
@@ -17,8 +19,19 @@ from .detector import DetectorError, FrameDetector, UltralyticsDetector, load_mo
 from .json_data import JsonValue
 from .output import RunOutput, health_snapshot
 from .pipeline import CONSUMER_POLL_S, FrameProcessor, OutputQueue
+from .reaction import ReactionPlan, ReactionTest
 from .switching import SwitchingCameraStream
 from .tracking import ConfirmationTracker
+
+REACTION_TRIALS = 10
+REACTION_SUMMARY_KEYS = (
+    "trials",
+    "triggered",
+    "missed",
+    "false_triggers",
+    "reaction_s",
+    "first_detection_s",
+)
 
 
 @dataclass(frozen=True)
@@ -29,6 +42,8 @@ class CommandOptions:
     confidence: float | None = None
     record: bool = False
     max_frames: int = 0
+    reaction_test: str | None = None
+    reaction_trials: int = REACTION_TRIALS
 
 
 def load_configuration(options: CommandOptions) -> AppConfig:
@@ -45,6 +60,20 @@ def load_configuration(options: CommandOptions) -> AppConfig:
         model=model,
         output=replace(configuration.output, record=options.record or configuration.output.record),
     )
+    if options.reaction_test is not None:
+        if options.video:
+            raise ConfigError("--reaction-test needs the live camera, not --video")
+        if not Path(options.reaction_test).is_file():
+            raise ConfigError(f"reaction-test image does not exist: {options.reaction_test}")
+        if options.reaction_trials <= 0:
+            raise ConfigError("--reaction-trials must be positive")
+        # the monitor shows the stimulus, so the annotated view stays closed, and
+        # reaction is measured to confirmed triggers.
+        configuration = replace(
+            configuration,
+            display=replace(configuration.display, enabled=False),
+            confirmation=replace(configuration.confirmation, enabled=True),
+        )
     configuration.validate()
     if options.max_frames < 0:
         raise ConfigError("--max-frames must be non-negative")
@@ -162,6 +191,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--confidence", type=float)
     parser.add_argument("--record", action="store_true", help="save diagnostic annotated AVI")
     parser.add_argument("--max-frames", type=int, default=0, help="0 means unlimited")
+    parser.add_argument(
+        "--reaction-test",
+        metavar="IMAGE",
+        help="show IMAGE fullscreen at logged times for a camera facing the monitor "
+        "and report display-to-trigger reaction times",
+    )
+    parser.add_argument("--reaction-trials", type=int, default=REACTION_TRIALS)
     return parser
 
 
@@ -170,6 +206,7 @@ def consume_output(
     queue: OutputQueue,
     processing: threading.Thread,
     stop: threading.Event,
+    reaction: ReactionTest | None = None,
 ) -> bool:
     """Write logs and render frames on the main thread until processing ends.
 
@@ -181,6 +218,14 @@ def consume_output(
         records, job = queue.take(0.0 if finished else CONSUMER_POLL_S)
         for record in records:
             output.event(record.event, **record.fields)
+            if reaction is not None:
+                reaction.analysis.observe(record.event, record.fields)
+        if reaction is not None and not finished:
+            stimulus = reaction.tick()
+            if stimulus is not None:
+                output.event("stimulus", **stimulus)
+            if reaction.finished:
+                stop.set()
         if window_closed:
             pass
         elif job is not None:
@@ -211,6 +256,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
     output: RunOutput | None = None
     queue: OutputQueue | None = None
     processor: FrameProcessor | None = None
+    reaction: ReactionTest | None = None
     started_at_monotonic_s: float | None = None
     status = 0
     reason = "stopped"
@@ -240,6 +286,13 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             timestamp_semantics="Unix seconds at frame delivery; replay is not source time",
         )
         output.start()
+        if options.reaction_test is not None:
+            reaction = ReactionTest(
+                options.reaction_test,
+                ReactionPlan(trials=options.reaction_trials),
+                trigger_classes,
+            )
+            reaction.start()
         source = create_source(config, options.video)
         source.start()
         started_at_monotonic_s = time.monotonic()
@@ -265,7 +318,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
         processing = threading.Thread(target=processor.run, name="frame-processing")
         processing.start()
         try:
-            window_closed = consume_output(output, queue, processing, stop)
+            window_closed = consume_output(output, queue, processing, stop, reaction)
         finally:
             stop.set()
             queue.close()
@@ -277,10 +330,22 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             print(f"error: {result.error}", file=sys.stderr)
         elif window_closed and reason == "stopped":
             reason = "window_closed_or_q"
+        elif reaction is not None and reaction.finished and reason == "stopped":
+            reason = "reaction_test_complete"
+        if reaction is not None:
+            report = reaction.analysis.report()
+            output.event("reaction_test", **report)
+            print(f"Reaction test report: {output.write_json('reaction_test.json', report)}")
+            print(json.dumps({key: report[key] for key in REACTION_SUMMARY_KEYS}, indent=2))
     except Exception as error:
         status, reason, failure = 1, "error", str(error)
         print(f"error: {error}", file=sys.stderr)
     finally:
+        if reaction is not None:
+            try:
+                reaction.close()
+            except Exception as error:
+                print(f"reaction-test window cleanup error: {error}", file=sys.stderr)
         if source is not None:
             try:
                 source.close()
