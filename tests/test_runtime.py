@@ -21,7 +21,14 @@ from app.capture import (
     Picamera2Capture,
     VideoFileCapture,
 )
-from app.config import AppConfig, ConfigError, DisplayConfig, ModelConfig, OutputConfig
+from app.config import (
+    AppConfig,
+    ConfigError,
+    ConfirmationConfig,
+    DisplayConfig,
+    ModelConfig,
+    OutputConfig,
+)
 from app.detector import (
     DetectorError,
     UltralyticsDetector,
@@ -85,6 +92,10 @@ class ConfigTests(unittest.TestCase):
                 {"model": {"backend": "tensorrt"}},
                 {"model": {"threads": 0}},
                 {"tracking": {"enabled": True}},
+                {"confirmation": {"k": 4, "n": 3}},
+                {"confirmation": {"iou": 1.5}},
+                {"confirmation": {"max_age_frames": -1}},
+                {"confirmation": {"window": 3}},
                 [],
             )
             for value in invalid_configurations:
@@ -103,8 +114,10 @@ class ConfigTests(unittest.TestCase):
             config = AppConfig.load(path)
         self.assertEqual(config.model.image_size, (384, 640))
         self.assertEqual((config.model.backend, config.model.threads), ("native", 2))
-        defaults = AppConfig.load("app/config.yaml").model
-        self.assertEqual((defaults.backend, defaults.threads), ("ultralytics", 4))
+        defaults = AppConfig.load("app/config.yaml")
+        self.assertEqual((defaults.model.backend, defaults.model.threads), ("ultralytics", 4))
+        self.assertEqual(defaults.confirmation, ConfirmationConfig())
+        self.assertFalse(defaults.confirmation.enabled)
 
     def test_old_cli_rejected(self) -> None:
         with self.assertRaises(SystemExit):
@@ -477,16 +490,21 @@ class RuntimeTests(unittest.TestCase):
         failure: Exception | None = None,
         output_failure: bool = False,
         max_frames: int = 0,
+        config: AppConfig | None = None,
+        detections: Sequence[Sequence[Detection]] = (),
     ) -> tuple[int, Mock, Mock, Mock]:
-        config = replace(AppConfig(), display=DisplayConfig(False))
+        config = config or replace(AppConfig(), display=DisplayConfig(False))
         arguments = build_parser().parse_args(
             ["--video", "fake.avi", "--max-frames", str(max_frames)]
         )
         source, detector, output = Mock(), Mock(), Mock()
         source.get.side_effect = packets
         source.dropped_frames = 0
-        detector.detect.side_effect = failure
+        detector.detect.side_effect = failure or (
+            [list(items) for items in detections] if detections else None
+        )
         detector.detect.return_value = []
+        detector.trigger_classes = ("pigeon",)
         output.render.return_value = True
         if output_failure:
             output.start.side_effect = RuntimeError("display failed")
@@ -514,6 +532,37 @@ class RuntimeTests(unittest.TestCase):
         frames = [event_call.kwargs for event_call in events if event_call.args[0] == "frame"]
         self.assertEqual([record["frame_number"] for record in frames], [0, 1, 2])
         self.assertEqual(events[-1].kwargs["reason"], "video_complete")
+
+    def test_confirmation_is_opt_in(self) -> None:
+        packets = [FramePacket(index, 10 + index, create_test_frame()) for index in range(3)]
+        pigeon = Detection("pigeon", 0.9, 1, 2, 30, 40)
+        frames = [[pigeon], [], [pigeon]]
+        _, _, _, output = self.exercise([*packets, EndOfStream()], detections=frames)
+        names = [event_call.args[0] for event_call in output.event.call_args_list]
+        self.assertNotIn("trigger", names)
+        records = [
+            event_call.kwargs
+            for event_call in output.event.call_args_list
+            if event_call.args[0] == "frame"
+        ]
+        self.assertIsNone(records[0]["detections"][0]["track_id"])
+        config = replace(
+            AppConfig(),
+            display=DisplayConfig(False),
+            confirmation=ConfirmationConfig(enabled=True),
+        )
+        _, _, _, output = self.exercise([*packets, EndOfStream()], config=config, detections=frames)
+        events = output.event.call_args_list
+        triggers = [event_call.kwargs for event_call in events if event_call.args[0] == "trigger"]
+        self.assertEqual(len(triggers), 1)
+        self.assertEqual(
+            (triggers[0]["track_id"], triggers[0]["class"], triggers[0]["first_seen_frame"]),
+            (1, "pigeon", 0),
+        )
+        self.assertEqual(triggers[0]["first_seen_captured_at"], 10)
+        names = [event_call.args[0] for event_call in events]
+        # the trigger follows the frame record that confirmed it.
+        self.assertEqual(names[names.index("trigger") - 1], "frame")
 
     def test_inference_and_capture_failure_cleanup(self) -> None:
         packet = FramePacket(0, 0, create_test_frame())

@@ -15,6 +15,7 @@ from .config import AppConfig, ConfigError, ImageSize, ModelConfig
 from .detector import DetectorError, FrameDetector, UltralyticsDetector, load_model_info
 from .json_data import JsonValue
 from .output import RunOutput, health_snapshot
+from .tracking import ConfirmationTracker
 
 
 @dataclass(frozen=True)
@@ -152,7 +153,12 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
     try:
         for signal_number in (signal.SIGINT, signal.SIGTERM):
             handlers[signal_number] = signal.signal(signal_number, request_stop)
-        detector, _trigger_classes = create_detector(config.model)
+        detector, trigger_classes = create_detector(config.model)
+        tracker = (
+            ConfirmationTracker(config.confirmation, trigger_classes)
+            if config.confirmation.enabled
+            else None
+        )
         detector.warmup(config.camera.width, config.camera.height)
         if stopping:
             return 0
@@ -181,6 +187,10 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             inference_started_at_monotonic_s = time.monotonic()
             detections = detector.detect(packet)
             inference_s = time.monotonic() - inference_started_at_monotonic_s
+            triggers = []
+            if tracker is not None:
+                update = tracker.update(detections, packet.sequence, packet.captured_at)
+                detections, triggers = update.detections, update.triggers
             dropped_frames = source.dropped_frames
             next_processed_frames = processed_frames + 1
             elapsed_s = time.monotonic() - started_at_monotonic_s
@@ -199,6 +209,8 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
                 processing_fps=processing_fps,
                 capture_fps=capture_fps,
             )
+            for trigger in triggers:
+                output.event("trigger", **trigger.as_dict())
             now_monotonic_s = time.monotonic()
             if now_monotonic_s - last_health_at_monotonic_s >= config.output.health_interval_s:
                 output.event(
