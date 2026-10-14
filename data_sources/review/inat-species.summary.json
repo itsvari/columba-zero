@@ -1,0 +1,12 @@
+{
+  "source": "inat-species",
+  "reviewed_images": 216,
+  "boxes": 216,
+  "wrong_boxes": 4,
+  "missed_birds": 0,
+  "images_with_errors": 4,
+  "dropped_images": 4,
+  "box_error_rate": 0.0185,
+  "passed": true,
+  "rule": ">= 200 images and (wrong + missed) / (boxes + missed) <= 0.05"
+}
