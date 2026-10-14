@@ -1,0 +1,217 @@
+{
+  "label": "measured",
+  "host": "vexcalibur",
+  "method": "reconstructed notebook membership; conservative WS2 stem/scene/SHA256/mirror-phash connected components with recorded visual false-match rejection; train precedes val; old test is unseen",
+  "phash_max_distance": 10,
+  "coco_seed": 42,
+  "coco_annotation_sha256": "e8c7f7908f1d7278341fae127d0da654f102f11bd7b21d8aeefa635b8c810b6f",
+  "coco_getImgIds_order": [
+    55299,
+    523782,
+    222235,
+    523811,
+    147498,
+    32811,
+    544811,
+    122927,
+    159791,
+    186422,
+    542776,
+    186938,
+    277051,
+    337987,
+    434247,
+    417876,
+    489046,
+    402519,
+    475223,
+    404568,
+    31322,
+    285788,
+    49761,
+    19042,
+    511076,
+    572517,
+    120420,
+    494188,
+    229997,
+    210032,
+    289393,
+    70774,
+    149622,
+    284279,
+    315001,
+    300155,
+    117374,
+    330369,
+    100489,
+    490125,
+    418959,
+    264335,
+    236690,
+    157847,
+    126107,
+    577182,
+    216739,
+    182441,
+    482477,
+    314034,
+    104119,
+    334521,
+    508602,
+    220858,
+    578236,
+    23230,
+    123585,
+    357060,
+    296649,
+    309452,
+    176847,
+    324818,
+    413404,
+    505565,
+    516316,
+    516318,
+    56545,
+    159977,
+    335081,
+    459500,
+    197870,
+    1268,
+    475904,
+    463618,
+    368900,
+    82696,
+    245513,
+    65288,
+    407825,
+    509719,
+    374551,
+    374052,
+    46378,
+    456496,
+    519491,
+    436551,
+    558421,
+    221017,
+    250205,
+    2923,
+    10092,
+    383339,
+    561009,
+    270705,
+    166259,
+    227187,
+    315257,
+    464251,
+    460160,
+    419201,
+    106881,
+    15751,
+    166287,
+    60823,
+    389532,
+    41888,
+    542625,
+    263594,
+    548780,
+    384949,
+    473015,
+    492992,
+    119233,
+    421834,
+    60363,
+    98261,
+    151516,
+    167902,
+    407518,
+    76261,
+    186345,
+    17899,
+    132587,
+    66038,
+    438269
+  ],
+  "coco_split_counts": {
+    "train": 100,
+    "valid": 12,
+    "test": 13
+  },
+  "historical_images_with_local_hashes": 1427,
+  "review_file": "experiments/incumbent/exposure_review.json",
+  "splits": {
+    "test": {
+      "images": 319,
+      "counts": {
+        "unseen": 187,
+        "seen_train": 117,
+        "seen_val": 15
+      },
+      "direct_counts": {
+        "unseen": 190,
+        "seen_train": 103,
+        "seen_val": 26
+      },
+      "pigeon_images": {
+        "seen_train": 106,
+        "seen_val": 12,
+        "unseen": 3
+      },
+      "by_source": {
+        "coco-birds": {
+          "seen_train": 13,
+          "seen_val": 3,
+          "unseen": 1
+        },
+        "coco-negatives": {
+          "seen_train": 0,
+          "seen_val": 0,
+          "unseen": 125
+        },
+        "inaturalist": {
+          "seen_train": 0,
+          "seen_val": 0,
+          "unseen": 58
+        },
+        "roboflow-yolo1199": {
+          "seen_train": 104,
+          "seen_val": 12,
+          "unseen": 3
+        }
+      }
+    },
+    "val": {
+      "images": 156,
+      "counts": {
+        "seen_train": 156
+      },
+      "direct_counts": {
+        "seen_train": 113,
+        "unseen": 7,
+        "seen_val": 36
+      },
+      "pigeon_images": {
+        "seen_train": 156,
+        "seen_val": 0,
+        "unseen": 0
+      },
+      "by_source": {
+        "coco-birds": {
+          "seen_train": 3,
+          "seen_val": 0,
+          "unseen": 0
+        },
+        "roboflow-nea": {
+          "seen_train": 28,
+          "seen_val": 0,
+          "unseen": 0
+        },
+        "roboflow-yolo1199": {
+          "seen_train": 125,
+          "seen_val": 0,
+          "unseen": 0
+        }
+      }
+    }
+  }
+}

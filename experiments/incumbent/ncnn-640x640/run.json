@@ -1,0 +1,21 @@
+{
+  "recipe_id": "pigeon_baseline_v1-2/ncnn-640x640",
+  "seed": 0,
+  "status": "incumbent-contaminated",
+  "dataset": "columba-test-v2",
+  "taxonomy": "single",
+  "model": "pigeon_baseline_v1-2",
+  "train_imgsz": 640,
+  "host": "vexcalibur",
+  "gpu": "cpu",
+  "epochs_done": 60,
+  "git_commit": "6bf214d1c2b3ebc46ef5d377a1bbd247e9774e7c",
+  "input_hw": [
+    640,
+    640
+  ],
+  "label": "measured",
+  "model_path": "/Users/vari/Developer/columba-zero/models/pigeon_baseline_v1-2",
+  "predictions_directory": "/Users/vari/.t3/worktrees/columba-zero/t3-4c6c30b5/outputs/ws1/incumbent/ncnn-640x640",
+  "contamination_report": "/Users/vari/.t3/worktrees/columba-zero/t3-4c6c30b5/experiments/incumbent/contamination.json"
+}

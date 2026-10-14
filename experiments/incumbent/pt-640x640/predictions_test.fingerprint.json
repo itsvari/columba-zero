@@ -1,0 +1,20 @@
+{
+  "model_sha256": {
+    "best.pt": "35f7f55cabfe709c5a0cd825610928b369eb7ff97a1354bbdb1c485cddc1704c"
+  },
+  "dataset_sha256": {
+    "data.yaml": "a7c1170ef9ef8155041e986e021e2bb8071a454d3a78ee74911ba7af6a682b8c",
+    "manifest.jsonl": "9940b7983cd2526671146f44f73ca65d40e8ffbc0bbcbe2fe614d8c32b8c6103",
+    "DATASET.json": "dc248b0ad8e9e11ee909af587753cc0b22c7791315e03474fdd50110b4aba829"
+  },
+  "split": "test",
+  "input_hw": [
+    640,
+    640
+  ],
+  "conf_floor": 0.001,
+  "nms_iou": 0.7,
+  "max_det": 300,
+  "device": "cpu",
+  "ncnn_compute": "runtime_default"
+}

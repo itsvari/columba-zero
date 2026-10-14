@@ -1,0 +1,13 @@
+{
+  "dataset": "columba-train-v1clean",
+  "split": "val",
+  "subset": "/Users/vari/.t3/worktrees/columba-zero/t3-4c6c30b5/experiments/incumbent/unseen_val.txt",
+  "status": "not_evaluable",
+  "reason": "no unseen images in this split",
+  "counts": {
+    "images": 0
+  },
+  "pigeon": null,
+  "label": "measured",
+  "host": "vexcalibur"
+}
