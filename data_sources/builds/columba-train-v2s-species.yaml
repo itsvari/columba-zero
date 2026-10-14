@@ -1,0 +1,41 @@
+# Training data v2s: v2 plus one camera-style copy per train image. v2 in the `species` taxonomy (same images and split as columba-train-v2). Reviewed sources only:
+# human boxes (Roboflow, COCO), reviewed YOLO11x pseudo boxes (iNaturalist, see
+# data_sources/review/*.summary.json), per-image reviews for COCO birds and NEA.
+# Val follows columba-test-v2's image-kind mix so the operating threshold is chosen with
+# empty and confuser images present (coordinator decision, 2026-10-14).
+name: columba-train-v2s-species
+kind: train
+taxonomy: species
+test_dataset: columba-test-v2
+sources:
+  - {name: roboflow-yolo1199, require_boxes: true}
+  - name: roboflow-nea                     # training only; stretched 416x416 images
+    require_boxes: true
+    train_only: true
+    image_review: data_sources/review/roboflow-nea.images.jsonl
+    review_default: keep
+  - name: coco-birds                       # val2017 birds; pigeons only if reviewed as such
+    image_review: data_sources/review/coco-birds.images.jsonl
+  - name: coco-birds-train
+    image_review: data_sources/review/coco-birds-train.images.jsonl
+  - {name: inat-pigeon, labels: auto, max_images: 2500, prefer: small_birds}
+  - {name: inat-species, labels: auto}
+  - {name: inat-other, labels: auto}
+  - {name: coco-negatives-train}
+phash_max_distance: 10
+test_exclusion_distance: 12
+val_fraction: 0.15                         # of pigeon-positive images
+val_mix: {pigeon: 0.45, other_bird: 0.2, empty: 0.35}
+seed: 0
+label_conventions: >-
+  (single) only feral pigeons are boxed; (species) every reviewed bird is boxed with its C2 class, rare classes fold into other_bird (folded_classes). COCO bird images are pigeons
+  only where reviewed as feral pigeons; other birds are unboxed background and listed in
+  classes_present (species name or other_bird). iNaturalist boxes are YOLO11x `bird` boxes
+  (pseudo_reviewed) with the observation's species. COCO train2017 street scenes are empty.
+notes: >-
+  Same leakage rules as columba-train-v1clean: groups join SHA-256 copies, mirror-aware phash
+  neighbours (<= 10), Roboflow copies and capture sessions, iNaturalist observations; any group
+  with a columba-test-v2 image and any image within phash 12 of a test image is dropped.
+style_copies:                              # train only; val stays original; copies share groups
+  seed: 0
+  weights: {noir_night: 0.4, noir_day: 0.3, wide: 0.3}

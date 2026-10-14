@@ -1,0 +1,9 @@
+# Every columba-test-v2 image in each camera style (tools/style_augment.py), as a separate
+# frozen-on-publish test dataset. columba-test-v2 itself is unchanged. `wide` zooms out onto a
+# bird-free test-v2 scene (non-SA licence) and barrel-distorts, so birds get small.
+name: columba-test-v2-styles
+kind: test_styles
+taxonomy: single
+from_dataset: columba-test-v2
+styles: [noir_night, noir_day, wide]
+seed: 0
