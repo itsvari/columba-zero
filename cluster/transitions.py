@@ -352,9 +352,20 @@ def generate_recipes(
 def require_owned_dependencies(identifiers: Sequence[str]) -> None:
     if not identifiers:
         raise ValueError("transition needs explicit dependencies")
+    current = queue()
+    known = {job.identifier: job for job in current}
     for identifier in identifiers:
         if not re.fullmatch(r"[0-9]+(?:_[0-9]+)?", identifier):
             raise ValueError("invalid dependency job id")
+        matching = [
+            job
+            for key, job in known.items()
+            if key == identifier or key.startswith(identifier + "_")
+        ]
+        if matching:
+            if any(not job.owned for job in matching):
+                raise ValueError(f"dependency outside cz- namespace: {identifier}")
+            continue
         result = subprocess.run(
             [
                 "sacct",
@@ -565,7 +576,7 @@ def recover_interrupted_inputs(
         ):
             raise HoldRequired("no CPU budget to re-arm recovered transition")
         arrays = submit_arrays(
-            root, checkout, [task_for(path, seed) for path, seed, _, _ in pending]
+            root, checkout, [task_for(path, seed) for path, seed, _, _ in pending], reserved_jobs=1
         )
         if not arrays:
             raise HoldRequired("recovery tasks already active; explicit dependencies required")
@@ -683,7 +694,9 @@ def execute_transition(plan_path: Path) -> None:
                 >= Budget().cpu_jobs
             ):
                 raise HoldRequired("no CPU budget for declared second transition")
-            arrays = submit_arrays(root, checkout, tasks)
+            arrays = submit_arrays(
+                root, checkout, tasks, reserved_jobs=int(rules.next_rules is not None)
+            )
             report: dict[str, JsonValue] = {
                 "status": "submitted",
                 "round": rules.identifier,

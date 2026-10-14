@@ -64,6 +64,29 @@ def manifests(root: Path) -> tuple[dict[str, JsonValue], ...]:
     return tuple(read_json(path) for path in sorted((root / "arrays").glob("*/manifest.json")))
 
 
+def active_arrays(root: Path, jobs: Sequence[Job]) -> tuple[dict[str, JsonValue], ...]:
+    active = {
+        job.identifier.split("_")[0] for job in jobs if job.owned and job.state in ACTIVE_STATES
+    }
+    return tuple(
+        record
+        for path in sorted((root / "arrays").glob("*/submission.json"))
+        for record in (read_json(path),)
+        if str(record["array_id"]) in active
+    )
+
+
+def persist_throttle(record: dict[str, JsonValue], throttle: int) -> None:
+    subprocess.run(
+        ["scontrol", "update", f"JobId={record['array_id']}", f"ArrayTaskThrottle={throttle}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    record["throttle"] = throttle
+    atomic_json(Path(cast(str, record["manifest"])).parent / "submission.json", record)
+
+
 def active_run_names(root: Path, jobs: Sequence[Job]) -> set[str]:
     identifiers = {job.identifier for job in jobs if job.owned and job.state in ACTIVE_STATES}
     names: set[str] = set()
@@ -111,7 +134,11 @@ def group_tasks(
     heavy_index = 0
     for task in tasks:
         recipe = load_recipe(Path(task.recipe_path))
-        choice = constraint or recipe.constraint_for_seed(task.seed)
+        choice = (
+            None
+            if constraint in {"any", "null"}
+            else constraint or recipe.constraint_for_seed(task.seed)
+        )
         if choice is None and required_node is None:
             heavy = (
                 policy.preferences(
@@ -168,6 +195,7 @@ def submit_arrays(
     gpu_limit: int = GPU_RUNNING_LIMIT,
     constraint: str | None = None,
     required_node: str | None = None,
+    reserved_jobs: int = 0,
 ) -> list[dict[str, JsonValue]]:
     policy = load_policy()
     root = root.resolve()
@@ -181,6 +209,7 @@ def submit_arrays(
         if control.exists():
             gpu_limit = min(gpu_limit, cast(int, read_json(control)["gpu_limit"]))
         jobs = queue()
+        existing = active_arrays(root, jobs)
         active = active_run_names(root, jobs) | {
             job.name for job in jobs if job.owned and job.state in ACTIVE_STATES
         }
@@ -192,11 +221,23 @@ def submit_arrays(
         )
         if len({task.relative_run for task in tasks}) != len(tasks):
             raise ValueError("duplicate recipe/seed in array")
+        desired_names = {task.run_name for task in tasks}
+        receipts = [
+            record
+            for record in existing
+            if any(
+                cast(str, task["run_name"]) in desired_names
+                for task in cast(
+                    list[dict[str, JsonValue]],
+                    read_json(Path(cast(str, record["manifest"])))["tasks"],
+                )
+            )
+        ]
         if not missing:
-            return []
+            return receipts
         if (
-            len(jobs) + len(missing) > policy.max_submit_jobs
-            or sum(job.owned for job in jobs) + len(missing) > Budget().queued_jobs
+            len(jobs) + len(missing) + reserved_jobs > policy.max_submit_jobs
+            or sum(job.owned for job in jobs) + len(missing) + reserved_jobs > Budget().queued_jobs
         ):
             raise RuntimeError("array tasks exceed project/association submitted-job cap")
         footprint = subprocess.run(
@@ -206,10 +247,20 @@ def submit_arrays(
             raise RuntimeError("project storage limit reached")
         grouped = group_tasks(missing, gpu_inventory(), constraint, required_node)
         counts = {key: len(members) for key, (_, members) in grouped.items()}
+        counts.update(
+            {
+                f"existing:{record['array_id']}": cast(int, record["task_count"])
+                for record in existing
+            }
+        )
         type_groups: dict[str, list[str]] = {}
         for key, (request, _) in grouped.items():
             resource_type = request.resources.split(":")[1]
             type_groups.setdefault(resource_type, []).append(key)
+        for record in existing:
+            type_groups.setdefault(cast(str, record["resource_type"]), []).append(
+                f"existing:{record['array_id']}"
+            )
         limits: dict[str, int] = {}
         for resource_type, keys in type_groups.items():
             capacity = min(
@@ -222,7 +273,9 @@ def submit_arrays(
         throttles = shares(counts, limits, gpu_limit)
         if any(value == 0 for value in throttles.values()):
             raise RuntimeError("too many GPU groups for concurrency budget; split the submission")
-        results: list[dict[str, JsonValue]] = []
+        for record in existing:
+            persist_throttle(record, throttles[f"existing:{record['array_id']}"])
+        results: list[dict[str, JsonValue]] = receipts
         for key, (request, members) in grouped.items():
             if len(members) > MAX_ARRAY_SIZE:
                 raise ValueError("array exceeds MaxArraySize")
@@ -276,15 +329,15 @@ def submit_arrays(
             identifier = completed.stdout.strip().split(";")[0]
             if not identifier.isdecimal():
                 raise RuntimeError("invalid sbatch array id")
-            record: dict[str, JsonValue] = {
+            submission_record: dict[str, JsonValue] = {
                 "array_id": identifier,
                 "throttle": throttles[key],
                 "resource_type": request.resources.split(":")[1],
                 "task_count": len(members),
                 "manifest": str(directory / "manifest.json"),
             }
-            atomic_json(directory / "submission.json", record)
-            results.append(record)
+            atomic_json(directory / "submission.json", submission_record)
+            results.append(submission_record)
         return results
 
 
@@ -293,12 +346,7 @@ def throttle_arrays(root: Path, gpu_limit: int) -> list[dict[str, JsonValue]]:
         raise ValueError("array controls must stay in ~/columba")
     policy = load_policy()
     with submission_lock(root):
-        active = {job.identifier.split("_")[0] for job in queue() if job.owned}
-        records = [
-            read_json(path)
-            for path in (root / "arrays").glob("*/submission.json")
-            if str(read_json(path)["array_id"]) in active
-        ]
+        records = active_arrays(root, queue())
         counts = {str(item["array_id"]): cast(int, item["task_count"]) for item in records}
         type_groups: dict[str, list[str]] = {}
         for item in records:
@@ -321,20 +369,8 @@ def throttle_arrays(root: Path, gpu_limit: int) -> list[dict[str, JsonValue]]:
         atomic_json(root / "arrays/concurrency.json", {"gpu_limit": gpu_limit})
         for record in records:
             identifier = str(record["array_id"])
-            subprocess.run(
-                [
-                    "scontrol",
-                    "update",
-                    f"JobId={identifier}",
-                    f"ArrayTaskThrottle={allocation[identifier]}",
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            record["throttle"] = allocation[identifier]
-            atomic_json(Path(cast(str, record["manifest"])).parent / "submission.json", record)
-        return records
+            persist_throttle(record, allocation[identifier])
+        return list(records)
 
 
 def task_environment(path: Path, index: int) -> dict[str, str]:

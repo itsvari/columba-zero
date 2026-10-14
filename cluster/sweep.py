@@ -429,9 +429,7 @@ def main() -> None:
             orchestration_payload = {
                 "tasks": tasks,
                 "gpu_limit": arguments.gpu_limit,
-                "constraint": None
-                if arguments.constraint in {None, "any", "null"}
-                else arguments.constraint,
+                "constraint": arguments.constraint,
                 "required_node": arguments.node,
             }
             module, action = "cluster.arrays", "submit"

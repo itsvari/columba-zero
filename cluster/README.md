@@ -173,3 +173,124 @@ recipe or checkpoint args. `run.json.attempts` retains both attempts, and
 pins an approved GPU node and explicitly bypasses the training exclusion list;
 it prints nvidia-smi and CUDA availability without training or changing the
 node. Its report lives in `~/columba/runs/gpu-probes/<node>/run.json`.
+
+## Unattended rounds on Slurm
+
+Training uses finite arrays and short dependency jobs. There is no persistent
+process on the login node, no polling compute job and no dependency on the Mac
+remaining connected. Submit a declared set of recipes once:
+
+```sh
+python -m cluster.sweep submit-arrays --recipes training/recipes/example.yaml
+python -m cluster.sweep status
+python -m cluster.sweep fetch --generated-round round2-plain round2-distill
+```
+
+Each GPU request gets an array, with a checksum-protected task manifest mapping
+its task index to recipe and seed. Recipes and code use immutable published
+checkouts. Generated recipes stay under `~/columba/generated-recipes/<round>/`.
+Arrays skip DONE and already active recipe/seed pairs, including legacy jobs;
+legacy `submit` also recognises active array tasks. `squeue --array` expands every
+task for the 24 submitted-task project cap. All account jobs count towards the
+verified association MaxSubmitJobs=32; only cz- jobs count towards our project
+budget. Array backlog is held by Slurm: unlike the older single-job admission
+path, pending GPU array tasks may exceed eight, while array throttles and QoS
+limit running GPUs to eight. This follows the approved upfront-array design.
+
+The normal QoS per-user limits verified on 15 October are GPU=8, nv=8,
+A100-40=4, A100-80=2, H100-47=2, H100-96=1, H200-141=1, H200-71=1 and CPU=256.
+Project CPU concurrency remains two. `gpu_policy.yaml` records these type caps
+and an array slot split: nv=4, H100-47=2, H100-96=1, A100-80=1. Light models use
+`gpu:nv:1` with `--constraint='t4|titanv|titanrtx'`. Heavy jobs rotate through
+those declared heavy groups; each group's throttle stays within its type cap.
+Pinned recipe/seed/CLI types remain pinned. A100-80 automatic arrays may use
+`gpu-long,gpu` with a three-hour request, allowing xgpj0 transparently. Other
+un-pinned groups request gpu-long. The scheduler rewrote the 20-minute smoke's
+GPU-long request to gpu; the submitted manifest preserves the original request.
+
+To lower all active array throttles and persist the limit for future arrays:
+
+```sh
+python -m cluster.sweep throttle-arrays --gpu-limit 4
+# restore the approved allowance when instructed:
+python -m cluster.sweep throttle-arrays --gpu-limit 8
+```
+
+The command checks ownership through manifests and the current queue, then uses
+`scontrol update JobId=<array> ArrayTaskThrottle=<share>`. Shares sum to the
+requested limit or less and obey type caps. It refuses more active arrays than
+available slots, since a zero Slurm throttle means unlimited. Already running
+tasks finish; this does not cancel them or reduce legacy job allocations. Slurm
+QoS still enforces the account's total/type limits across overlapping arrays.
+
+### Checkpoint requeue
+
+GPU jobs request `--requeue --signal=B:USR1@600`. The bash trap forwards USR1 to
+the trainer, which finishes its current epoch, copies last.pt and results to
+NFS, and exits with the dedicated requeue status. The script requeues exactly
+`<array_id>_<task_id>`, including the task that shares the array root job ID.
+Every restart stages data and teacher again and relocates checkpoint paths.
+Slurm's automatic node-failure requeues use the same startup guard.
+
+`requeue.json` in each run folder records saved epochs, scheduler restart counts
+and a lifetime cap of ten requeues. A restart without a newly saved epoch, a
+missing checkpoint or the cap writes HOLD and stops. A graceful signal does not
+get counted again at startup. Last.pt is persisted after each saved epoch;
+`save_period: 5` additionally creates periodic snapshots in Ultralytics. A run
+whose training checkpoint is complete retries only prediction/evaluation.
+
+### Explicitly armed transitions
+
+`training/rounds/round2.yaml` and `round2-distill.yaml` are drafts. WS5 owns the
+recipe content and must confirm both rules files before the coordinator arms
+the first transition. Preparation validates ownership and writes a plan without
+submitting a job:
+
+```sh
+python -m cluster.sweep prepare-transition --rules training/rounds/round2.yaml \
+  --after 946641 946662 946663 946664 946665 946963 947094 \
+  --teacher-after 946961 946962
+python -m cluster.sweep arm-transition --rules training/rounds/round2.yaml \
+  --after 946641 946662 946663 946664 946665 946963 947094 \
+  --teacher-after 946961 946962
+```
+
+Arming a draft is rejected. Dependencies must belong to cz-. Completed jobs no
+longer in squeue are retained in the plan but removed from the actual Slurm
+request, avoiding expired dependency IDs. Their required DONE/artifacts are
+still checked. The finite transition runs on xcng0/normal (four CPUs, 15 minutes),
+consolidates C6 leaderboard rows and ranking JSON, applies the confirmed rules,
+validates generated C5 recipes and submits their arrays. A second transition,
+when declared, waits for plain arrays and both teachers before distilled arms.
+Round 3 and WS7 remain manual.
+
+The draft selects the top three eligible v2/v2s model/data combinations, excluding
+v1clean references. It ranks measured val R@P90, breaks differences within 0.01
+using estimated Pi fp16 p95 latency at 384×640, and requires a declared order
+for remaining exact ties. Small models must improve over the best nano on the
+same dataset by strictly more than 0.04 and deploy only up to 384×640. Plain
+selected nanos get additional train-imgsz-800 arms. Both stages use three seeds,
+300 epochs, patience 50, cosine LR and nbs 64. The second stage uses the best
+teacher by measured val R@P90; a teacher tie also needs a declared order. Test
+metrics are consolidated but never used to choose these arms.
+
+Missing DONE after TIMEOUT/PREEMPTED/NODE_FAIL, with last.pt and checkpoint
+progress, triggers mechanical resubmission under the array/self-requeue path.
+The same transition is re-armed after the recovery arrays. A separate ledger
+under `transitions/recovery/<round>.json` allows at most two such recoveries per
+run and requires epoch progress between attempts. Genuine failures, missing
+metrics after DONE, invalid latency, unhandled ties, insufficient eligible
+runs or exhausted budgets write HOLD and submit no new training work.
+
+State locations are `~/columba/{arrays,transitions,generated-recipes,runs,logs}`.
+`status` shows array tasks, throttles, saved epochs, requeue counts, HOLD reasons
+and transition outcomes. `fetch` copies orchestration JSON/HOLD files and generated
+YAML to `outputs/ws3/cluster-state/` (change with `--state-destination`). Pass
+`--generated-round <id> ...` to fetch those recipes' C6 artifacts and upsert the
+local leaderboard. Smoke rows remain excluded from the production leaderboard.
+
+The infrastructure smoke uses two three-epoch tasks, a real USR1 checkpoint
+requeue, then one two-epoch follow-up task generated by a confirmed smoke-only
+rule. Its predictions/evaluations use synthetic data and cannot establish
+pigeon accuracy. To repeat, use fresh smoke recipe and rules IDs; existing DONE
+runs are intentionally skipped.

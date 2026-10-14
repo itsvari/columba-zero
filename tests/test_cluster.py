@@ -88,6 +88,7 @@ from cluster.transitions import (
     generate_recipes,
     load_rules,
     recover_interrupted_inputs,
+    require_owned_dependencies,
     select_candidates,
 )
 
@@ -1115,6 +1116,79 @@ class OrchestrationTests(unittest.TestCase):
             self.assertIn("ArrayTaskThrottle=2", control.call_args.args[0])
             state = cast(list[dict[str, JsonValue]], snapshot(root, {"700_0": "RUNNING"})["arrays"])
             self.assertEqual(state[0]["state"], "RUNNING")
+
+    def test_array_resubmission_returns_existing_dependency_and_global_throttles(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            root = home / "columba"
+            checkout = root / "checkouts/pinned"
+            first = self.write_recipe(checkout / "first.yaml", "first")
+            second = self.write_recipe(checkout / "second.yaml", "second")
+            (checkout / "cluster/templates").mkdir(parents=True)
+            (checkout / "cluster/templates/nv.sbatch").write_text("set -euo pipefail\n")
+            (checkout / "cluster/excluded_nodes.txt").write_text("xgpe6\n")
+            manifest_path = root / "arrays/first/manifest.json"
+            manifest_path.parent.mkdir(parents=True)
+            first_task = task_for(first, 0)
+            from dataclasses import asdict
+
+            manifest_path.write_text(
+                json.dumps({"tasks": [asdict(first_task)], "directory": str(manifest_path.parent)})
+            )
+            record = {
+                "array_id": "720",
+                "throttle": 1,
+                "resource_type": "nv",
+                "task_count": 1,
+                "manifest": str(manifest_path),
+            }
+            (manifest_path.parent / "submission.json").write_text(json.dumps(record))
+            (root / "arrays/concurrency.json").write_text('{"gpu_limit": 4}')
+            jobs = parse_queue("720_0|cz-array-first|PENDING|gpu-long|gres/gpu:nv:1|1")
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch("cluster.arrays.queue", return_value=jobs),
+                patch("cluster.arrays.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
+                patch(
+                    "cluster.arrays.subprocess.run",
+                    side_effect=[
+                        subprocess.CompletedProcess([], 0, "1 project", ""),
+                        subprocess.CompletedProcess([], 0, "", ""),
+                        subprocess.CompletedProcess([], 0, "721", ""),
+                    ],
+                ) as scheduler,
+            ):
+                self.assertEqual(submit_arrays(root, checkout, [first_task]), [record])
+                scheduler.assert_not_called()
+                records = submit_arrays(root, checkout, [task_for(second, 0)])
+            self.assertEqual(records[0]["array_id"], "721")
+            self.assertLessEqual(
+                records[0]["throttle"]
+                + json.loads((manifest_path.parent / "submission.json").read_text())["throttle"],
+                4,
+            )
+
+    def test_array_any_override_removes_recipe_pin(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_recipe(Path(directory) / "recipe.yaml")
+            values = yaml.safe_load(path.read_text())
+            values["gpu_constraint"] = "h100-96"
+            path.write_text(yaml.safe_dump(values))
+            offers = parse_inventory(GPU_INVENTORY)
+            pinned = next(iter(group_tasks([task_for(path, 0)], offers).values()))[0]
+            automatic = next(iter(group_tasks([task_for(path, 0)], offers, "any").values()))[0]
+            self.assertEqual(pinned.resources, "gpu:h100-96:1")
+            self.assertEqual(automatic.resources, "gpu:nv:1")
+
+    def test_transition_dependencies_reject_non_project_jobs(self) -> None:
+        jobs = parse_queue("730|moonshot-other|RUNNING|gpu-long|gres/gpu:nv:1|1")
+        with (
+            patch("cluster.transitions.queue", return_value=jobs),
+            patch("cluster.transitions.subprocess.run") as scheduler,
+        ):
+            with self.assertRaisesRegex(ValueError, "outside cz-"):
+                require_owned_dependencies(["730"])
+        scheduler.assert_not_called()
 
     def test_array_tasks_count_against_submission_cap(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -111,3 +111,41 @@ missing evaluation. Until WS2 publishes the real data, build its tiny CC0
 synthetic fixtures with `python -m cluster.smoke_dataset --out outputs/ws3/data`.
 The historical `smoke-coco8` archive name contains synthetic circles, not COCO
 photographs. Never report its metrics as pigeon accuracy.
+
+## Array and transition state
+
+C5 recipes also work with `sweep submit-arrays`; there are no new required C5
+fields. GPU choice is grouped by typed request. Array task manifests pin the
+recipe SHA-256, seed and source checkout. `run.json` additionally records
+`array_job_id`, `array_task_id` and `slurm_restart_count`. `requeue.json` and HOLD
+are orchestration artifacts beside C6, rather than recipe fields. Ten-minute
+advance USR1 notices request a checkpoint and task-specific Slurm requeue.
+The restart guard requires checkpoint progress and permits ten requeues per run.
+
+Round rules are a separate version-1 schema in `training/rounds/*.yaml`:
+
+- `id`, `version: 1`, `approval: draft|confirmed`, `confirmed_by` (required when
+  confirmed), optional `notes`.
+- `inputs`: pinned source C5 paths; `excluded_references` documents references
+  deliberately omitted. Metrics come from every source recipe's declared seeds.
+- `seeds`: generated-run seeds; `top_k`; `tie_epsilon` (default 0.01);
+  `minimum_small_gain` (default 0.04).
+- `latency_records`: base-model name → pinned C7 JSON at input_hw [384,640],
+  with positive estimated_pi5.end_to_end_p95_ms.
+- `tie_order`: explicit source recipe IDs for otherwise unresolved metric/latency
+  ties. Empty means HOLD on an unresolved tie.
+- `training`: generated C5 training overrides, including positive epochs and
+  nbs 64. Generated recipes are validated through the normal C5 validator.
+- `nano_imgsz`: extra plain nano training size, or null. `stage: plain|distill`.
+- `next_rules`: optional second-stage rules path. Its confirmation and explicit
+  `--teacher-after` dependencies are required before arming the first stage.
+- Distill stage: `selection_from`, both `teachers` C5 paths, and
+  `teacher_tie_order` for an equal best val R@P90. It reuses the plain stage's
+  selected combinations and requires all generated plain seeds to finish.
+
+Paths must stay inside the pinned checkout. Unknown rule fields are rejected.
+Production drafts require WS5 confirmation and a separate explicit
+`arm-transition` command; `prepare-transition` submits nothing. Invalid or
+missing evidence writes HOLD. Interrupted source runs with last.pt may receive
+two mechanical recovery attempts after TIMEOUT/PREEMPTED/NODE_FAIL; genuine
+failures require review. Rules never select on test data.
