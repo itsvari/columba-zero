@@ -1,6 +1,6 @@
 # WS3 — Cluster infrastructure
 
-- State: done
+- State: in progress
 - Branch: `ws3/cluster`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-14
@@ -47,7 +47,9 @@
 
 ## In progress
 
-Nothing. WS3 tasks 1–5 and the smoke acceptance criteria are complete.
+Round 2: fast-forwarded to main 222ba8f, with WS1 tools and CONTRACTS v1.3.
+Running a fresh E2E smoke, interrupted distillation/resume, and an xgpe6 probe.
+Round 2 limits: two GPU jobs, one CPU job for WS3.
 
 ## Blockers and requests
 

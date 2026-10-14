@@ -21,4 +21,8 @@ trap finish_job EXIT
 cd "$COLUMBA_CHECKOUT"
 nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv
 bash cluster/bootstrap.sh --gpu-smoke
-"$HOME/columba/venvs/x86_64-cu126/bin/python" -m cluster.run_job --recipe "$COLUMBA_RECIPE" --seed "$COLUMBA_SEED"
+run_arguments=(--recipe "$COLUMBA_RECIPE" --seed "$COLUMBA_SEED")
+if [[ -n "${COLUMBA_STOP_AFTER_EPOCH:-}" ]]; then
+    run_arguments+=(--stop-after-epoch "$COLUMBA_STOP_AFTER_EPOCH")
+fi
+"$HOME/columba/venvs/x86_64-cu126/bin/python" -m cluster.run_job "${run_arguments[@]}"

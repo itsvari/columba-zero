@@ -20,6 +20,7 @@ from cluster.recipe import Recipe, load_recipe, recipe_sha256
 from cluster.slurm import ACTIVE_STATES, Budget, Job, Submission, job_name, parse_queue
 
 SSH_HOST = "columba-cluster"
+DEFAULT_EXCLUDED_NODES = ("xgpe6",)
 REPOSITORY = Path(__file__).resolve().parents[1]
 
 
@@ -132,7 +133,9 @@ def deploy(root: Path) -> tuple[Path, str]:
     return checkout, commit
 
 
-def submission_for(run: DesiredRun, root: Path, checkout: Path, commit: str) -> Submission:
+def submission_for(
+    run: DesiredRun, root: Path, checkout: Path, commit: str, stop_after_epoch: int | None = None
+) -> Submission:
     try:
         relative_recipe = run.recipe_path.relative_to(REPOSITORY)
     except ValueError as error:
@@ -162,6 +165,12 @@ def submission_for(run: DesiredRun, root: Path, checkout: Path, commit: str) -> 
             "COLUMBA_RUN_METADATA": json.dumps(metadata),
         }.items()
     )
+    if stop_after_epoch is not None:
+        if not run.recipe.identifier.startswith("smoke-") or not 0 < stop_after_epoch < int(
+            run.recipe.train["epochs"]
+        ):
+            raise ValueError("--stop-after-epoch requires an unfinished smoke epoch")
+        exports += f"\nexport COLUMBA_STOP_AFTER_EPOCH={stop_after_epoch}"
     script = template.replace("set -euo pipefail", f"set -euo pipefail\n{exports}")
     return {
         "name": run.name,
@@ -202,14 +211,21 @@ def fetch(root: Path, runs: Sequence[DesiredRun], destination: Path, leaderboard
         if completed.returncode:
             raise RuntimeError(completed.stderr.strip())
         if (local / "run.json").exists():
-            rows.append(leaderboard_row(local))
-    update_leaderboard(leaderboard, rows)
+            row = leaderboard_row(local)
+            real_leaderboard = (REPOSITORY / "experiments/leaderboard.csv").resolve()
+            smoke = run.recipe.identifier.startswith("smoke-") or row["recipe_id"].startswith(
+                "smoke-"
+            )
+            if not smoke or leaderboard.resolve() != real_leaderboard:
+                rows.append(row)
+    if rows or not leaderboard.exists():
+        update_leaderboard(leaderboard, rows)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "action", choices=("plan", "submit", "status", "fetch", "cancel", "arm-bundle")
+        "action", choices=("plan", "submit", "status", "fetch", "cancel", "arm-bundle", "gpu-probe")
     )
     parser.add_argument("--recipes", nargs="+", type=Path, default=[])
     parser.add_argument("--seeds", nargs="+", type=int)
@@ -217,7 +233,9 @@ def main() -> None:
     parser.add_argument("--cpu-limit", type=int, default=2)
     parser.add_argument("--queue-limit", type=int, default=12)
     parser.add_argument("--job-ids", nargs="+", default=[])
-    parser.add_argument("--exclude-nodes", nargs="+", default=[])
+    parser.add_argument("--exclude-nodes", nargs="+", default=list(DEFAULT_EXCLUDED_NODES))
+    parser.add_argument("--probe-node", default="xgpe6")
+    parser.add_argument("--stop-after-epoch", type=int)
     parser.add_argument("--destination", type=Path, default=REPOSITORY / "experiments/runs")
     parser.add_argument(
         "--leaderboard", type=Path, default=REPOSITORY / "experiments/leaderboard.csv"
@@ -266,14 +284,18 @@ def main() -> None:
     checkout, commit = deploy(root)
     if arguments.action == "arm-bundle":
         submissions = [bundle_submission(arguments.models, arguments.bundle_action, root, checkout)]
+    elif arguments.action == "gpu-probe":
+        submissions = [probe_submission(arguments.probe_node, root, checkout)]
     else:
         submissions = [
-            submission_for(run, root, checkout, commit)
+            submission_for(run, root, checkout, commit, arguments.stop_after_epoch)
             for run in runs
             if run.relative_run not in done
         ]
     for submission in submissions:
-        submission["excluded_nodes"] = arguments.exclude_nodes
+        submission["excluded_nodes"] = (
+            [] if arguments.action == "gpu-probe" else arguments.exclude_nodes
+        )
     payload: dict[str, JsonValue] = {
         "budget": cast(dict[str, JsonValue], asdict(budget)),
         "submissions": cast(list[JsonValue], submissions),
@@ -290,6 +312,26 @@ def main() -> None:
             ]
         )
     )
+
+
+def probe_submission(node: str, root: Path, checkout: Path) -> Submission:
+    import re
+
+    if not re.fullmatch(r"xgp[def][0-9]+", node):
+        raise ValueError("probe node must belong to the permitted nv lane")
+    template = (REPOSITORY / "cluster/templates/gpu-probe.sbatch").read_text()
+    destination = root / "runs/gpu-probes" / node
+    exports = f"export COLUMBA_CHECKOUT={shlex.quote(str(checkout))}\n"
+    exports += f"export COLUMBA_RUN_PATH={shlex.quote(str(destination))}\n"
+    constraints = {"d": "titanv", "e": "titanrtx", "f": "t4"}
+    return {
+        "name": f"cz-ws3-probe-{node}",
+        "lane": "nv",
+        "constraint": constraints[node[3]],
+        "required_node": node,
+        "run_path": str(destination),
+        "script": template.replace("set -euo pipefail", f"set -euo pipefail\n{exports}"),
+    }
 
 
 def bundle_submission(

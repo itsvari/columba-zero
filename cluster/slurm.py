@@ -72,6 +72,7 @@ class Submission(TypedDict):
     script: str
     run_path: str
     excluded_nodes: NotRequired[list[str]]
+    required_node: NotRequired[str]
 
 
 def parse_queue(output: str) -> tuple[Job, ...]:
@@ -139,6 +140,11 @@ def submit_pending(submissions: Sequence[Submission], budget: Budget) -> list[di
             raise ValueError("excluded nodes must belong to permitted nv or ARM lanes")
         if excluded_nodes:
             command.append(f"--exclude={','.join(excluded_nodes)}")
+        required_node = submission.get("required_node")
+        if required_node:
+            if submission["lane"] != "nv" or not re.fullmatch(r"xgp[def][0-9]+", required_node):
+                raise ValueError("GPU probes may only pin nodes in the permitted nv lane")
+            command.append(f"--nodelist={required_node}")
         if submission["constraint"]:
             command.append(f"--constraint={submission['constraint']}")
         completed = subprocess.run(

@@ -23,6 +23,7 @@ from cluster.run_job import (
     execute,
     publish_report,
     relocate_checkpoint,
+    run,
 )
 from cluster.slurm import (
     Budget,
@@ -34,7 +35,7 @@ from cluster.slurm import (
     submit_pending,
 )
 from cluster.staging import stage_dataset
-from cluster.sweep import DesiredRun, plan_runs, submission_for
+from cluster.sweep import DesiredRun, fetch, plan_runs, probe_submission, submission_for
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 BASELINE_RECIPE = REPOSITORY / "training/recipes/baseline-repro.yaml"
@@ -351,6 +352,50 @@ class ClusterTests(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0]["recipe_id"], "incumbent")
             self.assertEqual(rows[1]["status"], "complete")
+
+    def test_fetch_excludes_smoke_from_real_leaderboard_but_allows_scratch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = root / "repository"
+            real_leaderboard = repository / "experiments/leaderboard.csv"
+            real_leaderboard.parent.mkdir(parents=True)
+            incumbent = dict.fromkeys(LEADERBOARD_COLUMNS, "")
+            incumbent.update({"recipe_id": "incumbent", "seed": "0", "status": "complete"})
+            update_leaderboard(real_leaderboard, [incumbent])
+            original = real_leaderboard.read_bytes()
+            desired = DesiredRun(SMOKE_RECIPE, load_recipe(SMOKE_RECIPE), 0)
+            destination = root / "fetched"
+            local = destination / desired.relative_run
+            local.mkdir(parents=True)
+            (local / "run.json").write_text(
+                json.dumps({"recipe_id": "smoke-5ep", "seed": 0, "status": "complete"})
+            )
+            scratch = root / "leaderboard-smoke.csv"
+            with (
+                patch("cluster.sweep.REPOSITORY", repository),
+                patch("cluster.sweep.subprocess.run", return_value=Mock(returncode=0)),
+            ):
+                fetch(root / "remote", [desired], destination, real_leaderboard)
+                self.assertEqual(real_leaderboard.read_bytes(), original)
+                fetch(root / "remote", [desired], destination, scratch)
+            with scratch.open() as source:
+                rows = list(csv.DictReader(source))
+            self.assertEqual(rows[0]["recipe_id"], "smoke-5ep")
+
+    def test_smoke_interrupt_is_forbidden_for_production_recipes(self) -> None:
+        with self.assertRaisesRegex(ValueError, "restricted"):
+            run(BASELINE_RECIPE, 0, Path("/unused"), REPOSITORY, stop_after_epoch=1)
+        desired = DesiredRun(BASELINE_RECIPE, load_recipe(BASELINE_RECIPE), 0)
+        with self.assertRaisesRegex(ValueError, "smoke"):
+            submission_for(desired, Path("/root"), Path("/checkout"), "commit", 1)
+
+    def test_gpu_probe_pins_only_an_allowed_nv_node(self) -> None:
+        probe = probe_submission("xgpe6", Path("/home/user/columba"), Path("/checkout"))
+        self.assertEqual(probe["required_node"], "xgpe6")
+        self.assertEqual(probe["constraint"], "titanrtx")
+        self.assertIn("--gres=gpu:nv:1", probe["script"])
+        with self.assertRaises(ValueError):
+            probe_submission("xgpi6", Path("/root"), Path("/checkout"))
 
     def test_final_validation_callback_does_not_add_a_sixth_training_epoch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

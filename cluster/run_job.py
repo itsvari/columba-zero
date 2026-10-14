@@ -58,6 +58,7 @@ class TrainingContext:
     persistent_run: Path
     batch_size: int
     device: str
+    stop_after_epoch: int | None = None
 
 
 class Adapter(Protocol):
@@ -80,13 +81,17 @@ def checkpoint_complete(checkpoint: Path, target_epochs: int) -> bool:
     return isinstance(epoch, int) and (epoch == -1 or epoch + 1 >= target_epochs)
 
 
-def relocate_checkpoint(checkpoint: Path, context: TrainingContext) -> None:
+def relocate_checkpoint(checkpoint: Path, context: TrainingContext) -> dict[str, JsonValue]:
     import torch
 
     saved = cast(Checkpoint, torch.load(checkpoint, map_location="cpu", weights_only=False))
     arguments = saved.get("train_args")
     if not isinstance(arguments, dict):
         raise ValueError("checkpoint has no train_args")
+    previous_paths = {
+        "previous_data": arguments.get("data"),
+        "previous_distill_model": arguments.get("distill_model"),
+    }
     arguments.update(
         {
             "data": str(context.dataset / "data.yaml"),
@@ -97,6 +102,12 @@ def relocate_checkpoint(checkpoint: Path, context: TrainingContext) -> None:
         }
     )
     torch.save(saved, checkpoint)
+    return {
+        **previous_paths,
+        "data": arguments["data"],
+        "distill_model": arguments["distill_model"],
+        "checkpoint": str(checkpoint),
+    }
 
 
 def reconcile_completed_training(directory: Path, report: dict[str, JsonValue]) -> None:
@@ -132,7 +143,7 @@ class UltralyticsAdapter:
             return
         resuming = checkpoint.exists()
         if resuming:
-            relocate_checkpoint(checkpoint, context)
+            report["checkpoint_relocation"] = relocate_checkpoint(checkpoint, context)
         model = cast(TrainingModel, YOLO(str(checkpoint if resuming else context.base_weights)))
 
         def persist(trainer: Trainer) -> None:
@@ -150,6 +161,8 @@ class UltralyticsAdapter:
             if isinstance(timings, list):
                 timings.append(trainer.epoch_time)
             persist(trainer)
+            if context.stop_after_epoch == trainer.epoch + 1:
+                raise InterruptedError(f"smoke stopped after saved epoch {trainer.epoch + 1}")
 
         model.add_callback("on_model_save", persist)
         model.add_callback("on_fit_epoch_end", record_epoch)
@@ -264,11 +277,18 @@ def validate_existing_run(directory: Path, recipe: Recipe, checksum: str) -> Non
         raise ValueError("recipe changed under an existing run; use a new recipe id")
 
 
-def run(recipe_path: Path, seed: int, root: Path, repository: Path) -> int:
+def run(
+    recipe_path: Path, seed: int, root: Path, repository: Path, stop_after_epoch: int | None = None
+) -> int:
     import fcntl
 
     recipe = load_recipe(recipe_path)
     recipe.constraint_for_seed(seed)
+    if stop_after_epoch is not None:
+        if not recipe.identifier.startswith("smoke-") or not 0 < stop_after_epoch < cast(
+            int, recipe.train["epochs"]
+        ):
+            raise ValueError("--stop-after-epoch is restricted to unfinished smoke epochs")
     if not root.resolve().is_relative_to((Path.home() / "columba").resolve()):
         raise ValueError("cluster storage must be inside ~/columba")
     job_id = os.environ.get("SLURM_JOB_ID", "")
@@ -285,7 +305,9 @@ def run(recipe_path: Path, seed: int, root: Path, repository: Path) -> int:
         validate_existing_run(persistent, recipe, checksum)
         if (persistent / "DONE").is_file():
             return 0
-        return execute(recipe, seed, root, repository, persistent, checksum, job_id)
+        return execute(
+            recipe, seed, root, repository, persistent, checksum, job_id, stop_after_epoch
+        )
 
 
 def publish_report(local_run: Path, persistent: Path, report: dict[str, JsonValue]) -> int:
@@ -310,6 +332,7 @@ def execute(
     persistent: Path,
     checksum: str,
     job_id: str,
+    stop_after_epoch: int | None = None,
 ) -> int:
     scratch = Path("/tmp") / f"cz-{job_id}"
     local_run = scratch / "runs" / recipe.identifier / f"seed{seed}"
@@ -367,6 +390,10 @@ def execute(
         if teacher_source:
             teacher = (scratch / "weights/teacher.pt").resolve()
             shutil.copy2(teacher_source, teacher)
+            report["teacher_sha256"] = sha256_file(teacher)
+        report["data_yaml"] = str(dataset / "data.yaml")
+        report["teacher"] = recipe.teacher
+        report["distill_model"] = str(teacher) if teacher else None
         memory_gb = cast(float, report["gpu_memory_gb"])
         batch_size = select_batch(
             memory_gb, recipe.base_model, cast(int, recipe.train["imgsz"]), teacher is not None
@@ -385,6 +412,7 @@ def execute(
             persistent,
             batch_size,
             "0" if recipe.lane == "nv" else "cpu",
+            stop_after_epoch,
         )
         adapter_for(recipe.framework).train(context, report)
         report["evaluation"] = evaluate(context, test_dataset, repository)
@@ -404,6 +432,25 @@ def execute(
                 "attempt_wall_time_s": time.monotonic() - started_s,
             }
         )
+        attempt: dict[str, JsonValue] = {
+            key: report.get(key)
+            for key in (
+                "job_id",
+                "host",
+                "attempt_started_at",
+                "end",
+                "status",
+                "exit_status",
+                "error",
+                "epochs_done",
+                "resumed",
+                "data_yaml",
+                "distill_model",
+                "checkpoint_relocation",
+            )
+        }
+        attempts = report.get("attempts", [])
+        report["attempts"] = [*(attempts if isinstance(attempts, list) else []), attempt]
         try:
             exit_status = publish_report(local_run, persistent, report)
         finally:
@@ -415,9 +462,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--recipe", type=Path, required=True)
     parser.add_argument("--seed", type=int, required=True)
+    parser.add_argument("--stop-after-epoch", type=int)
     arguments = parser.parse_args()
     root = Path(os.environ.get("COLUMBA_ROOT", str(Path.home() / "columba")))
-    raise SystemExit(run(arguments.recipe.resolve(), arguments.seed, root, Path.cwd()))
+    raise SystemExit(
+        run(
+            arguments.recipe.resolve(), arguments.seed, root, Path.cwd(), arguments.stop_after_epoch
+        )
+    )
 
 
 if __name__ == "__main__":
