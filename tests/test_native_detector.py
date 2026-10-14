@@ -13,7 +13,9 @@ from unittest.mock import Mock, patch
 import numpy
 import yaml
 
+from app.config import ModelConfig
 from app.detector import DetectorError
+from app.main import create_detector
 from app.models import FramePacket
 from app.native_detector import MetadataValue, NativeDetector
 from native.verify_native import match_clipped_boxes
@@ -77,14 +79,13 @@ class NativeDetectorTests(unittest.TestCase):
         self.metadata["task"] = "detect"
         self.metadata["names"] = {0: "person"}
         self.write_metadata()
-        with self.assertRaisesRegex(DetectorError, "single-class"):
+        with self.assertRaisesRegex(DetectorError, "pigeon must have class index 0"):
             self.detector()
 
     def test_legacy_package_and_lazy_loading(self) -> None:
         detector = self.detector()
         self.constructor.assert_called_once_with(str(self.model), threads=2)
         self.assertEqual(detector.names, {0: "pigeon"})
-        self.assertEqual(detector._last_class_ids, ())
         with patch(
             "app.native_detector.importlib.import_module", side_effect=ImportError("missing")
         ):
@@ -123,11 +124,59 @@ class NativeDetectorTests(unittest.TestCase):
         self.assertEqual(result[0].left_px, 1)
         self.assertAlmostEqual(result[0].confidence, 0.8)
         self.assertIs(self.native_model.detect.call_args.args[0], self.frame)
-        self.assertEqual(detector._last_class_ids, (0, 0))
+        self.assertEqual([detection.class_id for detection in result], [0, 0])
         self.assertEqual(
             detector.last_stage_ms, {"preprocess": 1.0, "inference": 2.0, "postprocess": 3.0}
         )
         self.native_model.detect.assert_called_once_with(self.frame, 0.5)
+
+    def test_species_names_class_ids_and_pigeon_only_triggers(self) -> None:
+        self.metadata["names"] = {0: "PIGEON", 1: "Spotted_Dove"}
+        self.metadata["columba"] = {
+            "input_hw": [640, 640],
+            "decode": "yolo11",
+            "trigger_classes": ["pigeon"],
+        }
+        self.write_metadata()
+        self.native_model.names = {0: "PIGEON", 1: "Spotted_Dove"}
+        self.native_model.detect.return_value = numpy.asarray(
+            [[1, 2, 3, 4, 0.8, 1], [5, 6, 7, 8, 0.7, 0]], dtype=numpy.float32
+        )
+        detector = self.detector()
+        detections = detector.detect(FramePacket(0, 0.0, self.frame))
+        self.assertEqual([item.label for item in detections], ["spotted_dove", "pigeon"])
+        self.assertEqual([item.class_id for item in detections], [1, 0])
+        self.assertEqual(detector.trigger_classes, ("pigeon",))
+        self.metadata["columba"] = {
+            "input_hw": [640, 640],
+            "decode": "yolo11",
+            "trigger_classes": ["spotted_dove"],
+        }
+        self.write_metadata()
+        with self.assertRaisesRegex(DetectorError, "may only trigger on pigeon"):
+            self.detector()
+
+    def test_runtime_factory_uses_native_wrapper_and_stage_timings(self) -> None:
+        self.metadata["imgsz"] = [384, 640]
+        self.metadata["columba"] = {
+            "input_hw": [384, 640],
+            "decode": "yolo26",
+            "trigger_classes": ["pigeon"],
+        }
+        self.write_metadata()
+        configuration = ModelConfig(
+            path=str(self.model), image_size=(384, 640), backend="native", threads=2
+        )
+        with patch.dict(sys.modules, {"columba_native": self.extension}):
+            detector, triggers = create_detector(configuration)
+        self.assertIsInstance(detector, NativeDetector)
+        self.assertEqual(triggers, ("pigeon",))
+        detector.detect(FramePacket(0, 0.0, self.frame))
+        self.assertEqual(
+            cast(NativeDetector, detector).last_stage_ms,
+            {"preprocess": 1.0, "inference": 2.0, "postprocess": 3.0},
+        )
+        self.constructor.assert_called_once_with(str(self.model), threads=2)
 
     def test_warmup_and_inference_errors(self) -> None:
         detector = self.detector()

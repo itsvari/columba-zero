@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import importlib
 import math
-from pathlib import Path
 from typing import Protocol, TypeAlias, cast
 
 import numpy
 import yaml
 from numpy.typing import NDArray
 
-from .detector import DetectorError, validate_names
+from .detector import DetectorError, ModelInfo, class_names, load_model_info
 from .inference import COLOUR_CHANNEL_COUNT
 from .models import Detection, Frame, FramePacket
 
@@ -33,45 +32,25 @@ class NativeModel(Protocol):
     ) -> tuple[NDArray[numpy.float32], dict[str, float]]: ...
 
 
-def _check_package(model_path: str, image_size: int | tuple[int, int]) -> Path:
-    model = Path(model_path)
-    if not model.exists():
-        raise DetectorError(f"model does not exist: {model}; see deploy/model_manifest.json")
-    if not model.is_dir():
+def _check_package(model_path: str, image_size: int | tuple[int, int]) -> ModelInfo:
+    information = load_model_info(model_path, image_size)
+    if not information.path.is_dir():
         raise DetectorError("native model must be a complete NCNN directory")
-    for name in ("model.ncnn.param", "model.ncnn.bin", "metadata.yaml"):
-        path = model / name
-        if not path.is_file() or path.stat().st_size == 0:
-            raise DetectorError(f"incomplete NCNN export: missing or empty {path}")
+    if information.decode not in ("yolo11", "yolo26"):
+        raise DetectorError(f"invalid NCNN metadata: unsupported decode: {information.decode}")
     try:
-        metadata = cast(MetadataValue, yaml.safe_load((model / "metadata.yaml").read_text("utf-8")))
-        if not isinstance(metadata, dict) or metadata.get("task") != "detect":
-            raise ValueError("metadata must describe a detection model")
-        configured_size = (
-            [image_size, image_size] if isinstance(image_size, int) else list(image_size)
+        metadata = cast(
+            MetadataValue, yaml.safe_load((information.path / "metadata.yaml").read_text("utf-8"))
         )
-        exported_size = metadata.get("imgsz")
-        if exported_size != configured_size:
-            raise ValueError(
-                f"export size {exported_size} differs from {image_size}; "
-                "export a separate model for this size"
-            )
-        names = metadata.get("names", {})
-        validate_names(cast(dict[int, str], names))
-        columba = metadata.get("columba")
-        if "columba" not in metadata:
-            if exported_size != [640, 640]:
-                raise ValueError("legacy NCNN export without columba metadata must be 640x640")
-            return model
-        if not isinstance(columba, dict):
-            raise ValueError("columba must be a mapping")
-        if columba.get("input_hw") != exported_size:
-            raise ValueError("columba.input_hw differs from export imgsz")
-        if columba.get("decode") not in ("yolo11", "yolo26"):
-            raise ValueError(f"unsupported decode: {columba.get('decode')}")
+        if (
+            isinstance(metadata, dict)
+            and "columba" not in metadata
+            and information.input_hw != (640, 640)
+        ):
+            raise ValueError("legacy NCNN export without columba metadata must be 640x640")
     except (OSError, ValueError, yaml.YAMLError) as error:
         raise DetectorError(f"invalid NCNN metadata: {error}") from error
-    return model
+    return information
 
 
 class NativeDetector:
@@ -82,20 +61,22 @@ class NativeDetector:
         confidence: float,
         threads: int = 4,
     ) -> None:
-        path = _check_package(model_path, image_size)
+        self.model_info = _check_package(model_path, image_size)
+        path = self.model_info.path
+        self.trigger_classes = self.model_info.trigger_classes
         if not math.isfinite(confidence) or not 0 <= confidence <= 1:
             raise DetectorError("confidence must be finite and between 0 and 1")
         if threads <= 0:
             raise DetectorError("threads must be positive")
         self.image_size = image_size
         self.confidence = confidence
-        self._last_class_ids: tuple[int, ...] = ()
         self.last_stage_ms: dict[str, float] = {}
         try:
             extension = importlib.import_module("columba_native")
             self._model = cast(NativeModel, extension.Detector(str(path), threads=threads))
-            self.names = self._model.names
-            validate_names(self.names)
+            self.names = class_names(self._model.names)
+            if self.names != self.model_info.names:
+                raise DetectorError("model class names differ from metadata.yaml")
         except DetectorError:
             raise
         except Exception as error:
@@ -119,12 +100,11 @@ class NativeDetector:
                 "postprocess": timings["postprocess"],
             }
             detections: list[Detection] = []
-            class_ids: list[int] = []
             for left_px, top_px, right_px, bottom_px, score, predicted_class in predictions:
                 class_id = int(predicted_class)
                 label = self.names[class_id].lower()
                 confidence = float(score)
-                if label != "pigeon" or confidence < self.confidence:
+                if confidence < self.confidence:
                     continue
                 detections.append(
                     Detection(
@@ -134,10 +114,9 @@ class NativeDetector:
                         float(top_px),
                         float(right_px),
                         float(bottom_px),
+                        class_id=class_id,
                     )
                 )
-                class_ids.append(class_id)
-            self._last_class_ids = tuple(class_ids)
             return detections
         except Exception as error:
             raise DetectorError(f"model inference failed: {error}") from error

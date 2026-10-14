@@ -74,6 +74,42 @@ A WS4 prefix can replace the development NCNN prefix using
 `native/CMakeLists.txt`. Vulkan is disabled. OpenCV may likewise come from an
 existing installation via `OpenCV_DIR`.
 
+## Build against WS4 prefixes
+
+The Mac prefix is
+`/Users/vari/.t3/worktrees/columba-zero/t3-206c9967/native/build/ncnn-mac-a76compat`;
+the arm-lane prefix is `~/columba/scratch/ws4/ncnn-xcng`. Both export the `ncnn`
+CMake target and were built from the same pinned tag with post-A76 options off.
+They are inputs to the build; this extension does not change either prefix.
+
+```sh
+ncnn_prefix=/Users/vari/.t3/worktrees/columba-zero/t3-206c9967/native/build/ncnn-mac-a76compat
+cmake -S native -B native/build/mac-ws4 \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 \
+    -DCMAKE_APPLE_SILICON_PROCESSOR=arm64 \
+    -DPython_EXECUTABLE=/Users/vari/Developer/columba-zero/.venv/bin/python \
+    -Dncnn_DIR="$ncnn_prefix/lib/cmake/ncnn" \
+    -DOpenCV_DIR="$PWD/native/build/opencv-mac-arm64/lib/cmake/opencv5"
+cmake --build native/build/mac-ws4 --parallel 4
+ctest --test-dir native/build/mac-ws4 --output-on-failure
+```
+
+Inside an allocated Linux aarch64 job:
+
+```sh
+ncnn_prefix="$HOME/columba/scratch/ws4/ncnn-xcng"
+cmake -S native -B native/build/linux-ws4 \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DPython_EXECUTABLE="$HOME/columba/scratch/ws8/venv/bin/python" \
+    -Dncnn_DIR="$ncnn_prefix/lib/cmake/ncnn" \
+    -DOpenCV_DIR="$PWD/native/build/opencv-linux-aarch64/lib/cmake/opencv5"
+cmake --build native/build/linux-ws4 --parallel 4
+ctest --test-dir native/build/linux-ws4 --output-on-failure
+```
+
+The recorded overhead measurements use WS8's original development prefixes.
+WS4-prefix builds are additional compatibility checks, with separate logs.
+
 ## Python interfaces
 
 ```python
@@ -112,11 +148,11 @@ detections = detector.detect(packet)
 `image_size` is an integer or `(height, width)` tuple. `names` is a class-index
 mapping. `last_stage_ms` is updated on every successful call with `preprocess`,
 `inference`, `postprocess`; `inference` is the C++ extract time. Validation and
-inference errors are `DetectorError`. The wrapper currently matches main's
-single-pigeon validation and confidence filtering; labels use lower-case
-metadata names. After WS9 merges, add `class_id=class_id` to the `Detection(...)`
-call. `_last_class_ids` already retains the IDs alongside the returned list.
-The factory call specified by WS9 requires no API change.
+inference errors are `DetectorError`. The wrapper uses main's shared package validation, including the restriction
+that only pigeon may trigger. All species detections above the confidence
+threshold are returned with lower-case metadata labels and `class_id` keywords.
+It matches WS9's factory and C9 timing contract after rebasing onto main
+`d57919a`.
 
 ## Metadata and decoding
 
