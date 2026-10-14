@@ -15,7 +15,22 @@ dependencies = [
 [project.optional-dependencies]
 vision = ["opencv-python>=4.6", "ultralytics==8.4.175", "ncnn==1.0.20260526"]
 metrics = ["psutil>=5.9"]
-dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11", "types-PyYAML", "types-psutil"]
+# COCO-style AP for tools/evaluate_predictions.py (WS1).
+eval = ["pycocotools>=2.0.8"]
+# Dataset fetching, perceptual-hash dedupe and archives (WS2).
+data = ["Pillow>=10.0", "imagehash>=4.3", "requests>=2.31", "zstandard>=0.22"]
+# Cluster tooling talks to Slurm through the ssh/rsync binaries; no extra packages (WS3).
+cluster = []
+# Build the columba_native C++ extension (WS8).
+native = ["nanobind>=2.4", "scikit-build-core>=0.10", "cmake>=3.26"]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+  "mypy>=1.11",
+  "types-PyYAML",
+  "types-psutil",
+  "types-requests",
+]
 
 [project.scripts]
 columba-zero = "app.main:cli"
@@ -39,9 +54,13 @@ select = ["E", "F", "I", "B", "UP"]
 python_version = "3.11"
 strict = true
 explicit_package_bases = true
-files = ["app", "tests", "tools"]
+files = ["app", "tests", "tools", "cluster", "training"]
 
 [[tool.mypy.overrides]]
 module = ["ultralytics", "ultralytics.*", "picamera2", "libcamera"]
 follow_imports = "skip"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["ncnn", "pycocotools", "pycocotools.*", "imagehash", "columba_native"]
 ignore_missing_imports = true
