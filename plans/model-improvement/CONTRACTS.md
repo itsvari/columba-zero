@@ -1,9 +1,12 @@
 # Shared contracts
 
-Version: **v1.4**. Changes go through the coordinator and bump the version.
+Version: **v1.5**. Changes go through the coordinator and bump the version.
 
 Changelog:
 
+- v1.5 (2026-10-14, coordinator): C9 records WS9's implemented runtime fields;
+  C8 notes Ultralytics' `_ncnn_model` directory-name requirement and the
+  runtime's pigeon-only trigger restriction.
 - v1.4 (2026-10-14, coordinator): C1 clarifications from WS2: archive hash in a
   sidecar, `data.yaml` paths relative to its folder, extra DATASET.json keys,
   image-level `human` labels, public-domain licences allowed.
@@ -491,6 +494,13 @@ Findings:
 4. `half=`/`int8=` export arguments are deprecated in favour of `quantize`
    (`16`/`8`); the old names still map onto it with a warning.
 
+Runtime notes (v1.5): Ultralytics 8.4.175 only loads NCNN directories whose
+name ends in `_ncnn_model`; the runtime links a `models/<model_id>/` package
+under such a name in a temp directory, and other tools that load C8 packages
+through Ultralytics must do the same. The runtime rejects any package whose
+`trigger_classes` is not a subset of `{pigeon}`, and the Ultralytics backend
+rejects `decode: yolo26` (it would apply NMS); use `model.backend: native`.
+
 `app/detector.py` still accepts the existing v1-2 package, which lacks a
 `columba:` block (treated as `decode: yolo11`, square input).
 
@@ -502,3 +512,20 @@ The existing JSONL fields stay. Additions:
 - New `frame` fields: `stage_ms` (`{"wait":..,"preprocess":..,"inference":..,"postprocess":..,"track":..}`), `camera` (name).
 - New event `trigger`: `{track_id, class, first_seen_captured_at, confirmed_at, frames_seen, k, n}`.
 - New event `camera_switch`: `{from, to, lux, reason}`.
+
+Implemented by WS9 (v1.5), in addition to the above:
+
+- `frame`: `lux`, `delivery_ms` (sensor exposure start → frame delivery,
+  assumes `SensorTimestamp` is CLOCK_BOOTTIME — WS10 verifies), `decided_at`,
+  `decision_ms` (delivery → decision).
+- `trigger`: also `first_seen_frame`, `frame_number`.
+- `camera_switch`: also `active`, `switch_ms`, `error`; `reason` is `dark` or
+  `bright`.
+- `health` and `run_end`: `render_dropped_frames`, `log_dropped_records`
+  (frame records dropped when the bounded log queue is full; `trigger`,
+  `camera_switch`, `health` and run records are never dropped — if they can't
+  be queued the run stops with an error).
+- New events `stimulus` and `reaction_test` (`--reaction-test`), plus
+  `reaction_test.json` in the output directory.
+- If the log sink blocks past the drain deadline, `run_end` goes to stderr
+  instead and the run exits nonzero.
