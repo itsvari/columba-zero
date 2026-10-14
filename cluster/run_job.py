@@ -383,6 +383,8 @@ def execute(
     }
     started_s = time.monotonic()
     requeue_requested = threading.Event()
+    if os.environ.get("COLUMBA_REQUEUE_REQUESTED") == "true":
+        requeue_requested.set()
     signal.signal(signal.SIGUSR1, lambda signal_number, frame: requeue_requested.set())
     signal.signal(signal.SIGTERM, interrupt_job)
     signal.signal(signal.SIGINT, interrupt_job)

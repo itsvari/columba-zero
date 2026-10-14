@@ -10,11 +10,12 @@
 set -euo pipefail
 export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
 export UV_CACHE_DIR="$HOME/columba/cache/uv"
-training_pid=""
+training_process_identifier=""
+readonly signal_exit_status_base=128 requeue_exit_status=75
 requeue_requested=false
 request_checkpoint() {
     requeue_requested=true
-    if [[ -n "$training_pid" ]]; then kill -USR1 "$training_pid" 2>/dev/null || true; fi
+    if [[ -n "$training_process_identifier" ]]; then kill -USR1 "$training_process_identifier" 2>/dev/null || true; fi
 }
 finish_job() {
     exit_status=$?
@@ -36,14 +37,18 @@ run_arguments=(--recipe "$COLUMBA_RECIPE" --seed "$COLUMBA_SEED")
 if [[ -n "${COLUMBA_STOP_AFTER_EPOCH:-}" ]]; then
     run_arguments+=(--stop-after-epoch "$COLUMBA_STOP_AFTER_EPOCH")
 fi
+export COLUMBA_REQUEUE_REQUESTED="$requeue_requested"
 set +e
 "$environment/bin/python" -m cluster.run_job "${run_arguments[@]}" &
-training_pid=$!
-wait "$training_pid"
+training_process_identifier=$!
+wait "$training_process_identifier"
 exit_status=$?
-if kill -0 "$training_pid" 2>/dev/null; then wait "$training_pid"; exit_status=$?; fi
+if [[ "$exit_status" -ge "$signal_exit_status_base" ]]; then
+    wait "$training_process_identifier"
+    exit_status=$?
+fi
 set -e
-if [[ "$exit_status" == 75 ]]; then
+if [[ "$exit_status" == "$requeue_exit_status" ]]; then
     requeue_requested=true
     python -m cluster.requeue signal --run-path "$COLUMBA_RUN_PATH"
     exit 0

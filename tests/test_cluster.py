@@ -4,9 +4,12 @@ import csv
 import io
 import json
 import os
+import shlex
+import signal
 import subprocess
 import tarfile
 import tempfile
+import time
 import unittest
 from collections.abc import Callable, Sequence
 from dataclasses import replace
@@ -1245,6 +1248,60 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(requeue_identifier("702", None, None), "702")
         with self.assertRaises(ValueError):
             requeue_identifier("700", "700", None)
+
+    def test_batch_shell_forwards_usr1_and_preserves_finished_child_exit_status(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            environment = root / "environment"
+            (environment / "bin").mkdir(parents=True)
+            executable = environment / "bin/python"
+            executable.write_text(
+                "#!/usr/bin/env python\nimport os,signal,sys\nfrom pathlib import Path\n"
+                "signal.signal(signal.SIGUSR1, lambda number,frame: sys.exit(75))\n"
+                "Path(os.environ['COLUMBA_TEST_READY']).write_text(str(os.getpid()))\n"
+                "signal.pause()\n"
+            )
+            executable.chmod(0o755)
+            ready = root / "ready"
+            template = (REPOSITORY / "cluster/templates/nv.sbatch").read_text()
+            declarations = template[
+                template.index('training_process_identifier=""') : template.index("finish_job()")
+            ]
+            supervisor = template[
+                template.index("export COLUMBA_REQUEUE_REQUESTED=") : template.index(
+                    '\nif [[ "$exit_status" == "$requeue_exit_status"'
+                )
+            ]
+            script = (
+                "set -euo pipefail\n"
+                + declarations
+                + "trap request_checkpoint USR1\n"
+                + f"environment={shlex.quote(str(environment))}\nrun_arguments=()\n"
+                + f"export COLUMBA_TEST_READY={shlex.quote(str(ready))}\n"
+                + supervisor
+                + "\nprintf '%s' \"$exit_status\"\n"
+            )
+            process = subprocess.Popen(
+                ["bash", "-c", script], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            try:
+                deadline_s = time.monotonic() + 3
+                while not ready.exists() and time.monotonic() < deadline_s:
+                    time.sleep(0.01)
+                self.assertTrue(ready.exists())
+                os.kill(process.pid, signal.SIGUSR1)
+                stdout, stderr = process.communicate(timeout=3)
+                self.assertEqual(process.returncode, 0, stderr)
+                self.assertEqual(stdout, "75")
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate()
+                if ready.exists():
+                    try:
+                        os.kill(int(ready.read_text()), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
 
     def test_force_signal_cannot_target_production(self) -> None:
         with self.assertRaisesRegex(ValueError, "smoke epoch"):

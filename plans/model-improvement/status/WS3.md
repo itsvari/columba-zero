@@ -509,7 +509,9 @@ service was created. Branch remains ws3/cluster; main was fast-forwarded to
   requests to gpu; manifests and SubmitLine preserve the original request.
 - GPU templates request --requeue and --signal=B:USR1@600. A signal finishes
   and persists the current saved epoch, then requeues the specific array task.
-  Startup guards also cover scheduler node-failure restarts. Per-run
+  Startup guards also cover scheduler node-failure restarts. A signal during
+  bootstrap is retained for the trainer, and an interrupted bash wait always
+  retrieves the child exit status even if the child has already finished. Per-run
   requeue.json permits ten lifetime requeues, requires checkpoint progress and
   records HOLD when a loop would occur. Batch/data/teacher relocation on resume
   still works; current memory selection or fixed batch_override is reapplied.
@@ -627,12 +629,12 @@ explicit coordinator arming are the only production prerequisites.
 
 ### Checks and evidence
 
-Final section-0 checks: **262** unittest cases, seven dependency/hardware skips;
-all executed cases pass. All **68** cluster tests pass without skips and no
+Final section-0 checks: **263** unittest cases, seven dependency/hardware skips;
+all executed cases pass. All **69** cluster tests pass without skips and no
 network. Ruff check and format pass on app/tests/tools/cluster/training/native
 (87 Python files); strict mypy passes on 84 source files. git diff --check passes.
 Tests cover manifests/throttles and global/type caps, active/DONE diffing,
-root-sharing task requeue, node-failure and progress/cap guards, draft refusal,
+root-sharing task requeue, real bash USR1 forwarding/child exit handling, node-failure and progress/cap guards, draft refusal,
 HOLD cases, ranking/small gating/ties, generated nano/small/teacher recipes,
 upstream validation, terminal recovery/re-arming and sacct state filtering.
 
