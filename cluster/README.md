@@ -12,7 +12,8 @@ python -m cluster.sweep fetch --recipes training/recipes/baseline-repro.yaml
 python -m cluster.sweep cancel --job-ids 123456
 ```
 
-Pass several recipe files after `--recipes`. `plan` labels each recipe/seed as
+Pass several recipe files after `--recipes`. Use `--seeds 1` to select an
+existing seed without changing the recipe hash. `plan` labels each recipe/seed as
 missing, active or done; `status` adds its persisted status and epoch count.
 `submit` takes a source snapshot into `~/columba/checkouts/<content-hash>/` so
 new submissions cannot overwrite running jobs' code. It never pushes git.
@@ -43,7 +44,9 @@ Failed and evaluation-missing reports get rows. Unsubmitted runs are skipped.
 Bootstrap failures also leave a report through the template EXIT handler. The leaderboard is owned by
 WS1; WS3 does not commit it.
 
-Bootstrap installs uv once in `~/.local/bin`, uses only `~/columba/` for caches
+Bootstrap installs uv in `~/.local/bin` when absent. If that shared NFS binary
+belongs to another architecture, it installs a compatible copy in
+`~/columba/bin/<arch>/uv`. It uses only `~/columba/` for caches
 and environments, and pins PyTorch 2.8.0 / torchvision 0.23.0 from the official
 CUDA 12.6 index for x86_64. CUDA 12.6 covers both permitted architecture
 classes; bootstrap verifies the device's `sm_70` or `sm_75` and runs YOLO

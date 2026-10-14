@@ -20,7 +20,7 @@ from cluster.recipe import resolve_teacher
 
 
 class ExportModel(Protocol):
-    def export(self, **kwargs: JsonValue) -> str: ...
+    def export(self, **arguments: JsonValue) -> str: ...
 
 
 def export_model(

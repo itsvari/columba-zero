@@ -44,7 +44,7 @@ class Trainer(Protocol):
 
 class TrainingModel(Protocol):
     def add_callback(self, event: str, callback: Callable[[Trainer], None]) -> None: ...
-    def train(self, **kwargs: JsonValue) -> None: ...
+    def train(self, **arguments: JsonValue) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -288,6 +288,20 @@ def run(recipe_path: Path, seed: int, root: Path, repository: Path) -> int:
         return execute(recipe, seed, root, repository, persistent, checksum, job_id)
 
 
+def publish_report(local_run: Path, persistent: Path, report: dict[str, JsonValue]) -> int:
+    atomic_json(local_run / "run.json", report)
+    copy_artifacts(local_run, persistent)
+    if report["status"] != "complete":
+        return cast(int, report["exit_status"])
+    try:
+        mark_done(persistent)
+        return 0
+    except RuntimeError as error:
+        report.update({"status": "failed", "exit_status": 1, "error": str(error)})
+        atomic_json(persistent / "run.json", report)
+        return 1
+
+
 def execute(
     recipe: Recipe,
     seed: int,
@@ -390,11 +404,8 @@ def execute(
                 "attempt_wall_time_s": time.monotonic() - started_s,
             }
         )
-        atomic_json(local_run / "run.json", report)
         try:
-            copy_artifacts(local_run, persistent)
-            if report["status"] == "complete":
-                mark_done(persistent)
+            exit_status = publish_report(local_run, persistent, report)
         finally:
             shutil.rmtree(scratch)
     return exit_status

@@ -26,6 +26,7 @@ def record_failure(run_path: Path, metadata: dict[str, JsonValue], exit_status: 
         **previous,
         **metadata,
         "job_id": job_id,
+        "epochs_done": previous.get("epochs_done", metadata.get("epochs_done", 0)),
         "host": platform.node(),
         "status": "failed",
         "exit_status": exit_status,

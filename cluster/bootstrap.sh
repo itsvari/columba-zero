@@ -28,15 +28,18 @@ settings.parent.mkdir(parents=True, exist_ok=True)
 settings.write_text(json.dumps({"sync": False, "datasets_dir": str(scratch / "data"),
     "weights_dir": str(scratch / "weights"), "runs_dir": str(scratch / "runs")}))
 PYTHON
-uv_command="$(command -v uv || true)"
-if [[ -z "$uv_command" && -x "$HOME/.local/bin/uv" ]]; then uv_command="$HOME/.local/bin/uv"; fi
-if [[ -z "$uv_command" ]]; then
-    installer="$project_root/cache/install-uv.sh"
-    curl --fail --location https://astral.sh/uv/install.sh --output "$installer"
-    UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 sh "$installer"
-    uv_command="$HOME/.local/bin/uv"
-fi
 architecture="$(uname -m)"
+uv_command="$project_root/bin/$architecture/uv"
+if [[ ! -x "$uv_command" ]]; then uv_command="$(command -v uv || true)"; fi
+if [[ -z "$uv_command" && -x "$HOME/.local/bin/uv" ]]; then uv_command="$HOME/.local/bin/uv"; fi
+if [[ -z "$uv_command" ]] || ! "$uv_command" --version >/dev/null 2>&1; then
+    installer="$project_root/cache/install-uv-$architecture.sh"
+    curl --fail --location https://astral.sh/uv/install.sh --output "$installer"
+    install_directory="$project_root/bin/$architecture"
+    if [[ ! -e "$HOME/.local/bin/uv" ]]; then install_directory="$HOME/.local/bin"; fi
+    UV_INSTALL_DIR="$install_directory" UV_NO_MODIFY_PATH=1 sh "$installer"
+    uv_command="$install_directory/uv"
+fi
 case "$architecture" in
     x86_64) acceleration=cu126; torch_version=2.8.0; vision_version=0.23.0 ;;
     aarch64) acceleration=cpu; torch_version=2.8.0; vision_version=0.23.0 ;;

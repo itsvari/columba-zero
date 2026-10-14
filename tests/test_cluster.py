@@ -4,6 +4,7 @@ import csv
 import json
 import tempfile
 import unittest
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -14,11 +15,13 @@ from cluster.artifacts import LEADERBOARD_COLUMNS, REQUIRED_ARTIFACTS, mark_done
 from cluster.hardware import select_batch
 from cluster.recipe import load_recipe, resolve_teacher, validate_recipe
 from cluster.run_job import (
+    Trainer,
     TrainingContext,
     UltralyticsAdapter,
     evaluate,
     evaluation_commands,
     execute,
+    publish_report,
     relocate_checkpoint,
 )
 from cluster.slurm import (
@@ -251,6 +254,21 @@ class ClusterTests(unittest.TestCase):
             mark_done(root)
             self.assertTrue((root / "DONE").is_file())
 
+    def test_missing_metrics_cannot_leave_a_successful_report(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            report: dict[str, JsonValue] = {
+                "status": "complete",
+                "evaluation": "complete",
+                "exit_status": 0,
+                "epochs_done": 5,
+            }
+            status = publish_report(root / "local", root / "persistent", report)
+            self.assertEqual(status, 1)
+            saved = json.loads((root / "persistent/run.json").read_text())
+            self.assertEqual(saved["status"], "failed")
+            self.assertFalse((root / "persistent/DONE").exists())
+
     def test_evaluation_selects_on_val_and_reuses_on_separate_test(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -333,6 +351,35 @@ class ClusterTests(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0]["recipe_id"], "incumbent")
             self.assertEqual(rows[1]["status"], "complete")
+
+    def test_final_validation_callback_does_not_add_a_sixth_training_epoch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            context = context_for(Path(directory))
+            callbacks: dict[str, Callable[[Trainer], None]] = {}
+            model = Mock()
+            model.add_callback.side_effect = lambda event, callback: callbacks.update(
+                {event: callback}
+            )
+
+            def train(**arguments: JsonValue) -> None:
+                (context.local_run / "weights").mkdir(parents=True)
+                (context.local_run / "weights/last.pt").touch()
+                (context.local_run / "weights/best.pt").touch()
+                (context.local_run / "results.csv").write_text("epoch,time\n1,1\n2,2\n")
+                trainer = Mock(batch_size=32, epoch_time=1.0)
+                for epoch in (0, 1):
+                    trainer.epoch = epoch
+                    callbacks["on_model_save"](trainer)
+                    callbacks["on_fit_epoch_end"](trainer)
+                trainer.epoch = 2
+                callbacks["on_fit_epoch_end"](trainer)
+
+            model.train.side_effect = train
+            report: dict[str, JsonValue] = {}
+            with patch.dict("sys.modules", {"ultralytics": Mock(YOLO=Mock(return_value=model))}):
+                UltralyticsAdapter().train(context, report)
+            self.assertEqual(report["epochs_done"], 2)
+            self.assertEqual(report["seconds_per_epoch"], [1.0, 1.0])
 
     def test_resume_rewrites_staged_data_teacher_and_output_paths(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

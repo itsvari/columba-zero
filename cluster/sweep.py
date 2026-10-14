@@ -212,6 +212,7 @@ def main() -> None:
         "action", choices=("plan", "submit", "status", "fetch", "cancel", "arm-bundle")
     )
     parser.add_argument("--recipes", nargs="+", type=Path, default=[])
+    parser.add_argument("--seeds", nargs="+", type=int)
     parser.add_argument("--gpu-limit", type=int, default=4)
     parser.add_argument("--cpu-limit", type=int, default=2)
     parser.add_argument("--queue-limit", type=int, default=12)
@@ -226,6 +227,10 @@ def main() -> None:
     arguments = parser.parse_args()
     budget = Budget(arguments.gpu_limit, arguments.cpu_limit, arguments.queue_limit)
     runs = desired_runs(arguments.recipes)
+    if arguments.seeds is not None:
+        if not set(arguments.seeds).issubset({run.seed for run in runs}):
+            parser.error("--seeds must be present in the requested recipes")
+        runs = tuple(run for run in runs if run.seed in arguments.seeds)
     root = remote_root()
     jobs = current_queue()
     state = inspect_runs(root, runs)
