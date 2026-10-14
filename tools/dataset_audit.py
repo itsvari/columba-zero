@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 from pathlib import Path
 
 from app.dataset import load_dataset
@@ -36,6 +38,51 @@ def resolve_image_directory(
     return root / image_directory
 
 
+def c1_audit(dataset: Path, data: dict[str, JsonValue], configuration_path: Path) -> list[str]:
+    """CONTRACTS.md C1 checks for datasets built by tools/build_dataset.py (DATASET.json present):
+    manifest fields and licences, labels against the taxonomy, groups within one split, and for
+    training datasets no exact or near duplicate of a test image."""
+    if __package__ in (None, ""):  # run as `python tools/dataset_audit.py`
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from tools.build_dataset import DatasetError, load_dataset_manifest, validate_dataset
+    from tools.dedupe_images import nearest_distances
+
+    problems: list[str] = []
+    try:
+        for note in validate_dataset(dataset):
+            print(note)
+    except DatasetError as error:
+        problems.append(str(error))
+    records = load_dataset_manifest(dataset)
+    licences: dict[str, int] = {}
+    for record in records:
+        licences[str(record.get("license"))] = licences.get(str(record.get("license")), 0) + 1
+    print("licences: " + ", ".join(f"{name} {count}" for name, count in sorted(licences.items())))
+    test_split = data.get("test")
+    if "train" not in {record["split"] for record in records} or not isinstance(test_split, str):
+        return problems
+    test_images = resolve_image_directory(configuration_path, data.get("path"), test_split)
+    test_dataset = test_images.parent.parent
+    if not (test_dataset / "manifest.jsonl").exists():
+        problems.append(f"test dataset {test_dataset} has no manifest.jsonl")
+        return problems
+    summary = json.loads((dataset / "DATASET.json").read_text(encoding="utf-8"))
+    limit = int(summary["dedupe"]["phash_max_distance"])
+    test_records = load_dataset_manifest(test_dataset)
+    shared = {record["sha256"] for record in records} & {r["sha256"] for r in test_records}
+    if shared:
+        problems.append(f"{len(shared)} images are byte-identical to test images")
+    nearest = nearest_distances(
+        {record["id"]: [record["phash"]] for record in records},
+        {record["id"]: [record["phash"]] for record in test_records},
+    )
+    closest = min(nearest.values(), default=(65, None))
+    print(f"closest train/val image to {test_dataset.name}: phash distance {closest[0]}")
+    if closest[0] <= limit:
+        problems.append(f"train/val image within phash distance {limit} of a test image")
+    return problems
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Audit a deployment dataset before training")
     parser.add_argument("data_yaml")
@@ -47,7 +94,14 @@ def main() -> None:
         raise SystemExit(f"dataset audit failed: {error}") from error
     problems: list[str] = []
     roots: dict[str, set[str]] = {}
-    for split in DATASET_SPLITS:
+    dataset = configuration_path.parent
+    required_splits: tuple[str, ...] = DATASET_SPLITS
+    if (dataset / "DATASET.json").exists():
+        summary = json.loads((dataset / "DATASET.json").read_text(encoding="utf-8"))
+        if set(summary.get("counts", {})) == {"test"}:
+            required_splits = ("test",)  # C1 test datasets hold only a test split
+        problems.extend(c1_audit(dataset, data, configuration_path))
+    for split in required_splits:
         value = data.get(split)
         if not value:
             problems.append(f"missing {split} split")

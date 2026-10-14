@@ -132,8 +132,8 @@ def near_duplicate_pairs(
     candidates: set[tuple[str, str]] = set()
     for shift, mask in band_masks(max_distance):
         buckets: dict[int, list[tuple[str, bool]]] = defaultdict(list)
-        for key, value in values.items():
-            buckets[(value >> shift) & mask].append(key)
+        for key, hash_value in values.items():
+            buckets[(hash_value >> shift) & mask].append(key)
         for members in buckets.values():
             for index, (left, left_mirrored) in enumerate(members):
                 for right, right_mirrored in members[index + 1 :]:
@@ -154,7 +154,9 @@ def group_id(smallest_member: str) -> str:
     return "g-" + hashlib.sha256(smallest_member.encode()).hexdigest()[:12]
 
 
-def assign_groups(items: Sequence[Record], max_distance: int) -> tuple[dict[str, str], list[Record]]:
+def assign_groups(
+    items: Sequence[Record], max_distance: int
+) -> tuple[dict[str, str], list[Record]]:
     """Group records with keys `id`, `sha256`, `phash` and optional `scene_id`.
 
     Returns {id: group} and a list of near-duplicate clusters (groups with more than one image),
@@ -245,7 +247,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("provenance", nargs="+", type=Path, help="raw/<source>/provenance.jsonl")
     parser.add_argument("--max-distance", type=int, default=DEFAULT_MAX_DISTANCE)
-    parser.add_argument("--output", type=Path, help="write {id, source, group, sha256, phash} lines")
+    parser.add_argument("--output", type=Path, help="write id/source/group/hash lines")
     parser.add_argument("--clusters", type=Path, help="write the multi-image clusters as JSON")
     arguments = parser.parse_args()
     items = load_items(arguments.provenance)

@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Render images with their boxes onto numbered contact sheets for review.
 
-    python -m tools.contact_sheet ~/columba-data/columba-test-v2 --output-dir ~/columba-data/contact_sheets/test-v2
+    python -m tools.contact_sheet ~/columba-data/columba-test-v2 \
+        --output-dir ~/columba-data/contact_sheets/test-v2
     python -m tools.contact_sheet ~/columba-data/raw/coco-birds/provenance.jsonl --ids ids.txt \
         --output-dir ~/columba-data/contact_sheets/coco-birds
 
@@ -116,9 +117,9 @@ def render_sheets(
     return outputs
 
 
-def yolo_boxes(label_path: Path, names: Sequence[str], width: int, height: int) -> list[
-    tuple[str, list[float]]
-]:
+def yolo_boxes(
+    label_path: Path, names: Sequence[str], width: int, height: int
+) -> list[tuple[str, list[float]]]:
     boxes: list[tuple[str, list[float]]] = []
     if not label_path.exists():
         return boxes
@@ -130,8 +131,12 @@ def yolo_boxes(label_path: Path, names: Sequence[str], width: int, height: int) 
         boxes.append(
             (
                 names[int(parts[0])],
-                [(cx - bw / 2) * width, (cy - bh / 2) * height, (cx + bw / 2) * width,
-                 (cy + bh / 2) * height],
+                [
+                    (cx - bw / 2) * width,
+                    (cy - bh / 2) * height,
+                    (cx + bw / 2) * width,
+                    (cy + bh / 2) * height,
+                ],
             )
         )
     return boxes
@@ -185,7 +190,8 @@ def main() -> None:
     else:
         entries = provenance_entries(arguments.input)
     if arguments.ids:
-        wanted = [line.split()[0] for line in arguments.ids.read_text().splitlines() if line.strip()]
+        lines = arguments.ids.read_text(encoding="utf-8").splitlines()
+        wanted = [line.split()[0] for line in lines if line.strip()]
         by_id = {entry.caption: entry for entry in entries}
         entries = [by_id[item] for item in wanted if item in by_id]
     if arguments.limit:

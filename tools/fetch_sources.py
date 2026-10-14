@@ -28,7 +28,6 @@ The Roboflow API key is read from `~/.config/columba/roboflow.env`
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import re
@@ -194,7 +193,9 @@ def roboflow_records(source: Record, export_root: Path) -> Iterator[Record]:
             label_path = export_root / split / "labels" / f"{image_path.stem}.txt"
             boxes: list[Record] = []
             dropped: Counter[str] = Counter()
-            lines = label_path.read_text(encoding="utf-8").splitlines() if label_path.exists() else []
+            lines = (
+                label_path.read_text(encoding="utf-8").splitlines() if label_path.exists() else []
+            )
             for line in lines:
                 if not line.strip():
                     continue
@@ -281,7 +282,10 @@ def coco_annotations(session: Any, root: Path, split: str) -> Record:
 def select_coco_images(
     source: Record, annotations: Record
 ) -> tuple[list[tuple[Record, list[Record]]], Counter[str]]:
-    """Apply the source's category rules and licence filter. Returns kept images and licence counts."""
+    """Apply the source's category rules and licence filter.
+
+    Returns the kept images with their boxes, and kept/dropped counts per licence.
+    """
     categories = {category["name"]: category["id"] for category in annotations["categories"]}
     by_id = {category["id"]: category["name"] for category in annotations["categories"]}
     require = {categories[name] for name in source.get("require_any", [])}
@@ -333,7 +337,7 @@ def fetch_coco(source: Record, out_dir: Path, arguments: argparse.Namespace) -> 
             download(session, image["coco_url"], target, f"COCO image {image['id']}")
         if index % 100 == 0:
             print(f"{source['name']}: {index}/{len(kept)} images")
-        boxes = []
+        boxes: list[Record] = []
         for annotation in annotations_for_image:
             if annotation.get("iscrowd"):
                 continue
@@ -465,7 +469,9 @@ def fetch_inaturalist(source: Record, out_dir: Path, arguments: argparse.Namespa
         count = sum(1 for record in records.values() if record["extra"]["taxon"] == taxon["name"])
         if count >= per_taxon:
             continue
-        for observation in inaturalist_observations(session, limiter, taxon, source, 10 * per_taxon):
+        for observation in inaturalist_observations(
+            session, limiter, taxon, source, 10 * per_taxon
+        ):
             if count >= per_taxon:
                 break
             for photo in observation.get("photos", [])[:photos_per_observation]:
@@ -541,9 +547,9 @@ FETCHERS: dict[str, Callable[[Record, Path, argparse.Namespace], list[Record]]] 
 
 def fetch(source_path: Path, arguments: argparse.Namespace) -> Path:
     source = load_source(source_path)
-    out_dir = data_root() / "raw" / source["name"]
+    out_dir = data_root() / "raw" / str(source["name"])
     out_dir.mkdir(parents=True, exist_ok=True)
-    records = FETCHERS[source["kind"]](source, out_dir, arguments)
+    records = FETCHERS[str(source["kind"])](source, out_dir, arguments)
     for record in records:
         if not license_allowed(record["license"], source.get("extra_allowed_licenses", [])):
             raise SystemExit(f"{record['id']}: licence {record['license']!r} is not allowed")
@@ -552,7 +558,11 @@ def fetch(source_path: Path, arguments: argparse.Namespace) -> Path:
     write_jsonl(out_dir / "provenance.jsonl", records)
     write_json(
         out_dir / "source.json",
-        {"definition": source, "images": len(records), "fetched_at": time.strftime("%FT%TZ", time.gmtime())},
+        {
+            "definition": source,
+            "images": len(records),
+            "fetched_at": time.strftime("%FT%TZ", time.gmtime()),
+        },
     )
     print(f"{source['name']}: {len(records)} images in {out_dir}")
     return out_dir
