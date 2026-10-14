@@ -1,0 +1,97 @@
+# Class taxonomy shared by data, training, evaluation and runtime (CONTRACTS.md C2).
+#
+# Species list checked against the Bird Society of Singapore Records Committee
+# checklist (Singapore Bird Checklist, AviList taxonomy, 432 species in the live list):
+#   https://singaporebirds.com/api/species  (data behind https://singaporebirds.com/checklist)
+#   revision notes: https://singaporebirds.com/blog/checklist-revision-for-july-2025
+#   accessed 2026-10-14 (offline-bundle version ea05af6b03e64f8de97a44da, built 2026-10-14T04:30:53Z)
+# Every named species below is listed there as a "very common" resident.
+# iNaturalist taxon ids from https://api.inaturalist.org/v1/taxa?q=<scientific name>,
+# accessed 2026-10-14. iNaturalist place id for Singapore: 6734.
+version: 1
+trigger_classes: [pigeon]          # only these can confirm a trigger
+taxonomies:
+  single:
+    names: [pigeon]                # other birds appear as unlabelled background
+  species:
+    names:                         # index 0 must be pigeon; other_bird stays last
+      - pigeon
+      - spotted_dove
+      - zebra_dove
+      - pink_necked_green_pigeon
+      - javan_myna
+      - house_crow
+      - asian_glossy_starling
+      - eurasian_tree_sparrow
+      - yellow_vented_bulbul
+      - asian_koel
+      - other_bird
+    min_train_instances: 150       # rarer species fold into other_bird
+
+# Per-class details. `sg_status` is the checklist's local status string.
+classes:
+  pigeon:
+    common_name: Rock Dove (feral pigeon)
+    scientific_name: Columba livia
+    inat_taxon_id: 3017
+    sg_status: Very common introduced resident
+    role: trigger
+  spotted_dove:
+    common_name: Spotted Dove
+    scientific_name: Spilopelia chinensis
+    inat_taxon_id: 1455918         # SG birds are subspecies tigrina (1455921), included in the species
+    sg_status: Very common resident
+    role: confuser
+  zebra_dove:
+    common_name: Zebra Dove
+    scientific_name: Geopelia striata
+    inat_taxon_id: 3607
+    sg_status: Very common resident
+    role: confuser
+  pink_necked_green_pigeon:
+    common_name: Pink-necked Green Pigeon
+    scientific_name: Treron vernans
+    inat_taxon_id: 3393
+    sg_status: Very common resident
+    role: confuser
+  javan_myna:
+    common_name: Javan Myna
+    scientific_name: Acridotheres javanicus
+    inat_taxon_id: 145095
+    sg_status: Very common introduced resident
+    role: other
+  house_crow:
+    common_name: House Crow
+    scientific_name: Corvus splendens
+    inat_taxon_id: 8031
+    sg_status: Very common introduced resident
+    role: other
+  asian_glossy_starling:
+    common_name: Asian Glossy Starling
+    scientific_name: Aplonis panayensis
+    inat_taxon_id: 14965
+    sg_status: Very common resident
+    role: other
+  eurasian_tree_sparrow:
+    common_name: Eurasian Tree Sparrow
+    scientific_name: Passer montanus
+    inat_taxon_id: 13851
+    sg_status: Very common resident
+    role: other
+  yellow_vented_bulbul:
+    common_name: Yellow-vented Bulbul
+    scientific_name: Pycnonotus goiavier
+    inat_taxon_id: 14623
+    sg_status: Very common resident
+    role: other
+  asian_koel:
+    common_name: Asian Koel
+    scientific_name: Eudynamys scolopaceus
+    inat_taxon_id: 204510
+    sg_status: Very common resident
+    role: other
+  other_bird:
+    common_name: any other bird
+    scientific_name: Aves
+    inat_taxon_id: 3                # class Aves; sources must exclude the taxa named above
+    role: other
