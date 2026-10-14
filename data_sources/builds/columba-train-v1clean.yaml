@@ -1,0 +1,31 @@
+# The v1 training sources, deduplicated, regrouped and split train/val by group, with every
+# columba-test-v2 near-duplicate and every test capture session removed (WS2 task 6).
+# Used by WS5 round 0 (baseline-repro) to reproduce the v1-2 recipe on honest splits.
+name: columba-train-v1clean
+kind: train
+taxonomy: single
+test_dataset: columba-test-v2
+sources:
+  # v1 kept only images with at least one pigeon box from the Roboflow sets.
+  - {name: roboflow-nea, require_boxes: true}
+  - {name: roboflow-yolo1199, require_boxes: true}
+  # v1 convention: every COCO bird box relabelled `pigeon` (species unknown, most are not
+  # pigeons). Only the licence-allowed val2017 bird images remain (38 of 125).
+  - name: coco-birds
+    class_map: {bird: pigeon}
+    classes_present_map: {bird: other_bird}
+phash_max_distance: 10
+test_exclusion_distance: 12
+val_fraction: 0.15
+seed: 0
+label_conventions: >-
+  v1 convention kept for round 0: all COCO 2017 `bird` boxes are labelled `pigeon`
+  (pigeon_detection_training.ipynb section 4), even though most of those birds are other
+  species; their classes_present also lists `other_bird`. Roboflow NEA Fox boxes are dropped and
+  NEA/yolo1199 images without a pigeon box are left out, as in v1. No negatives.
+notes: >-
+  Groups join exact copies (SHA-256), mirror-aware phash neighbours (distance <= 10), Roboflow
+  copies of one upload, and the capture sessions listed in data_sources/roboflow-yolo1199.yaml.
+  Images are dropped if their group contains a columba-test-v2 image or their phash (or its
+  mirror) is within 12 of any test image. Splits differ from v1 (the v1 split is not
+  reproducible and leaked across splits). COCO images are filtered by per-image licence.

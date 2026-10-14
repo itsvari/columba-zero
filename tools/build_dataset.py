@@ -194,25 +194,32 @@ def exif_orientation(path: Path) -> int:
 def split_groups(
     items: Sequence[Record], val_fraction: float, seed: int, stratify_key: str = "source"
 ) -> dict[str, str]:
-    """Assign whole groups to train or val. Per stratum (the source of the group's first image),
-    groups are shuffled with `seed` and moved to val until it holds `val_fraction` of the images."""
+    """Assign whole groups to train or val.
+
+    Per stratum (the most common `stratify_key` value among a group's images), groups are
+    shuffled with `seed`, then taken largest first; each goes to val while that keeps val
+    closer to `val_fraction` of the stratum's images than leaving it out would.
+    """
     members: dict[str, list[Record]] = defaultdict(list)
     for item in items:
         members[item["group"]].append(item)
     strata: dict[str, list[str]] = defaultdict(list)
     for group, records in sorted(members.items()):
-        first = min(records, key=lambda record: record["id"])
-        strata[str(first[stratify_key])].append(group)
+        values = Counter(str(record[stratify_key]) for record in records)
+        stratum = min(values, key=lambda value: (-values[value], value))
+        strata[stratum].append(group)
     assignment: dict[str, str] = {}
     for stratum, groups in sorted(strata.items()):
         rng = random.Random(f"{seed}:{stratum}")
         rng.shuffle(groups)
-        total = sum(len(members[group]) for group in groups)
+        groups.sort(key=lambda group: -len(members[group]))  # stable: shuffled within a size
+        target = val_fraction * sum(len(members[group]) for group in groups)
         in_val = 0
         for group in groups:
-            if in_val < val_fraction * total:
+            size = len(members[group])
+            if abs(in_val + size - target) < abs(in_val - target):
                 assignment[group] = "val"
-                in_val += len(members[group])
+                in_val += size
             else:
                 assignment[group] = "train"
     return assignment
@@ -433,8 +440,8 @@ def build_train(spec: Record, root: Path) -> Path:
             if item["label_origin"] not in PUBLISHABLE_LABEL_ORIGINS:
                 stats["dropped_unpublishable_labels"] += 1
                 continue
-            present = set(item.get("classes_present") or [])
-            present = {source.get("classes_present_map", {}).get(name, name) for name in present}
+            present_map = source.get("classes_present_map", {})
+            present = {present_map.get(name, name) for name in item.get("classes_present") or []}
             present.update(box["class"] for box in boxes)
             item["_boxes"], item["_present"] = boxes, sorted(present)
             candidates.append(item)
