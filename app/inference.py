@@ -33,6 +33,8 @@ class Prediction(Protocol):
     def names(self) -> dict[int, str]: ...
     @property
     def boxes(self) -> Sequence[PredictionBox] | None: ...
+    @property
+    def speed(self) -> dict[str, float | None]: ...
 
 
 class PredictionModel(Protocol):
@@ -42,7 +44,7 @@ class PredictionModel(Protocol):
         self,
         source: Frame | str,
         *,
-        imgsz: int,
+        imgsz: int | list[int],
         conf: float,
         device: str,
         rect: bool,

@@ -3,15 +3,40 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import TypeAlias, cast
 
 import yaml
 
 from .json_data import JsonValue
 
 MODEL_STRIDE_PX = 32
-CONFIG_SECTIONS = frozenset({"camera", "model", "display", "output"})
+CONFIG_SECTIONS = frozenset(
+    {"camera", "model", "display", "output", "confirmation", "cameras", "camera_switch"}
+)
 OBSOLETE_SECTIONS = frozenset({"tracking", "safety", "geometry", "turret", "actuator", "logging"})
+CAMERA_STREAMS = ("main", "lores")
+CAMERA_ROLES = ("day", "night")
+MODEL_BACKENDS = ("ultralytics", "native")
+CAMERA_FIELDS = frozenset(
+    {
+        "width",
+        "height",
+        "fps",
+        "frame_timeout_s",
+        "stream",
+        "main_size",
+        "lens_position",
+        "max_exposure_us",
+        "tuning_file",
+        "camera_index",
+        "name",
+    }
+)
+CAMERA_ENTRY_FIELDS = frozenset(
+    {"name", "role", "camera_index", "tuning_file", "lens_position", "max_exposure_us"}
+)
+
+ImageSize: TypeAlias = int | tuple[int, int]
 
 
 class ConfigError(ValueError):
@@ -42,6 +67,18 @@ def positive_integer(value: JsonValue, name: str) -> int:
     return value
 
 
+def non_negative_integer(value: JsonValue, name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ConfigError(f"{name} must be a non-negative integer")
+    return value
+
+
+def finite_number(value: JsonValue, name: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+        raise ConfigError(f"{name} must be a finite number")
+    return float(value)
+
+
 def finite_positive_number(value: JsonValue, name: str) -> float:
     if (
         not isinstance(value, (int, float))
@@ -65,19 +102,84 @@ def non_empty_path(value: JsonValue, name: str) -> str:
     return value
 
 
+def choice(value: JsonValue, name: str, options: tuple[str, ...]) -> str:
+    if not isinstance(value, str) or value not in options:
+        raise ConfigError(f"{name} must be one of: {', '.join(options)}")
+    return value
+
+
+def size_pair(value: JsonValue | tuple[int, int], name: str) -> tuple[int, int]:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ConfigError(f"{name} must be a list of two positive integers")
+    first, second = value
+    return positive_integer(first, name), positive_integer(second, name)
+
+
+def image_size(value: JsonValue | ImageSize, name: str = "image_size") -> ImageSize:
+    """An integer means a square input; a pair is [height, width], as in NCNN metadata."""
+    if isinstance(value, (list, tuple)):
+        return size_pair(value, name)
+    return positive_integer(value, name)
+
+
+def input_hw(size: ImageSize) -> tuple[int, int]:
+    return (size, size) if isinstance(size, int) else size
+
+
 @dataclass(frozen=True)
 class CameraConfig:
     width: int = 640
     height: int = 480
     fps: float = 15.0
     frame_timeout_s: float = 2.0
+    stream: str = "main"
+    main_size: tuple[int, int] | None = None
+    lens_position: float | None = None
+    max_exposure_us: int | None = None
+    tuning_file: str | None = None
+    camera_index: int = 0
+    name: str | None = None
+
+    @property
+    def label(self) -> str:
+        return self.name or f"camera{self.camera_index}"
+
+
+@dataclass(frozen=True)
+class CameraEntry:
+    """One camera of a day/night pair; unset values inherit from `camera:`."""
+
+    name: str
+    role: str
+    camera_index: int | None = None
+    tuning_file: str | None = None
+    lens_position: float | None = None
+    max_exposure_us: int | None = None
+
+
+@dataclass(frozen=True)
+class CameraSwitchConfig:
+    night_below_lux: float = 10.0
+    day_above_lux: float = 40.0
+    hold_s: float = 5.0
 
 
 @dataclass(frozen=True)
 class ModelConfig:
     path: str = "models/pigeon_baseline_v1-2/best_ncnn_model"
-    image_size: int = 640
+    image_size: ImageSize = 640
     confidence: float = 0.5
+    backend: str = "ultralytics"
+    threads: int = 4
+
+
+@dataclass(frozen=True)
+class ConfirmationConfig:
+    enabled: bool = False
+    k: int = 2
+    n: int = 3
+    iou: float = 0.3
+    max_age_frames: int = 2
 
 
 @dataclass(frozen=True)
@@ -93,12 +195,86 @@ class OutputConfig:
     health_interval_s: float = 30.0
 
 
+def read_camera(section: dict[str, JsonValue], defaults: CameraConfig) -> CameraConfig:
+    main_size = section.get("main_size")
+    lens_position = section.get("lens_position")
+    max_exposure_us = section.get("max_exposure_us")
+    tuning_file = section.get("tuning_file")
+    name = section.get("name")
+    return CameraConfig(
+        width=positive_integer(section.get("width", defaults.width), "width"),
+        height=positive_integer(section.get("height", defaults.height), "height"),
+        fps=finite_positive_number(section.get("fps", defaults.fps), "fps"),
+        frame_timeout_s=finite_positive_number(
+            section.get("frame_timeout_s", defaults.frame_timeout_s), "frame_timeout_s"
+        ),
+        stream=choice(section.get("stream", defaults.stream), "camera.stream", CAMERA_STREAMS),
+        main_size=None if main_size is None else size_pair(main_size, "camera.main_size"),
+        lens_position=(
+            None if lens_position is None else finite_number(lens_position, "lens_position")
+        ),
+        max_exposure_us=(
+            None
+            if max_exposure_us is None
+            else positive_integer(max_exposure_us, "max_exposure_us")
+        ),
+        tuning_file=None if tuning_file is None else non_empty_path(tuning_file, "tuning_file"),
+        camera_index=non_negative_integer(
+            section.get("camera_index", defaults.camera_index), "camera_index"
+        ),
+        name=None if name is None else non_empty_path(name, "camera.name"),
+    )
+
+
+def read_camera_entries(value: JsonValue) -> tuple[CameraEntry, ...]:
+    if not isinstance(value, list):
+        raise ConfigError("cameras must be a list of camera mappings")
+    entries: list[CameraEntry] = []
+    for index, item in enumerate(value):
+        entry = read_mapping(item, f"cameras[{index}]")
+        unknown_fields = entry.keys() - CAMERA_ENTRY_FIELDS
+        if unknown_fields:
+            raise ConfigError(
+                f"unknown cameras[{index}] settings: {', '.join(sorted(unknown_fields))}"
+            )
+        camera_index = entry.get("camera_index")
+        tuning_file = entry.get("tuning_file")
+        lens_position = entry.get("lens_position")
+        max_exposure_us = entry.get("max_exposure_us")
+        entries.append(
+            CameraEntry(
+                name=non_empty_path(entry.get("name"), f"cameras[{index}].name"),
+                role=choice(entry.get("role"), f"cameras[{index}].role", CAMERA_ROLES),
+                camera_index=(
+                    None
+                    if camera_index is None
+                    else non_negative_integer(camera_index, "camera_index")
+                ),
+                tuning_file=(
+                    None if tuning_file is None else non_empty_path(tuning_file, "tuning_file")
+                ),
+                lens_position=(
+                    None if lens_position is None else finite_number(lens_position, "lens_position")
+                ),
+                max_exposure_us=(
+                    None
+                    if max_exposure_us is None
+                    else positive_integer(max_exposure_us, "max_exposure_us")
+                ),
+            )
+        )
+    return tuple(entries)
+
+
 @dataclass(frozen=True)
 class AppConfig:
     camera: CameraConfig = CameraConfig()
     model: ModelConfig = ModelConfig()
     display: DisplayConfig = DisplayConfig()
     output: OutputConfig = OutputConfig()
+    confirmation: ConfirmationConfig = ConfirmationConfig()
+    cameras: tuple[CameraEntry, ...] = ()
+    camera_switch: CameraSwitchConfig = CameraSwitchConfig()
 
     @classmethod
     def load(cls, path: str | Path) -> AppConfig:
@@ -120,36 +296,41 @@ class AppConfig:
             raise ConfigError(
                 f"unknown configuration sections: {', '.join(sorted(unknown_sections))}"
             )
-        camera = read_section(
-            raw, "camera", frozenset({"width", "height", "fps", "frame_timeout_s"})
+        camera = read_section(raw, "camera", CAMERA_FIELDS)
+        model = read_section(
+            raw,
+            "model",
+            frozenset({"path", "image_size", "confidence", "backend", "threads"}),
         )
-        model = read_section(raw, "model", frozenset({"path", "image_size", "confidence"}))
         display = read_section(raw, "display", frozenset({"enabled"}))
         output = read_section(
             raw,
             "output",
             frozenset({"directory", "record", "recording_fps", "health_interval_s"}),
         )
+        confirmation = read_section(
+            raw, "confirmation", frozenset({"enabled", "k", "n", "iou", "max_age_frames"})
+        )
+        camera_switch = read_section(
+            raw, "camera_switch", frozenset({"night_below_lux", "day_above_lux", "hold_s"})
+        )
+        if "camera_switch" in raw and raw.get("cameras") is None:
+            raise ConfigError("camera_switch requires a cameras list")
         defaults = cls()
         configuration = cls(
-            camera=CameraConfig(
-                width=positive_integer(camera.get("width", defaults.camera.width), "width"),
-                height=positive_integer(camera.get("height", defaults.camera.height), "height"),
-                fps=finite_positive_number(camera.get("fps", defaults.camera.fps), "fps"),
-                frame_timeout_s=finite_positive_number(
-                    camera.get("frame_timeout_s", defaults.camera.frame_timeout_s),
-                    "frame_timeout_s",
-                ),
-            ),
+            camera=read_camera(camera, defaults.camera),
             model=ModelConfig(
                 path=non_empty_path(model.get("path", defaults.model.path), "model.path"),
-                image_size=positive_integer(
-                    model.get("image_size", defaults.model.image_size),
-                    "image_size",
-                ),
+                image_size=image_size(model.get("image_size", defaults.model.image_size)),
                 confidence=finite_positive_number(
                     model.get("confidence", defaults.model.confidence),
                     "confidence",
+                ),
+                backend=choice(
+                    model.get("backend", defaults.model.backend), "model.backend", MODEL_BACKENDS
+                ),
+                threads=positive_integer(
+                    model.get("threads", defaults.model.threads), "model.threads"
                 ),
             ),
             display=DisplayConfig(
@@ -169,19 +350,72 @@ class AppConfig:
                     "health_interval_s",
                 ),
             ),
+            confirmation=ConfirmationConfig(
+                enabled=boolean(
+                    confirmation.get("enabled", defaults.confirmation.enabled),
+                    "confirmation.enabled",
+                ),
+                k=positive_integer(confirmation.get("k", defaults.confirmation.k), "k"),
+                n=positive_integer(confirmation.get("n", defaults.confirmation.n), "n"),
+                iou=finite_positive_number(
+                    confirmation.get("iou", defaults.confirmation.iou), "confirmation.iou"
+                ),
+                max_age_frames=non_negative_integer(
+                    confirmation.get("max_age_frames", defaults.confirmation.max_age_frames),
+                    "max_age_frames",
+                ),
+            ),
+            cameras=(() if raw.get("cameras") is None else read_camera_entries(raw.get("cameras"))),
+            camera_switch=CameraSwitchConfig(
+                night_below_lux=finite_number(
+                    camera_switch.get("night_below_lux", defaults.camera_switch.night_below_lux),
+                    "night_below_lux",
+                ),
+                day_above_lux=finite_number(
+                    camera_switch.get("day_above_lux", defaults.camera_switch.day_above_lux),
+                    "day_above_lux",
+                ),
+                hold_s=finite_number(
+                    camera_switch.get("hold_s", defaults.camera_switch.hold_s), "hold_s"
+                ),
+            ),
         )
         configuration.validate()
         return configuration
+
+    def camera_for(self, entry: CameraEntry) -> CameraConfig:
+        camera = self.camera
+        return CameraConfig(
+            width=camera.width,
+            height=camera.height,
+            fps=camera.fps,
+            frame_timeout_s=camera.frame_timeout_s,
+            stream=camera.stream,
+            main_size=camera.main_size,
+            lens_position=(
+                entry.lens_position if entry.lens_position is not None else camera.lens_position
+            ),
+            max_exposure_us=(
+                entry.max_exposure_us
+                if entry.max_exposure_us is not None
+                else camera.max_exposure_us
+            ),
+            tuning_file=entry.tuning_file if entry.tuning_file is not None else camera.tuning_file,
+            camera_index=(
+                entry.camera_index if entry.camera_index is not None else camera.camera_index
+            ),
+            name=entry.name,
+        )
 
     def validate(self) -> None:
         for name, value in (
             ("width", self.camera.width),
             ("height", self.camera.height),
-            ("image_size", self.model.image_size),
         ):
             positive_integer(value, name)
-        if self.model.image_size % MODEL_STRIDE_PX:
-            raise ConfigError(f"image_size must be a multiple of {MODEL_STRIDE_PX}")
+        for side in input_hw(image_size(self.model.image_size)):
+            if side % MODEL_STRIDE_PX:
+                raise ConfigError(f"image_size must be a multiple of {MODEL_STRIDE_PX}")
         for name, measurement in (
             ("fps", self.camera.fps),
             ("frame_timeout_s", self.camera.frame_timeout_s),
@@ -192,7 +426,38 @@ class AppConfig:
         finite_positive_number(self.model.confidence, "confidence")
         if self.model.confidence > 1:
             raise ConfigError("confidence must be in (0, 1]")
+        choice(self.model.backend, "model.backend", MODEL_BACKENDS)
+        positive_integer(self.model.threads, "model.threads")
+        choice(self.camera.stream, "camera.stream", CAMERA_STREAMS)
+        if self.camera.main_size is not None:
+            main_width, main_height = size_pair(self.camera.main_size, "camera.main_size")
+            if main_width < self.camera.width or main_height < self.camera.height:
+                raise ConfigError("camera.main_size must not be smaller than width x height")
+        if self.camera.lens_position is not None and self.camera.lens_position < 0:
+            raise ConfigError("lens_position must be non-negative (dioptres; 0 is infinity)")
         boolean(self.display.enabled, "display.enabled")
         boolean(self.output.record, "output.record")
         non_empty_path(self.model.path, "model.path")
         non_empty_path(self.output.directory, "output.directory")
+        confirmation = self.confirmation
+        boolean(confirmation.enabled, "confirmation.enabled")
+        if not 1 <= confirmation.k <= confirmation.n:
+            raise ConfigError("confirmation needs 1 <= k <= n")
+        if not 0 < confirmation.iou <= 1:
+            raise ConfigError("confirmation.iou must be in (0, 1]")
+        non_negative_integer(confirmation.max_age_frames, "max_age_frames")
+        if self.cameras:
+            roles = sorted(entry.role for entry in self.cameras)
+            if roles != sorted(CAMERA_ROLES):
+                raise ConfigError("cameras must list exactly one day and one night camera")
+            if len({entry.name for entry in self.cameras}) != len(self.cameras):
+                raise ConfigError("camera names must be unique")
+            for entry in self.cameras:
+                if entry.lens_position is not None and entry.lens_position < 0:
+                    raise ConfigError("lens_position must be non-negative")
+            switch = self.camera_switch
+            finite_number(switch.hold_s, "hold_s")
+            if switch.hold_s < 0:
+                raise ConfigError("camera_switch.hold_s must be non-negative")
+            if not switch.night_below_lux < switch.day_above_lux:
+                raise ConfigError("camera_switch needs night_below_lux < day_above_lux")

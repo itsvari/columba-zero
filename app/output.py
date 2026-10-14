@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 MILLIUNITS_PER_UNIT = 1000
 RUN_SUFFIX_LENGTH = 8
 BOX_COLOUR_BGR = (0, 255, 0)
+OTHER_CLASS_COLOUR_BGR = (0, 165, 255)
 TEXT_COLOUR_BGR = (0, 255, 255)
 TEXT_OUTLINE_COLOUR_BGR = (0, 0, 0)
 BOX_THICKNESS_PX = 2
@@ -69,6 +70,7 @@ def annotate_frame(
 
     image = frame.copy()
     for detection in detections:
+        colour = BOX_COLOUR_BGR if detection.label == "pigeon" else OTHER_CLASS_COLOUR_BGR
         left_px, top_px, right_px, bottom_px = (
             round(coordinate)
             for coordinate in (
@@ -82,10 +84,12 @@ def annotate_frame(
             image,
             (left_px, top_px),
             (right_px, bottom_px),
-            BOX_COLOUR_BGR,
+            colour,
             BOX_THICKNESS_PX,
         )
-        label = f"pigeon {detection.confidence:.2f}"
+        label = f"{detection.label} {detection.confidence:.2f}"
+        if detection.track_id is not None:
+            label = f"#{detection.track_id} {label}"
         position_px = (
             max(0, left_px),
             min(
@@ -108,10 +112,11 @@ def annotate_frame(
             position_px,
             cv2.FONT_HERSHEY_SIMPLEX,
             TEXT_SCALE,
-            BOX_COLOUR_BGR,
+            colour,
             TEXT_THICKNESS_PX,
         )
-    text = f"Pigeons: {len(detections)} | Processing: {processing_fps:.1f} FPS"
+    pigeon_count = sum(detection.label == "pigeon" for detection in detections)
+    text = f"Pigeons: {pigeon_count} | Processing: {processing_fps:.1f} FPS"
     cv2.putText(
         image,
         text,

@@ -7,7 +7,8 @@ import unittest
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
-from types import FrameType
+from types import FrameType, ModuleType
+from typing import cast
 from unittest.mock import Mock, patch
 
 import numpy as numpy
@@ -20,10 +21,16 @@ from app.capture import (
     Picamera2Capture,
     VideoFileCapture,
 )
-from app.config import AppConfig, ConfigError, DisplayConfig, OutputConfig
-from app.detector import DetectorError, UltralyticsDetector, check_model, validate_names
+from app.config import AppConfig, ConfigError, DisplayConfig, ModelConfig, OutputConfig
+from app.detector import (
+    DetectorError,
+    UltralyticsDetector,
+    check_model,
+    load_model_info,
+    validate_names,
+)
 from app.json_data import JsonValue
-from app.main import build_parser, run
+from app.main import build_parser, create_detector, run
 from app.models import Detection, Frame, FramePacket
 from app.output import RunOutput
 
@@ -34,6 +41,25 @@ THREAD_TEST_TIMEOUT_S = 2.0
 
 def create_test_frame() -> Frame:
     return numpy.zeros((TEST_FRAME_SIZE_PX, TEST_FRAME_SIZE_PX, COLOUR_CHANNEL_COUNT), numpy.uint8)
+
+
+def write_package(
+    path: Path,
+    names: dict[int, str] | None = None,
+    image_size: list[int] | None = None,
+    columba: dict[str, JsonValue] | None = None,
+) -> Path:
+    for name in ("model.ncnn.bin", "model.ncnn.param"):
+        (path / name).write_bytes(b"test")
+    metadata: dict[str, JsonValue] = {
+        "task": "detect",
+        "names": cast(JsonValue, names or {0: "pigeon"}),
+        "imgsz": cast(JsonValue, image_size or [640, 640]),
+    }
+    if columba is not None:
+        metadata["columba"] = columba
+    (path / "metadata.yaml").write_text(yaml.safe_dump(metadata))
+    return path
 
 
 class ConfigTests(unittest.TestCase):
@@ -54,12 +80,31 @@ class ConfigTests(unittest.TestCase):
                 {"model": {"confidence": float("nan")}},
                 {"camera": {"fps": 0}},
                 {"model": {"image_size": 641}},
+                {"model": {"image_size": [384, 650]}},
+                {"model": {"image_size": [384]}},
+                {"model": {"backend": "tensorrt"}},
+                {"model": {"threads": 0}},
+                {"tracking": {"enabled": True}},
                 [],
             )
             for value in invalid_configurations:
                 path.write_text(yaml.safe_dump(value))
                 with self.subTest(value=value), self.assertRaises(ConfigError):
                     AppConfig.load(path)
+
+    def test_rectangular_input_and_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.yaml"
+            path.write_text(
+                yaml.safe_dump(
+                    {"model": {"image_size": [384, 640], "backend": "native", "threads": 2}}
+                )
+            )
+            config = AppConfig.load(path)
+        self.assertEqual(config.model.image_size, (384, 640))
+        self.assertEqual((config.model.backend, config.model.threads), ("native", 2))
+        defaults = AppConfig.load("app/config.yaml").model
+        self.assertEqual((defaults.backend, defaults.threads), ("ultralytics", 4))
 
     def test_old_cli_rejected(self) -> None:
         with self.assertRaises(SystemExit):
@@ -85,11 +130,124 @@ class DetectorTests(unittest.TestCase):
             with self.assertRaisesRegex(DetectorError, "export size"):
                 check_model(str(path), 416)
 
+    def test_rectangular_export_size(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_package(Path(directory), image_size=[384, 640])
+            self.assertEqual(check_model(str(path), (384, 640)), path)
+            for size in (640, (640, 384)):
+                with self.subTest(size=size), self.assertRaisesRegex(DetectorError, "export size"):
+                    check_model(str(path), size)
+
     def test_class_mapping(self) -> None:
         validate_names({0: "pigeon"})
-        for names in ({0: "bird"}, {0: "pigeon", 1: "person"}, {1: "pigeon"}, None):
+        validate_names({0: "pigeon", 1: "spotted_dove", 2: "other_bird"})
+        validate_names(["pigeon", "zebra_dove"])
+        for names in (
+            {0: "bird"},
+            {0: "person", 1: "pigeon"},
+            {1: "pigeon"},
+            {0: "pigeon", 2: "other_bird"},
+            {0: "pigeon", 1: "pigeon"},
+            None,
+        ):
             with self.subTest(names=names), self.assertRaises(DetectorError):
                 validate_names(names)
+
+    def test_package_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            legacy = load_model_info(str(write_package(path)), 640)
+            self.assertEqual(
+                (legacy.names, legacy.trigger_classes, legacy.decode),
+                ({0: "pigeon"}, ("pigeon",), "yolo11"),
+            )
+            species = {0: "pigeon", 1: "spotted_dove", 2: "other_bird"}
+            write_package(
+                path,
+                species,
+                [384, 640],
+                {"decode": "yolo26", "input_hw": [384, 640], "trigger_classes": ["pigeon"]},
+            )
+            info = load_model_info(str(path), (384, 640))
+            self.assertEqual(
+                (info.names, info.decode, info.input_hw), (species, "yolo26", (384, 640))
+            )
+            invalid_metadata: tuple[tuple[dict[str, JsonValue], str], ...] = (
+                ({"decode": "magic"}, "decode"),
+                ({"trigger_classes": ["hawk"]}, "trigger classes"),
+                ({"trigger_classes": []}, "trigger_classes"),
+                ({"input_hw": [352, 608]}, "input_hw"),
+            )
+            for columba, message in invalid_metadata:
+                write_package(path, species, [384, 640], columba)
+                with self.subTest(columba=columba), self.assertRaisesRegex(DetectorError, message):
+                    load_model_info(str(path), (384, 640))
+
+    def test_multiclass_detections_and_stage_timings(self) -> None:
+        detector = UltralyticsDetector.__new__(UltralyticsDetector)
+        detector.image_size, detector.confidence = (384, 640), 0.5
+        prediction_model = Mock()
+        detector._model = prediction_model
+
+        def prediction_box(class_id: int, confidence: float) -> Mock:
+            box = Mock()
+            box.cls = Mock(item=lambda: class_id)
+            box.conf = Mock(item=lambda: confidence)
+            box.xyxy = [Mock(tolist=lambda: [1, 2, 3, 4])]
+            return box
+
+        prediction_model.predict.return_value = [
+            Mock(
+                names={0: "Pigeon", 1: "spotted_dove"},
+                boxes=[prediction_box(1, 0.9), prediction_box(0, 0.7), prediction_box(1, 0.2)],
+                speed={"preprocess": 1.5, "inference": 20.0, "postprocess": 0.5},
+            )
+        ]
+        result = detector.detect(FramePacket(0, 0, create_test_frame()))
+        self.assertEqual(
+            [(item.label, item.class_id) for item in result], [("spotted_dove", 1), ("pigeon", 0)]
+        )
+        self.assertEqual(prediction_model.predict.call_args.kwargs["imgsz"], [384, 640])
+        self.assertEqual(
+            detector.last_stage_ms, {"preprocess": 1.5, "inference": 20.0, "postprocess": 0.5}
+        )
+        self.assertEqual(
+            Detection("pigeon", 0.8, 1, 2, 3, 4, class_id=0, track_id=7).as_dict(),
+            {
+                "label": "pigeon",
+                "confidence": 0.8,
+                "bbox": [1, 2, 3, 4],
+                "class_id": 0,
+                "track_id": 7,
+            },
+        )
+
+    def test_backend_factory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_package(
+                Path(directory),
+                {0: "pigeon", 1: "zebra_dove"},
+                [384, 640],
+                {"decode": "yolo11", "trigger_classes": ["pigeon"]},
+            )
+            model = ModelConfig(path=str(path), image_size=(384, 640), backend="native", threads=2)
+            native_module = ModuleType("app.native_detector")
+            native_class = Mock()
+            vars(native_module)["NativeDetector"] = native_class
+            with patch.dict("sys.modules", {"app.native_detector": native_module}):
+                detector, trigger_classes = create_detector(model)
+            native_class.assert_called_once_with(str(path), (384, 640), 0.5, threads=2)
+            self.assertIs(detector, native_class.return_value)
+            self.assertEqual(trigger_classes, ("pigeon",))
+            with (
+                patch.dict("sys.modules", {"app.native_detector": None}),
+                self.assertRaisesRegex(DetectorError, "native is unavailable"),
+            ):
+                create_detector(model)
+            with patch("app.main.UltralyticsDetector") as ultralytics:
+                ultralytics.return_value.trigger_classes = ("pigeon",)
+                create_detector(replace(model, backend="ultralytics"))
+            ultralytics.assert_called_once_with(str(path), (384, 640), 0.5)
 
     def test_filter_and_warmup(self) -> None:
         detector = UltralyticsDetector.__new__(UltralyticsDetector)

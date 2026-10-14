@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import signal
 import sys
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from types import FrameType
-from typing import cast
+from typing import Protocol, cast
 
 from .capture import EndOfStream, LatestFrameStream, Picamera2Capture, VideoFileCapture
-from .config import AppConfig, ConfigError
-from .detector import UltralyticsDetector
+from .config import AppConfig, ConfigError, ImageSize, ModelConfig
+from .detector import DetectorError, FrameDetector, UltralyticsDetector, load_model_info
 from .json_data import JsonValue
 from .output import RunOutput, health_snapshot
 
@@ -44,6 +45,34 @@ def load_configuration(options: CommandOptions) -> AppConfig:
     if options.max_frames < 0:
         raise ConfigError("--max-frames must be non-negative")
     return configuration
+
+
+class NativeDetectorFactory(Protocol):
+    def __call__(
+        self, model_path: str, image_size: ImageSize, confidence: float, threads: int = 4
+    ) -> FrameDetector: ...
+
+
+def create_detector(model: ModelConfig) -> tuple[FrameDetector, tuple[str, ...]]:
+    """Build the configured backend; return it with the model's trigger classes."""
+    if model.backend == "native":
+        model_info = load_model_info(model.path, model.image_size)
+        try:
+            # WS8 owns app/native_detector.py; import by name so this module type-checks
+            # before it exists.
+            module = importlib.import_module(".native_detector", __package__)
+            native_detector = cast(NativeDetectorFactory, module.NativeDetector)
+        except (ImportError, AttributeError) as error:
+            raise DetectorError(
+                f"model.backend native is unavailable: {error}; build columba_native "
+                "(native/) or use model.backend: ultralytics"
+            ) from error
+        native = native_detector(
+            model.path, model.image_size, model.confidence, threads=model.threads
+        )
+        return native, model_info.trigger_classes
+    detector = UltralyticsDetector(model.path, model.image_size, model.confidence)
+    return detector, detector.trigger_classes
 
 
 def finalize_output(
@@ -123,9 +152,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
     try:
         for signal_number in (signal.SIGINT, signal.SIGTERM):
             handlers[signal_number] = signal.signal(signal_number, request_stop)
-        detector = UltralyticsDetector(
-            config.model.path, config.model.image_size, config.model.confidence
-        )
+        detector, _trigger_classes = create_detector(config.model)
         detector.warmup(config.camera.width, config.camera.height)
         if stopping:
             return 0
@@ -166,7 +193,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
                 frame_number=packet.sequence,
                 captured_at=packet.captured_at,
                 inference_s=inference_s,
-                pigeon_count=len(detections),
+                pigeon_count=sum(detection.label == "pigeon" for detection in detections),
                 detections=[detection.as_dict() for detection in detections],
                 dropped_frames=dropped_frames,
                 processing_fps=processing_fps,
