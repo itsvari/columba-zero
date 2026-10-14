@@ -36,7 +36,6 @@ ALLOWED_GRES_TYPES = frozenset({"nv", "a100-40", "a100-80", "h100-47", "h100-96"
 GPU_PARTITIONS = ("gpu-long", "gpu")
 PARTITION_TIME_LIMIT_MINUTES = {"gpu-long": 72 * 60, "gpu": 3 * 60}
 PARTITION_TIME_LIMITS = {"gpu-long": "3-00:00:00", "gpu": "03:00:00"}
-ANY_GPU_FEATURES = "t4|titanrtx|titanv|a100|h100|h200"
 GPU_NODE_PATTERN = re.compile(r"xgp[d-k][0-9]+\Z")
 
 
@@ -161,6 +160,8 @@ def request_for(
     excluded_nodes: Sequence[str] = (),
 ) -> GpuRequest:
     checked_choice = selector(choice)
+    if checked_choice is None and required_node is None:
+        raise ValueError("automatic GPU selection requires the configured capacity policy")
     resource_type, feature = resource_selection(checked_choice)
     if required_node and not GPU_NODE_PATTERN.fullmatch(required_node):
         raise ValueError("pinned GPU node must be an approved cluster GPU node")
@@ -183,6 +184,24 @@ def request_for(
         partitions = partitions[:1]
     # Slurm rejects a 72-hour request spanning the 3-hour gpu partition.
     time_limit = PARTITION_TIME_LIMITS["gpu" if "gpu" in partitions else "gpu-long"]
+    if checked_choice in {"a100", "h100"}:
+        family_offers = [offer for offer in matched if offer.partition in partitions]
+        resource_type = max(family_offers, key=lambda offer: offer.free_units).resource_type
+        feature = None
+    if checked_choice is None and required_node is not None:
+        resource_type = matched[0].resource_type
+        feature = (
+            next(
+                (
+                    candidate
+                    for candidate in ("t4", "titanrtx", "titanv")
+                    if candidate in matched[0].features
+                ),
+                None,
+            )
+            if resource_type == "nv"
+            else None
+        )
     resources = f"gpu:{resource_type}:1" if resource_type else "gpu:1"
-    constraint = feature if checked_choice is not None else ANY_GPU_FEATURES
+    constraint = feature
     return GpuRequest(partitions, resources, constraint, time_limit)

@@ -32,7 +32,9 @@ from cluster.slurm import (
 
 SSH_HOST = "columba-cluster"
 REPOSITORY = Path(__file__).resolve().parents[1]
-SMOKE_TIME_LIMIT_MINUTES = 20
+SMOKE_TIME_LIMIT_MINUTES = 10
+SMOKE_CPU_COUNT = 4
+SMOKE_MEMORY_LIMIT_GB = 16
 PROBE_TIME_LIMIT_MINUTES = 10
 EXCLUDED_NODES_FILE = REPOSITORY / "cluster/excluded_nodes.txt"
 
@@ -44,12 +46,23 @@ def excluded_nodes(extra: Sequence[str] = (), path: Path = EXCLUDED_NODES_FILE) 
 
 
 def remote(command: Sequence[str], input_bytes: bytes | None = None) -> str:
-    completed = subprocess.run(
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", SSH_HOST, shlex.join(command)],
-        input=input_bytes,
-        check=True,
-        capture_output=True,
-    )
+    try:
+        completed = subprocess.run(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=20",
+                SSH_HOST,
+                shlex.join(command),
+            ],
+            input=input_bytes,
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(error.stderr.decode().strip()) from error
     return completed.stdout.decode()
 
 
@@ -234,6 +247,9 @@ def submission_for(
     }
     if run.recipe.identifier.startswith("smoke-"):
         submission["time_limit_minutes"] = SMOKE_TIME_LIMIT_MINUTES
+        if run.recipe.lane == "nv":
+            submission["cpu_count"] = SMOKE_CPU_COUNT
+            submission["memory_limit_gb"] = SMOKE_MEMORY_LIMIT_GB
     if required_node:
         submission["required_node"] = required_node
     return submission

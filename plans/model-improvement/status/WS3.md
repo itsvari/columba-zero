@@ -395,3 +395,22 @@ the project pending-GPU budget; it never ran. Confirmed its cz- name and
 immediately cancelled 946836 (same run, epoch 0, no last.pt). The correction
 selects one free node and explicitly sends --nodes=1. A regression test checks
 multiple free nodes still produce one GPU/node. The live check will be repeated.
+
+Unmodified Slurm test-only probes verified that untyped gpu:1 requests pinned
+to xgpj0 or constrained to a100/h100 are rejected (Requested node configuration
+is not available); typed xgpj0 requests succeed. The earlier untyped NV test
+only proved nv matching. Family selectors now resolve to a concrete family
+variant, and pinned probes infer the node's typed GRES. Null must use policy;
+no submit path emits untyped GPU requests.
+
+Checkpoint audit job 946861 on xcng0 loaded all three cancelled WS5 last.pt
+files on CPU: saved epochs exactly 10, 4 and 32, batches 4, 6 and 16, all with
+optimiser state present. It also cleaned the prewarm job's /tmp/cz-946760.
+Evidence: ~/columba/logs/checkpoint-audit-round3.json.
+
+The corrected live pending re-target cancelled own 946856
+(smoke-policy-retarget-r3/seed0, epoch 0, no last.pt) and submitted 946858
+as one nv GPU on one node. It completed C6/DONE and was fetched. Own xgpj0
+probe 946872 is pending with typed gpu:a100-80:1; the ARM smoke 946781 remains
+pending. All remaining job allocations now count correctly under the eight-
+GPU budget, including these pending jobs.

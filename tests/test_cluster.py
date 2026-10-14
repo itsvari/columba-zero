@@ -49,6 +49,7 @@ from cluster.slurm import (
     Job,
     Submission,
     cancel_jobs,
+    gpu_resource_arguments,
     job_name,
     parse_queue,
     submit_pending,
@@ -180,8 +181,8 @@ class ClusterTests(unittest.TestCase):
             "h100-47": ("gpu:h100-47:1", None),
             "h100-96": ("gpu:h100-96:1", None),
             "h200": ("gpu:h200-141:1", None),
-            "a100": ("gpu:1", "a100"),
-            "h100": ("gpu:1", "h100"),
+            "a100": ("gpu:a100-40:1", None),
+            "h100": ("gpu:h100-47:1", None),
         }
         for choice, (resources, feature) in expected.items():
             with self.subTest(choice=choice):
@@ -197,17 +198,15 @@ class ClusterTests(unittest.TestCase):
         self.assertTrue(any(offer.node == "xgpf10" for offer in offers))
         self.assertTrue(any(offer.node == "xgpj0" for offer in offers))
 
-    def test_untyped_any_gpu_includes_arm_and_short_only_h200(self) -> None:
+    def test_automatic_selection_requires_policy_and_pins_arm_gres(self) -> None:
         offers = parse_inventory(GPU_INVENTORY)
-        request = request_for(None, offers)
-        self.assertEqual(request.resources, "gpu:1")
-        self.assertEqual(request.partitions, ("gpu-long", "gpu"))
-        self.assertEqual(request.time_limit, "03:00:00")
-        self.assertIn("h200", request.constraint or "")
+        with self.assertRaises(ValueError):
+            request_for(None, offers)
         arm = request_for("a100-80", offers, required_node="xgpj0")
         self.assertEqual(arm.resources, "gpu:a100-80:1")
         self.assertEqual(arm.partitions, ("gpu",))
         self.assertEqual(arm.time_limit, "03:00:00")
+        self.assertEqual(request_for(None, offers, required_node="xgpj0"), arm)
         with self.assertRaises(ValueError):
             request_for("h100", offers, required_node="xgpj0")
         with self.assertRaises(ValueError):
@@ -421,6 +420,43 @@ class ClusterTests(unittest.TestCase):
             ):
                 self.assertEqual(submit_pending([submission], Budget(), 2)[0]["status"], "active")
                 process.assert_not_called()
+
+    def test_smoke_resources_are_bounded_before_any_mutation(self) -> None:
+        recipe = load_recipe(SMOKE_RECIPE)
+        submission = submission_for(
+            DesiredRun(SMOKE_RECIPE, recipe, 0),
+            Path.home() / "columba",
+            Path("/checkout"),
+            "commit",
+        )
+        self.assertEqual(submission["time_limit_minutes"], 10)
+        self.assertEqual(gpu_resource_arguments(submission), ("--cpus-per-task=4", "--mem=16G"))
+        for changes in ({"cpu_count": 9}, {"memory_limit_gb": 65}):
+            invalid = cast(Submission, {**submission, **changes})
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                gpu_resource_arguments(invalid)
+
+    def test_sbatch_failure_surfaces_scheduler_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            submission: Submission = {
+                "name": "cz-error",
+                "lane": "nv",
+                "constraint": "t4",
+                "script": "script",
+                "run_path": str(root / "columba/runs/example"),
+            }
+            failure = subprocess.CalledProcessError(
+                1, ["sbatch"], stderr="Requested node configuration is not available"
+            )
+            with (
+                patch("cluster.slurm.Path.home", return_value=root),
+                patch("cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
+                patch("cluster.slurm.queue", return_value=()),
+                patch("cluster.slurm.subprocess.run", side_effect=failure),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "Requested node configuration"):
+                    submit_pending([submission], Budget())
 
     def test_gpu_guards_and_large_memory_batches(self) -> None:
         names = (

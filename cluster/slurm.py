@@ -29,6 +29,8 @@ from cluster.gpu_selection import (
 GPU_RUNNING_LIMIT = 8
 CPU_RUNNING_LIMIT = 2
 QUEUED_LIMIT = 24  # QoS allows 32 submitted; keep headroom
+GPU_CPU_LIMIT = 8
+GPU_MEMORY_LIMIT_GB = 64
 PROJECT_STORAGE_LIMIT_KB = 80 * 1024 * 1024
 ACTIVE_STATES = frozenset(
     {"RUNNING", "PENDING", "CONFIGURING", "COMPLETING", "SUSPENDED", "RESIZING"}
@@ -105,6 +107,8 @@ class Submission(TypedDict):
     teacher: NotRequired[bool]
     est_gpu_hours: NotRequired[float]
     time_limit_minutes: NotRequired[int]
+    cpu_count: NotRequired[int]
+    memory_limit_gb: NotRequired[int]
 
 
 def parse_queue(output: str) -> tuple[Job, ...]:
@@ -137,6 +141,22 @@ def queue() -> tuple[Job, ...]:
 def job_name(recipe_id: str, seed: int) -> str:
     digest = hashlib.sha256(f"{recipe_id}/seed{seed}".encode()).hexdigest()[:12]
     return f"cz-{recipe_id[:55]}-s{seed}-{digest}"
+
+
+def gpu_resource_arguments(submission: Submission) -> tuple[str, ...]:
+    arguments: list[str] = []
+    values = (
+        (submission.get("cpu_count"), "cpus-per-task", GPU_CPU_LIMIT),
+        (submission.get("memory_limit_gb"), "mem", GPU_MEMORY_LIMIT_GB),
+    )
+    for value, flag, maximum in values:
+        if value is None:
+            continue
+        if type(value) is not int or not 0 < value <= maximum:
+            raise ValueError("GPU resource override exceeds the template limits")
+        suffix = "G" if flag == "mem" else ""
+        arguments.append(f"--{flag}={value}{suffix}")
+    return tuple(arguments)
 
 
 def request_arguments(request: GpuRequest, submission: Submission) -> tuple[str, ...]:
@@ -278,6 +298,9 @@ def submit_pending(
             submission["lane"] != "nv" or not GPU_NODE_PATTERN.fullmatch(required_node)
         ):
             raise ValueError("GPU jobs may only pin approved GPU nodes")
+        resource_arguments = (
+            gpu_resource_arguments(submission) if submission["lane"] == "nv" else ()
+        )
         jobs = queue()
         if (Path(submission["run_path"]) / "DONE").is_file():
             results.append({"name": submission["name"], "status": "done"})
@@ -333,14 +356,18 @@ def submit_pending(
                 command.append(f"--nodelist={required_node}")
         if submission["lane"] == "nv":
             command.append("--nodes=1")
+            command.extend(resource_arguments)
             scheduling = scheduling or scheduling_request(submission, offers)
             if scheduling is None:
                 results.append({"name": submission["name"], "status": "no free preferred GPU"})
                 continue
             command.extend(scheduling[0])
-        completed = subprocess.run(
-            command, input=submission["script"], text=True, check=True, capture_output=True
-        )
+        try:
+            completed = subprocess.run(
+                command, input=submission["script"], text=True, check=True, capture_output=True
+            )
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(f"sbatch failed: {error.stderr.strip()}") from error
         if submission["lane"] == "nv":
             offers = reserve_submitted_capacity(offers, command)
         identifier = completed.stdout.strip().split(";")[0]

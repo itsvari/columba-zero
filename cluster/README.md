@@ -38,7 +38,8 @@ may explicitly allow missing evaluators; missing evaluation leaves `DONE` absent
 Templates always request `--nice=1000`. `lane: nv` names the GPU training lane;
 it supports all user-approved GPU types, including aarch64 `xgpj0`.
 ARM CPU jobs use `normal` on xcng0. GPU templates use eight CPUs and 64 GB RAM;
-ARM CPU templates use four CPUs, 16 GB and three hours.
+ARM CPU templates use four CPUs, 16 GB and three hours. Synthetic smoke IDs
+use four CPUs, 16 GB and ten minutes to fit short scheduling gaps.
 
 GPU requests from the verified 15 October inventory:
 
@@ -48,14 +49,17 @@ GPU requests from the verified 15 October inventory:
 | a100-40 / a100-80 | gpu:a100-40:1 / gpu:a100-80:1 | none | gpu-long / 72 h |
 | h100-47 / h100-96 | gpu:h100-47:1 / gpu:h100-96:1 | none | gpu-long / 72 h |
 | h200 | gpu:h200-141:1 | none | gpu / 3 h |
-| a100 / h100 | gpu:1 | a100 / h100 | gpu-long / 72 h |
+| a100 / h100 | concrete matching family variant | none | gpu-long / 72 h |
 | null / CLI any | explicit type chosen by policy | nv feature if needed | first free preferred type, gpu-long then gpu |
 
 Pinned types keep working when occupied; they may queue. `--node xgpj0` selects
 A100-80 in `gpu` with a three-hour limit. `xgpj0` also advertises `test`, which
 this scheduler does not use. xgpd0–1 and xgpf0–5 are `gpu` only. H200 xgpk0 is
-also `gpu` only. Slurm accepts untyped GPU requests against typed GRES, and
-feature OR lists, but rejects a 72-hour request spanning gpu-long and gpu.
+also `gpu` only. Live test-only requests with untyped gpu:1 and A100/H100
+features, or pinned xgpj0, were rejected with "Requested node configuration
+is not available". Typed requests succeeded. Family selectors therefore resolve
+to a concrete variant, favouring free units within the preferred partition.
+Slurm also rejects a 72-hour request spanning gpu-long and gpu.
 Automatic placement therefore selects one explicit type/partition and restricts
 its node list to one node with free units at submission time.
 
