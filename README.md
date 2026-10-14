@@ -3,7 +3,8 @@
 Detection-only pigeon prototype for **Raspberry Pi 5, 64-bit Raspberry Pi OS,
 CSI camera, and a connected monitor**. It displays pigeon boxes, confidence,
 current-frame count, capture FPS, and processing FPS. There is no GPIO or
-actuation code, calibration, tracking, or unique-bird counting.
+actuation code, calibration, or unique-bird counting. Per-track trigger
+confirmation is available but off by default.
 
 The runtime uses the existing `pigeon_baseline_v1-2` YOLO11n single-class model.
 The original training notebook, results, and weights remain intact. The notebook
@@ -90,24 +91,113 @@ there is no hard watchdog for a hung native backend.
 `--config` selects a YAML file. [app/config.yaml](app/config.yaml) contains all
 settings. CLI model/confidence values override YAML; `--record` enables recording.
 Set `display.enabled: false` for headless replay or tests. Old actuation config
-sections and CLI switches are rejected with migration guidance.
+sections (including `tracking:`) and CLI switches are rejected with migration
+guidance.
 
-The NCNN export is fixed at 640x640. To benchmark a different inference size,
+An NCNN export has a fixed input size. To benchmark a different inference size,
 export a separate model with `tools/export_ncnn.py` and use a matching
 `model.image_size`. Camera FPS is not inference FPS. Live capture discards old
 buffered frames when inference falls behind; video replay processes every decoded
 frame sequentially, without real-time pacing or frame dropping.
 
-Continuous autofocus is enabled only when the camera advertises `AfMode`.
-Fixed-focus cameras retain the frame-rate setting without an autofocus request.
+Capture, inference and confirmation run on a processing thread. The main thread
+draws the window, writes the log and records, so the processing loop never waits
+for the display: when drawing falls behind, the oldest waiting frame is dropped
+from the display and recording (`render_dropped_frames` in `health` and
+`run_end`). Log records are never dropped. Replay waits for the display instead,
+so replay recordings keep every frame.
+
+### Configuration reference
+
+Defaults (in brackets) keep the behaviour of earlier versions; every new feature
+is off until configured.
+
+`camera:`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `width`, `height` | 640, 480 | Frame size delivered to the model. 16:9 sizes such as 640x360 suit rectangular models. |
+| `fps` | 15 | Requested camera frame rate. |
+| `frame_timeout_s` | 2.0 | Capture timeout; exceeding it stops the run with an error. |
+| `stream` | `main` | `lores` makes the camera hardware scale the full field of view down to `width` x `height`. Where the low-resolution stream cannot be RGB (Pi 4 and earlier), it is captured as YUV420 and converted. |
+| `main_size` | null | With `lores`: size of the main stream that sets the field of view. Null picks half the sensor resolution at the frame's aspect ratio (a 2x2 binned mode). |
+| `lens_position` | null | Manual focus in dioptres (0 = infinity), clamped to the camera's range. Without `LensPosition` support the camera keeps its default (continuous autofocus when `AfMode` exists, else fixed focus) and a warning is printed. |
+| `max_exposure_us` | null | Caps automatic exposure (e.g. 16666 for 1/60 s) by clamping the AGC exposure modes of the sensor's tuning, as described in the Picamera2 manual. |
+| `tuning_file` | null | Camera tuning by name (e.g. `imx708_noir.json` for the NoIR camera) or path. If it cannot be loaded, the default tuning is used with a warning. |
+| `camera_index` | 0 | Which CSI camera to open. |
+| `name` | null | Camera name in frame records; null means `camera<index>`. |
+
+`model:`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `path` | `models/pigeon_baseline_v1-2/best_ncnn_model` | `.pt` checkpoint or NCNN package directory. |
+| `image_size` | 640 | An integer for a square input, or `[height, width]` (e.g. `[384, 640]`), both multiples of 32. Must equal the export's `imgsz`. |
+| `confidence` | 0.5 | Per-frame detection threshold. |
+| `backend` | `ultralytics` | `native` uses the `columba_native` C++ detector (`app/native_detector.py`); it fails with an error if that module is not built. |
+| `threads` | 4 | CPU threads for the native backend. |
+
+Class names and trigger classes come from the package's `metadata.yaml`
+(`names`, and `trigger_classes` in the `columba:` block, default `[pigeon]`).
+`pigeon` must be class 0. Packages without a `columba:` block, such as
+`pigeon_baseline_v1-2`, are read as a YOLO11 export with trigger class `pigeon`.
+Other classes are drawn in orange and logged, but never trigger.
+
+`confirmation:` (off by default)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | false | Track detections and log `trigger` events. |
+| `k`, `n` | 2, 3 | A track confirms when k of its last n frames had a trigger-class detection. |
+| `iou` | 0.3 | Minimum box overlap to continue a track (greedy, highest overlap first, class ignored). |
+| `max_age_frames` | 2 | A track ends after this many consecutive frames without a match. |
+
+Each track confirms at most once. Confirmed tracks are drawn in red.
+
+`cameras:` and `camera_switch:` (off unless `cameras` is given)
+
+List exactly one `role: day` and one `role: night` camera, each with a `name`
+and optional `camera_index`, `tuning_file`, `lens_position` and
+`max_exposure_us`; other settings come from `camera:`. Only one camera is open
+at a time, starting with the day camera. The run switches to the night camera
+when the active camera's lux estimate stays below `camera_switch.night_below_lux`
+[10] for `hold_s` [5] seconds, and back when it stays above `day_above_lux` [40].
+Each switch is logged as `camera_switch`. If the other camera fails to start,
+the run reopens the working camera and retries after 60 s. The NoIR camera reads
+a higher lux under an infrared illuminator than the scene appears to have, so
+calibrate both thresholds on site.
+
+### Reaction-time self-test
+
+```bash
+columba-zero --reaction-test /path/to/pigeon.jpg --reaction-trials 10
+```
+
+Point the camera at the monitor. The test shows a blank screen for 5 s, then
+alternately shows the image fullscreen for 3 s and blanks it for 3–6 s (random),
+logging each change as a `stimulus` event. Confirmation is enabled for the run
+(with the configured k and n) and the annotated window stays closed. At the end
+it writes `reaction_test.json` and a `reaction_test` log record: per-trial time
+from display to confirmed trigger and to first pigeon detection, misses, and
+triggers outside trials. Display times are taken when OpenCV finishes drawing, so
+monitor latency makes the results slight overestimates. No image ships with the
+repository; use a pigeon photo whose licence you have checked.
 
 ## Outputs
 
 Each run creates `outputs/<UTC timestamp>-<unique suffix>/` with
 `detections.jsonl` and optional `annotated.avi` (MJPEG). Frame records include
 zero-based source frame number, Unix frame-delivery timestamp, inference seconds,
-pigeon count, confidence and original-frame pixel boxes, cumulative live buffer
-drops, and capture/processing FPS. Drops measure this application's buffer, not
+pigeon count, detections (label, confidence, original-frame pixel box,
+`class_id`, and `track_id` when confirmation is on), cumulative live buffer
+drops, and capture/processing FPS. Timing fields: `stage_ms` (`wait` from frame
+delivery to pickup, `preprocess`, `inference` and `postprocess` from
+Ultralytics' per-result timings, `track`; a backend without stage timings reports
+its whole detect call as `inference`), `delivery_ms` (start of sensor exposure
+to delivery, live cameras only), `decided_at` and `decision_ms` (delivery to
+decision). Frames also record `camera` and its `lux` estimate. `trigger`
+records carry the track id, class, first-seen frame and time, confirmation time,
+frames seen, and k/n. Drops measure this application's buffer, not
 camera driver losses. Replay timestamps reflect decoding time, not the recording's
 original capture time. Health samples include RSS, CPU use, and Pi temperature
 when available. `run_end` records completion or failure; a forcibly killed process
@@ -124,6 +214,11 @@ of a run; monitor available disk space and stop recording when evidence is suffi
 ```bash
 python tools/summarize_run.py outputs/<run>/detections.jsonl
 ```
+
+The summary adds count, mean, p50, p95, p99 and maximum for each stage, frame
+delivery, decision time and trigger reaction time (first frame of a track to its
+confirmation), in 0.1 ms histogram bins, plus trigger, camera-switch and
+per-camera frame counts.
 
 ## Desktop development and validation
 
