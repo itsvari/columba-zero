@@ -1375,7 +1375,7 @@ class OrchestrationTests(unittest.TestCase):
             self.assertEqual(best_teacher(REPOSITORY, rules), identifiers[1] + "/seed0")
         with patch("cluster.transitions.completed_metric", side_effect=[0.7, 0.7]):
             with self.assertRaisesRegex(HoldRequired, "teacher tie"):
-                best_teacher(REPOSITORY, rules)
+                best_teacher(REPOSITORY, replace(rules, teacher_tie_order=()))
         with patch("cluster.transitions.completed_metric", side_effect=[0.7, 0.7]):
             ordered = replace(rules, teacher_tie_order=(identifiers[1], identifiers[0]))
             self.assertEqual(best_teacher(REPOSITORY, ordered), identifiers[1] + "/seed0")
@@ -1413,7 +1413,9 @@ class OrchestrationTests(unittest.TestCase):
             checkout = root / "checkouts/pinned"
             checkout.mkdir(parents=True)
             source = checkout / "rules.yaml"
-            source.write_text((REPOSITORY / "training/rounds/round2.yaml").read_text())
+            draft = yaml.safe_load((REPOSITORY / "training/rounds/round2.yaml").read_text())
+            draft.update({"approval": "draft", "confirmed_by": None})
+            source.write_text(yaml.safe_dump(draft))
             with (
                 patch("pathlib.Path.home", return_value=home),
                 patch("cluster.transitions.require_owned_dependencies"),

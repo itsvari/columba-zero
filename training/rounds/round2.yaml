@@ -1,10 +1,16 @@
 version: 1
 id: round2-plain
-approval: draft
-confirmed_by: null
-notes: "draft \u2014 WS5 to confirm. v1clean references excluded; test FAR is reported\
-  \ for manual review, never used to rank or tune this automatic stage. Round 3 and\
-  \ WS7 stay manual."
+approval: confirmed
+confirmed_by: WS5
+notes: 'Confirmed by WS5 (2026-10-15): top 3 v2/v2s model x data combinations by mean val
+  R@P90 (test never used); differences <= 0.01 go to the faster model by estimated Pi fp16
+  p95 at 384x640, using COCO records for all four models (same class count, so only the architecture
+  differs); an exact latency tie (same model, v2 vs v2s) prefers v2s (camera-style coverage
+  that the original-style val cannot measure). s models enter only with > 0.04 over the best
+  same-dataset nano and deploy at <= 384x640; selected nanos also get an imgsz-800 arm (deploy
+  448x800). Optimizer pinned to what optimizer=auto resolved to in round 1 on v2/v2s (MuSGD,
+  lr0 0.01, momentum 0.9, warmup_bias_lr 0), so it no longer depends on iteration count; cache
+  ram as in round 1 (<= ~25 GB of the 64 GB job limit at 800 px). Round 3 and WS7 stay manual.'
 inputs:
 - training/recipes/yolo11n-v2-640-r1.yaml
 - training/recipes/yolo11n-v2s-640-r1.yaml
@@ -27,18 +33,30 @@ top_k: 3
 tie_epsilon: 0.01
 minimum_small_gain: 0.04
 latency_records:
-  yolo11n.pt: experiments/latency/xcng0-pigeon_baseline_v1-2-ncnn-fp16-384x640.json
+  yolo11n.pt: experiments/latency/xcng0-yolo11n-coco-ncnn-fp16-384x640.json
   yolo26n.pt: experiments/latency/xcng0-yolo26n-coco-ncnn-fp16-384x640.json
   yolo11s.pt: experiments/latency/xcng0-yolo11s-coco-ncnn-fp16-384x640.json
   yolo26s.pt: experiments/latency/xcng0-yolo26s-coco-ncnn-fp16-384x640.json
-tie_order: []
+tie_order:
+- yolo26n-v2s-640-r1
+- yolo11n-v2s-640-r1
+- yolo26s-v2s-640-r1
+- yolo11s-v2s-640-r1
+- yolo26n-v2-640-r1
+- yolo11n-v2-640-r1
+- yolo26s-v2-640-r1
+- yolo11s-v2-640-r1
 training:
   epochs: 300
   patience: 50
   cos_lr: true
   nbs: 64
   save_period: 5
-  cache: false
+  cache: ram
+  optimizer: MuSGD
+  lr0: 0.01
+  momentum: 0.9
+  warmup_bias_lr: 0.0
 nano_imgsz: 800
 stage: plain
 next_rules: training/rounds/round2-distill.yaml

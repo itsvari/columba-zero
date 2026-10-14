@@ -1,10 +1,14 @@
 version: 1
 id: round2-distill
-approval: draft
-confirmed_by: null
-notes: "draft \u2014 WS5 to confirm. v1clean references excluded; test FAR is reported\
-  \ for manual review, never used to rank or tune this automatic stage. Round 3 and\
-  \ WS7 stay manual."
+approval: confirmed
+confirmed_by: WS5
+notes: 'Confirmed by WS5 (2026-10-15): distils the same 3 combinations selected by round2-plain
+  at 640 only (the imgsz-800 arms are not distilled automatically; decided after the 640 results).
+  Teacher = higher val R@P90 of the two -b16/-b12 teachers; an exact tie prefers yolo11x (YOLO11
+  teacher -> YOLO26 student verified in WS0). dis 6.0 (Ultralytics 8.4.175 default, no tuning
+  evidence for another value). Same pinned optimizer and training block as the plain arms,
+  so only the teacher differs. Runs after the plain arrays and both teachers finish. Round
+  3 and WS7 stay manual.'
 inputs:
 - training/recipes/yolo11n-v2-640-r1.yaml
 - training/recipes/yolo11n-v2s-640-r1.yaml
@@ -27,22 +31,37 @@ top_k: 3
 tie_epsilon: 0.01
 minimum_small_gain: 0.04
 latency_records:
-  yolo11n.pt: experiments/latency/xcng0-pigeon_baseline_v1-2-ncnn-fp16-384x640.json
+  yolo11n.pt: experiments/latency/xcng0-yolo11n-coco-ncnn-fp16-384x640.json
   yolo26n.pt: experiments/latency/xcng0-yolo26n-coco-ncnn-fp16-384x640.json
   yolo11s.pt: experiments/latency/xcng0-yolo11s-coco-ncnn-fp16-384x640.json
   yolo26s.pt: experiments/latency/xcng0-yolo26s-coco-ncnn-fp16-384x640.json
-tie_order: []
+tie_order:
+- yolo26n-v2s-640-r1
+- yolo11n-v2s-640-r1
+- yolo26s-v2s-640-r1
+- yolo11s-v2s-640-r1
+- yolo26n-v2-640-r1
+- yolo11n-v2-640-r1
+- yolo26s-v2-640-r1
+- yolo11s-v2-640-r1
 training:
   epochs: 300
   patience: 50
   cos_lr: true
   nbs: 64
   save_period: 5
-  cache: false
+  cache: ram
+  optimizer: MuSGD
+  lr0: 0.01
+  momentum: 0.9
+  warmup_bias_lr: 0.0
+  dis: 6.0
 nano_imgsz: null
 stage: distill
 selection_from: round2-plain
 teachers:
 - training/recipes/yolo11x-v2s-960-teacher-b16.yaml
 - training/recipes/yolo26x-v2s-960-teacher-b12.yaml
-teacher_tie_order: []
+teacher_tie_order:
+- yolo11x-v2s-960-teacher-b16
+- yolo26x-v2s-960-teacher-b12
