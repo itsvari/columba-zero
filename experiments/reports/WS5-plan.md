@@ -79,12 +79,12 @@ Observations:
 | Round | Recipes | Seeds | Runs | Est. nv GPU-h |
 |---|---|---|---:|---:|
 | 0 | `baseline-repro`, `baseline-repro-p50` (YOLO11n, 640, v1clean; seeds pinned to T4 / Titan RTX / Titan V) | 3 + 3 | 6 | 3 |
-| Teachers | `yolo11x-v2s-960-teacher` (Titan V, batch 4), `yolo26x-v2s-960-teacher` (Titan RTX, batch 6); 960, 300 ep, patience 50 | 1 | 2 | 95 |
-| 1 | `{yolo11n,yolo26n,yolo11s,yolo26s}-{v1clean,v2,v2s}-640-r1` (150 ep, patience 50, cos_lr, close_mosaic 15) | 1 | 12 | 35 |
+| Teachers | `yolo11x-v2s-960-teacher` (Titan V, batch 4), `yolo26x-v2s-960-teacher` (Titan RTX, batch 6); 960, 300 ep, patience 50, no RAM cache | 1 | 2 | 170 |
+| 1 | `{yolo11n,yolo26n,yolo11s,yolo26s}-{v1clean,v2,v2s}-640-r1` (150 ep, patience 50, cos_lr, close_mosaic 15) | 1 | 12 | 50 |
 | 2 | top 3 model × data from round 1 × {plain, distilled from best teacher}, 300 ep; plus an imgsz-800 variant per model that passes the 448×800 latency gate | 3 | 18 (+) | 150–270 |
 | 3 | round-2 winner with `species` taxonomy | 3 | 3 | 15–30 |
 
-Total **estimated** ≈ 300–440 nv GPU-h, above PLAN's 250. Most of that is
+Total **estimated** ≈ 400–550 nv GPU-h (refined with v2/v2s sizes, see below), above PLAN's 250. Most of that is
 teachers and round 2, and both depend on v2s's size. Round-1 timings will
 narrow it.
 
@@ -98,8 +98,17 @@ narrow it.
   Each job adds ≈ 3–5 min for bootstrap, staging and evaluation.
 - **Estimated:** s models take ≈ 2× nano time per epoch. Round 1 is assumed
   to run all 150 epochs (patience 50 rarely fires that early).
-- **Assumed** dataset sizes (WS2 has not published them): v2 ≈ 5× v1clean,
-  v2s ≈ 10×. Time scales linearly with images.
+- **Actual** dataset sizes (WS2, published): v2 has 7,958 train images
+  (9.2× v1clean) and v2s 15,865 (18.3×). Both share a 1,089-image val
+  (7× v1clean's).
+- **Measured** on v2: `yolo11n-v2-640-r1` on T4, batch 48, takes
+  ≈ 59 s/epoch (8× v1clean), so ≈ 2.7 h per 150-epoch run.
+- Extrapolated per run on T4, using v1clean's s/n ratio of 1.65:
+  - nano: ≈ 2.7 h on v2, ≈ 5 h on v2s.
+  - s: ≈ 4.4 h on v2, ≈ 8.5 h on v2s.
+  - Remaining round 1 (7 runs): ≈ 39 GPU-h.
+  - With the teachers holding 2 of 4 slots, that is ≈ 20 h of wall time if
+    each wave is resubmitted promptly.
 - **Teachers:** probe 945775 measured peak memory and step time on a Titan V
   at 960 (AMP, v1clean data, 25 steps):
   - yolo11x: ≈ 2.1 GiB/sample; batch 4 peaks at 8.9 GiB, 0.22 s/step
@@ -113,14 +122,18 @@ narrow it.
   - yolo26x on Titan RTX, `batch_override: 6`: ≈ 15.8 GiB of 23.6
     (extrapolated), headroom for v2s images with more boxes.
 
-  Estimated duration on v2s (≈ 8.7k images): ≈ 8–10 min/epoch, so ≈ 43–48 h
-  for 300 epochs. That is within the 3-day limit, and resubmission resumes
-  from `last.pt`.
+  Estimated on v2s (15,865 images): ≈ 15–18 min/epoch, so ≈ 80–90 h for 300
+  epochs if patience 50 never fires. That exceeds the 3-day limit, so each
+  teacher needs one resubmission, which resumes from `last.pt`. RAM caching
+  is off for the teachers: at 960, v2s needs up to ≈ 44 GB of the 64 GB job
+  limit, and GPU speed limits them anyway.
   - Only xgpe4 is a working Titan RTX: xgpe3 is down, and xgpe2 and xgpe6
     show no GPU. That is why yolo11x runs on a Titan V (most are idle)
     rather than queueing behind yolo26x on xgpe4. If xgpe4 is still busy
     when v2s lands, move yolo26x to a Titan V at batch 3 (≈ 8 GiB).
-- **Round 2:** distillation adds one teacher forward pass per batch,
+- **Round 2** (on v2s, 300 epochs, measured nano speed ≈ 2 min/epoch on T4):
+  plain nano ≈ 10 h and s ≈ 17 h per run. Distillation adds one teacher
+  forward pass per batch,
   assumed ≈ 1.5–2× step time (not yet measured on a GPU).
 
 ## Selection rules

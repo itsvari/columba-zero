@@ -50,15 +50,38 @@
 
 ## In progress
 
-- `baseline-repro-p50` s1 resubmitted as **945774** (titanrtx, excludes
-  xgpe2/xgpe6). It is pending: xgpe4, the only working Titan RTX, is
-  running another user's job. The first attempt, 945409, failed in 1 s on
-  xgpe2 with "No devices were found".
-- Waiting for WS2's `columba-train-v2` and `-v2s` before the other 8 round-1
-  recipes and the teachers.
+Turn 3 (v2/v2s published). Measured on the cluster; not Pi results.
+
+| Job | Run | GPU | State when last seen | s/epoch |
+|---|---|---|---|---:|
+| 945876 | baseline-repro-p50 s1 | Titan V xgpd2 (moved from titanrtx with `--constraint titanv`) | running, epoch 10+ | 5.1–5.3 |
+| 945884 | yolo11x-v2s-960-teacher | Titan V xgpd3, batch 4 | running, staging / epoch 1 | not yet |
+| 945885 | yolo26x-v2s-960-teacher | titanrtx, batch 6 | pending (waits for xgpe4) | – |
+| 945886 | yolo11n-v2-640-r1 | T4 xgpf7, batch 48 | running, epoch 3+ | 58.7–59.8 |
+
+- 945774 (seed 1 on titanrtx) was cancelled and resubmitted on Titan V as
+  945876. The constraint override leaves the recipe hash unchanged, and
+  run.json records the GPU. The baseline therefore has 2 Titan V seeds and
+  1 T4 seed, with no Titan RTX.
+- The other 7 round-1 recipes were refused with "budget full". Pending jobs
+  count against the 4-GPU cap, and the teachers hold 2 slots for days.
+  Resubmitting the same command fills free slots and skips active or DONE
+  runs:
+  `python -m cluster.sweep submit --recipes training/recipes/{yolo26n-v2,yolo11n-v2s,yolo26n-v2s,yolo11s-v2,yolo26s-v2,yolo11s-v2s,yolo26s-v2s}-640-r1.yaml`
+- The cluster SSH tunnel (127.0.0.1:22022) started refusing connections
+  during turn 3, so cluster work stopped there. Not yet verified: the
+  yolo11x teacher's epoch 1 and its s/epoch.
 
 ## Blockers and requests
 
+- **Blocker (turn 3): cluster SSH is down.** `ssh -o BatchMode=yes
+  columba-cluster` first returned "Connection reset by peer" and then
+  "connect to host 127.0.0.1 port 22022: Connection refused". Later
+  attempts hung. Cluster work stopped as the rules require. While cleaning
+  up my hung retries I ran `pkill -f columba-cluster`, which would also
+  have ended any other local ssh process with that name in its command
+  line, including a ControlMaster. The tunnel was already refusing
+  connections before that. Please check the tunnel and ControlMaster.
 - Bad nodes: **xgpe6** and **xgpe2** (Titan RTX, "No devices were found";
   probe 945282, job 945409). **xgpe3** is down ("Node unexpectedly
   rebooted"). Only **xgpe4** is a working Titan RTX.
