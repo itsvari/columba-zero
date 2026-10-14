@@ -21,7 +21,9 @@ sources:
   - {name: inat-pigeon, labels: auto, max_images: 2500, prefer: small_birds}
   - {name: inat-species, labels: auto}
   - {name: inat-other, labels: auto}
-  - {name: coco-negatives-train}
+  - name: coco-negatives-train             # YOLO11x bird check on all 2300 (2 dropped) + 94-image visual sample
+    image_review: data_sources/review/coco-negatives-train.images.jsonl
+    review_default: keep
 phash_max_distance: 10
 test_exclusion_distance: 12
 val_fraction: 0.15                         # of pigeon-positive images
