@@ -100,7 +100,7 @@ small boxes come from one depot session.
 | Reaction time target | About 0.5 s, p95. |
 | GPU budget | At most **8 GPUs** at a time (the per-user QoS maximum), nv lane only. Raised from 4 on 15 Oct 2026 when the user reported the high-priority project idle; drop back to 4 if the user says it needs GPUs again. |
 | ARM node use | `xcng0-1` may be used for anything where it fits better than the Mac, including latency estimates. Avoid queueing many jobs; prefer local Mac work for quick iteration. |
-| Restricted hardware | A100, H100, H200 and `xgpj0` belong to a higher-priority project. Do not use them. |
+| Restricted hardware | ~~A100, H100, H200 and `xgpj0` belong to a higher-priority project. Do not use them.~~ **Lifted 15 Oct 2026 by the user** while that project is idle: all GPU types may be used, within the 8-GPU cap. `xgpj0` stays excluded in practice (aarch64; our CUDA venv is x86_64). Revert to nv-only if the user says the high-priority project needs GPUs again. |
 | Native code | C++ preferred over Rust (section 7, WS8). |
 | No cloud instances | Use the Mac and the SoC cluster only. |
 
@@ -324,6 +324,9 @@ unlabelled negatives, and record the decision in `status/WS5.md`.
 - Allowed lanes:
   - **nv lane**: `-p gpu-long --gres=gpu:nv:1`, optionally `--constraint=t4|titanrtx|titanv`, ≤ 8 CPUs, ≤ 64 GB RAM.
   - **arm lane**: `-p normal -w xcng0` or `xcng1` (3 h limit), ≤ 32 CPUs.
+  - **gpu lane** (from 15 Oct 2026, user-approved): A100-40/80, H100-47/96 and
+    H200 via `gpu-long` (or `gpu` for ≤ 3 h jobs), ≤ 8 GPUs in total with the
+    nv lane. `cluster/` selects GPU types; see `cluster/README.md`.
   - Nothing else without explicit user approval.
 - Budget: ≤ 8 GPU jobs running, ≤ 2 CPU jobs running, ≤ 24 jobs queued in total
   for this project. `cluster/sweep.py` enforces this. Do not bypass it with
