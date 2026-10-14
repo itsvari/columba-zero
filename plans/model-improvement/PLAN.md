@@ -100,7 +100,7 @@ small boxes come from one depot session.
 | Reaction time target | About 0.5 s, p95. |
 | GPU budget | At most **8 GPUs** at a time (the per-user QoS maximum), nv lane only. Raised from 4 on 15 Oct 2026 when the user reported the high-priority project idle; drop back to 4 if the user says it needs GPUs again. |
 | ARM node use | `xcng0-1` may be used for anything where it fits better than the Mac, including latency estimates. Avoid queueing many jobs; prefer local Mac work for quick iteration. |
-| Restricted hardware | ~~A100, H100, H200 and `xgpj0` belong to a higher-priority project. Do not use them.~~ **Lifted 15 Oct 2026 by the user** while that project is idle: all GPU types may be used, within the 8-GPU cap. `xgpj0` stays excluded in practice (aarch64; our CUDA venv is x86_64). Revert to nv-only if the user says the high-priority project needs GPUs again. |
+| Restricted hardware | ~~A100, H100, H200 and `xgpj0` belong to a higher-priority project. Do not use them.~~ **Lifted 15 Oct 2026 by the user** while that project is idle: all GPU types may be used, within the 8-GPU cap, including `xgpj0` (aarch64 + A100-80; often less contended), which gets its own aarch64 CUDA venv. Revert to nv-only if the user says the high-priority project needs GPUs again. |
 | Native code | C++ preferred over Rust (section 7, WS8). |
 | No cloud instances | Use the Mac and the SoC cluster only. |
 
@@ -166,7 +166,7 @@ SoC cluster (`ssh columba-cluster`, see section 6):
 | `gpu` partition | 3 h limit. |
 | `gpu-long` partition | **3-day limit**; nodes with T4 (16 GB, sm_75), Titan RTX (24 GB, sm_75), Titan V (12 GB, sm_70). |
 | ARM CPU | `xcng0-1`: Ampere Altra Max, **Neoverse-N1** (same CPU flags as the Pi 5's A76), 128 cores, 1 TB RAM, 3.2 TB local NVMe. Partitions `normal` (3 h) and `test`. |
-| ARM + GPU | `xgpj0`: Neoverse-N1 + A100-80. **Do not use** (A100). |
+| ARM + GPU | `xgpj0`: Neoverse-N1 + A100-80. Allowed from 15 Oct 2026 (aarch64 CUDA venv). |
 | AMD MI50 | `amdgpu0-3` resolve in DNS but are not in Slurm and SSH times out. Unavailable. |
 | Software | Ubuntu, Python 3.12.3, NVIDIA driver 580 (CUDA 13.0). No `module`, conda, Apptainer or Docker; no sudo. Compute nodes have internet. |
 | Storage | `/home` is NFS, 95% full cluster-wide (≈8 TB free); user home ≈24 GB used. Node-local `/tmp` is large (3.2–3.5 TB on probed nodes). |
