@@ -30,6 +30,8 @@ from .tracking import ConfirmationTracker, TriggerEvent
 RENDER_QUEUE_CAPACITY = 2
 LOG_QUEUE_CAPACITY = 4096
 LOG_EVENT_ALLOWANCE = 1024
+# how long shutdown waits for the log writer to drain before giving up on it.
+LOG_DRAIN_TIMEOUT_S = 2.0
 # only per-frame records may be dropped; trigger, camera_switch, health, stimulus and
 # error/run records are always kept.
 DROPPABLE_EVENTS = frozenset({"frame"})
@@ -145,6 +147,11 @@ class OutputQueue:
         if overflowed:
             self.on_overflow()
 
+    @property
+    def pending_logs(self) -> int:
+        with self._log_condition:
+            return len(self._frame_records) + len(self._event_records)
+
     def take_logs(self, timeout_s: float = 0.0) -> list[LogRecord]:
         with self._log_condition:
             if timeout_s > 0:
@@ -189,7 +196,11 @@ class OutputQueue:
 
 
 class LogWriter:
-    """Writes queued log records on its own thread until `finish` drains the queue."""
+    """Writes queued log records on its own thread until `finish` drains the queue.
+
+    The thread is a daemon: a sink that blocks forever must not keep the process
+    alive, and `finish` gives up after its deadline.
+    """
 
     def __init__(
         self,
@@ -204,7 +215,8 @@ class LogWriter:
         self.observe = observe
         self.error: BaseException | None = None
         self._done = threading.Event()
-        self._thread = threading.Thread(target=self.run, name="log-writer")
+        self._unwritten_batch = 0
+        self._thread = threading.Thread(target=self.run, name="log-writer", daemon=True)
 
     def start(self) -> None:
         self._thread.start()
@@ -214,8 +226,10 @@ class LogWriter:
             while True:
                 done = self._done.is_set()
                 records = self.queue.take_logs(0.0 if done else CONSUMER_POLL_S)
+                self._unwritten_batch = len(records)
                 for record in records:
                     self.output.event(record.event, **record.fields)
+                    self._unwritten_batch -= 1
                     if self.observe is not None:
                         self.observe(record)
                 if done and not records:
@@ -225,11 +239,19 @@ class LogWriter:
             print(f"log writing failed: {describe(error)}", file=sys.stderr)
             self.on_failure()
 
-    def finish(self) -> None:
-        """Write everything still queued, then stop."""
+    def finish(self, timeout_s: float) -> int | None:
+        """Write everything still queued, then stop.
+
+        Returns None once drained, or the number of records left unwritten when
+        the writer is still busy after `timeout_s` (a stalled sink).
+        """
         self._done.set()
-        if self._thread.ident is not None:
-            self._thread.join()
+        if self._thread.ident is None:
+            return None
+        self._thread.join(timeout_s)
+        if not self._thread.is_alive():
+            return None
+        return self._unwritten_batch + self.queue.pending_logs
 
 
 @dataclass

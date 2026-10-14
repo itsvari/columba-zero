@@ -1106,6 +1106,7 @@ class RuntimeTests(unittest.TestCase):
         detections: Sequence[Sequence[Detection]],
         processed: threading.Event,
         config: AppConfig | None = None,
+        camera: object | None = None,
     ) -> int:
         """Run live with a fast fake camera, confirmation and display on; `processed`
         is set once the last frame has been detected."""
@@ -1129,10 +1130,9 @@ class RuntimeTests(unittest.TestCase):
         with (
             patch("app.main.AppConfig.load", return_value=config),
             patch("app.main.UltralyticsDetector", return_value=detector),
-            patch("app.main.Picamera2Capture", return_value=FastCamera()),
+            patch("app.main.Picamera2Capture", return_value=camera or FastCamera()),
             patch("app.main.RunOutput", return_value=output),
             patch("app.main.health_snapshot", return_value={}),
-            redirect_stderr(StringIO()),
         ):
             return run(build_parser().parse_args(["--max-frames", str(len(detections))]))
 
@@ -1169,6 +1169,33 @@ class RuntimeTests(unittest.TestCase):
         status = self.live_run(output, [[]] * frame_limit, processed)
         self.assertEqual(status, 0)
         self.assertEqual(logged_during_stall[0], frame_limit)
+
+    def test_permanently_blocked_log_writer_cannot_block_exit(self) -> None:
+        never = threading.Event()
+        self.addCleanup(never.set)
+        output = Mock()
+        output.poll.return_value = True
+        output.render.return_value = True
+
+        def blocked_event(event: str, **_fields: JsonValue) -> None:
+            if event == "frame":
+                never.wait()
+
+        output.event.side_effect = blocked_event
+        camera = Mock(wraps=FastCamera())
+        stderr = StringIO()
+        started_s = time.monotonic()
+        with patch("app.main.LOG_DRAIN_TIMEOUT_S", 0.2), redirect_stderr(stderr):
+            status = self.live_run(output, [[]] * 5, threading.Event(), camera=camera)
+        self.assertLess(time.monotonic() - started_s, THREAD_TEST_TIMEOUT_S)
+        self.assertEqual(status, 1)
+        camera.close.assert_called_once()
+        self.assertIn("log writer stalled; 5 records unwritten", stderr.getvalue())
+        names = [call.args[0] for call in output.event.call_args_list]
+        # nothing more is written to the blocked sink, and it is not closed under the writer.
+        self.assertNotIn("run_end", names)
+        output.close.assert_not_called()
+        output.close_recording_and_display.assert_called_once()
 
     def test_trigger_backlog_beyond_allowance_stops_the_run(self) -> None:
         frame_limit = 200

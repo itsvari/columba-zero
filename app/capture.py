@@ -140,6 +140,7 @@ class Picamera2Capture:
         self.last_metadata = CaptureMetadata()
         self._convert_yuv = False
         self._camera: Picamera2 | None = None
+        self._stopped = False
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
@@ -240,6 +241,7 @@ class Picamera2Capture:
             from picamera2 import Picamera2
 
             tuning = self._tuning(Picamera2)
+            self._stopped = False
             self._camera = (
                 Picamera2(self.camera_index)
                 if tuning is None
@@ -274,12 +276,22 @@ class Picamera2Capture:
             raise CaptureError(f"CSI capture failed: {error}") from error
 
     def close(self) -> None:
-        camera, self._camera = self._camera, None
-        if camera is not None:
+        """Stop and release the camera. The camera is kept until its release succeeds,
+        so a later close retries it; a stop that succeeded is not repeated."""
+        camera = self._camera
+        if camera is None:
+            return
+        stop_error: Exception | None = None
+        if not self._stopped:
             try:
                 camera.stop()
-            finally:
-                camera.close()
+                self._stopped = True
+            except Exception as error:
+                stop_error = error
+        camera.close()
+        self._camera, self._stopped = None, False
+        if stop_error is not None:
+            raise stop_error
 
 
 class VideoFileCapture:

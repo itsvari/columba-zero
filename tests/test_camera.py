@@ -436,6 +436,35 @@ class DayNightTests(unittest.TestCase):
         source.close()
         self.assertEqual(stream.close.call_count, 2)
 
+    def test_teardown_retries_the_real_camera_release(self) -> None:
+        cameras = {"day": CameraConfig(name="wide"), "night": CameraConfig(name="noir")}
+        for releases, teardown_fails in (
+            ([RuntimeError("release failed"), None], False),
+            (RuntimeError("release always fails"), True),
+        ):
+            camera = fake_camera()
+            camera.start.side_effect = RuntimeError("camera start failed")
+            camera.close.side_effect = releases
+            with self.subTest(teardown_fails=teardown_fails), picamera(camera):
+                source = SwitchingCameraStream(
+                    cameras,
+                    CameraSwitchConfig(),
+                    lambda configuration: LatestFrameStream(
+                        create_camera(configuration), configuration.label
+                    ),
+                )
+                with self.assertRaisesRegex(CaptureError, "release"):
+                    source.start()
+                if teardown_fails:
+                    with self.assertRaisesRegex(CaptureError, "release always fails"):
+                        source.close()
+                else:
+                    source.close()
+                source.close()
+                self.assertEqual(camera.close.call_count, 2)
+                # a successful stop is not repeated.
+                self.assertEqual(camera.stop.call_count, 1)
+
     def test_cameras_config(self) -> None:
         config = CameraConfigTests.load(
             CameraConfigTests(),

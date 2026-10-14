@@ -112,7 +112,10 @@ counted as `log_dropped_records`. `trigger`, `camera_switch`, `health` and run
 records are never dropped; they may exceed the limit by 1024. Beyond that the
 run stops with an error, because triggers could no longer be recorded; records
 already accepted are still written. Every queued record is written before
-`run_end`, also after a display or recording failure.
+`run_end`, also after a display or recording failure. Shutdown waits at most 2 s
+for the log writer; if it is stuck inside a write, the run reports "log writer
+stalled; N records unwritten" and the `run_end` summary on stderr instead of the
+log, still closes the camera and recording, and exits nonzero.
 
 ### Configuration reference
 

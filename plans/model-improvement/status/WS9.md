@@ -114,6 +114,34 @@ Each fix has a regression test that failed on the old code.
    - `DayNightTests.test_abnormal_camera_start_is_cleaned_up` (`KeyboardInterrupt`)
    - `DayNightTests.test_failed_cleanup_is_retried_at_teardown`
 
+### Round 4 (review fixes, rebased onto main 435e7b0)
+
+1. **Permanently blocked log writer:** the writer thread is a daemon, and
+   `LogWriter.finish(LOG_DRAIN_TIMEOUT_S = 2.0)` drains with a deadline. On
+   timeout it returns the unwritten count, and the run reports "log writer
+   stalled; N records unwritten" on stderr. `run_end` goes to stderr and is not
+   written to the blocked sink, and the log is not closed under the writer. The
+   camera and recording are still closed, and the run exits 1.
+   Test: `RuntimeTests.test_permanently_blocked_log_writer_cannot_block_exit`
+   (the old code hung until killed).
+2. **Real camera release retry:** `Picamera2Capture.close()` keeps the camera
+   until its release succeeds, remembers a successful `stop()` so it is not
+   repeated, and lets a failed release propagate. `SwitchingCameraStream` also
+   keeps a stream whose close fails during a switch.
+   Test: `DayNightTests.test_teardown_retries_the_real_camera_release` (real
+   `SwitchingCameraStream`, `LatestFrameStream` and `Picamera2Capture` over a
+   mocked Picamera2; release fails once, and always).
+
+Reviewer probes (Mac):
+- `/tmp/columba_round3_extra.py`, unchanged: all pass.
+- `/tmp/columba_round3_review.py`: queue, concurrency and reaction probes pass.
+  - `camera_retry` asserted the old behaviour (1 close); it now shows 2 closes,
+    1 stop and the camera released.
+  - With that assertion and the stall probe's `finish` wrapper signature adapted
+    (`/tmp/columba_round3_review_fixed.py`), the runtime probes pass. The stalled
+    run returns status 1 within the 4 s limit (whole script 3.5 s), with a daemon
+    writer and "log writer stalled; 9 records unwritten".
+
 ## In progress
 
 Nothing.
@@ -166,6 +194,7 @@ ncnn 1.0.20260526. Timings are noisy and say nothing about the Pi.
 | Tracker overhead, 20 detections × 1000 frames (unit benchmark, best of 3) | ≈ 0.07 ms/frame (budget 1 ms) | measured |
 | Replay, `pigeon_baseline_v1-2/best_ncnn_model`, 5-frame clip (blank/positive tile alternating, from `outputs/validation/style-cleanup/images/`), default config | pigeon counts `0, 1, 0, 1, 0` (conf 0.866), 0 drops, `video_complete`, recording decodes to 5 frames; inference p50 ≈ 12 ms, decision max ≈ 21 ms | measured |
 | Same, `confirmation.enabled: true` | identical counts; 1 `trigger` (track 1, first seen frame 1, confirmed at frame 3, k=2/n=3) | measured |
+| Round 4 rerun of both replays (after rebase onto 435e7b0 and fixes) | identical: counts `0, 1, 0, 1, 0`, trigger at frame 3 with confirmation, 5 processed, 0 drops, 5 recorded | measured |
 | Round 3 rerun of both replays (after rebase onto a15ed4c and fixes) | identical: counts `0, 1, 0, 1, 0`, trigger at frame 3 with confirmation, 5 processed, 0 drops, 5 recorded | measured |
 | Round 2 rerun of both replays above (after rebase and fixes) | identical: counts `0, 1, 0, 1, 0`, trigger at frame 3 with confirmation, 5 processed, 0 log and render drops, 5 recorded frames | measured |
 | Rectangular C8-style package: WS0's `yolo26n` NCNN export at `[384, 640]`, class 0 relabelled `pigeon` for the smoke test, `columba:` block, `image_size: [384, 640]`, confirmation on | runs via Ultralytics; tile detected as `bird` (class_id 14, tracked as track 1), no trigger (not a trigger class) | measured |

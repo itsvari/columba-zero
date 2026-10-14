@@ -20,6 +20,7 @@ from .json_data import JsonValue
 from .output import RunOutput, health_snapshot
 from .pipeline import (
     CONSUMER_POLL_S,
+    LOG_DRAIN_TIMEOUT_S,
     LOG_EVENT_ALLOWANCE,
     LOG_QUEUE_CAPACITY,
     FrameProcessor,
@@ -153,8 +154,15 @@ def finalize_output(
     processed_frames: int,
     dropped_frames: int,
     started_at_monotonic_s: float | None,
+    *,
+    log_available: bool = True,
     **fields: JsonValue,
 ) -> bool:
+    """Close recording and display, then log run_end and close the log.
+
+    With `log_available` false (the log writer is stalled inside the sink), run_end
+    goes to stderr instead and the log is left alone, so that nothing waits on it.
+    """
     successful = True
     try:
         output.close_recording_and_display()
@@ -164,6 +172,13 @@ def finalize_output(
         cleanup_failure = f"output cleanup failed: {error}"
         failure = f"{failure}; {cleanup_failure}" if failure else cleanup_failure
         print(f"output cleanup error: {error}", file=sys.stderr)
+    if not log_available:
+        print(
+            f"run_end not logged: reason={reason}, error={failure}, "
+            f"processed_frames={processed_frames}, dropped_frames={dropped_frames}",
+            file=sys.stderr,
+        )
+        return False
     try:
         elapsed_s = (
             time.monotonic() - started_at_monotonic_s if started_at_monotonic_s is not None else 0.0
@@ -262,6 +277,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
     queue: OutputQueue | None = None
     processor: FrameProcessor | None = None
     reaction: ReactionTest | None = None
+    log_unwritten: int | None = None
     started_at_monotonic_s: float | None = None
     status = 0
     reason = "stopped"
@@ -347,7 +363,12 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             queue.close()
             if processing.ident is not None:
                 processing.join()
-            log_writer.finish()
+            log_unwritten = log_writer.finish(LOG_DRAIN_TIMEOUT_S)
+            if log_unwritten is not None:
+                print(
+                    f"error: log writer stalled; {log_unwritten} records unwritten",
+                    file=sys.stderr,
+                )
         result = processor.result
         reason = result.reason
         processing_error = result.error
@@ -368,11 +389,15 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             log_failures.append(queue.overflow_error)
         for log_failure in log_failures:
             print(f"error: {log_failure}", file=sys.stderr)
+        if log_unwritten is not None:
+            log_failures.append(f"log writer stalled; {log_unwritten} records unwritten")
+        for log_failure in log_failures:
             status, reason = 1, "error"
             failure = f"{failure}; {log_failure}" if failure else log_failure
         if reaction is not None:
             report = reaction.analysis.report()
-            output.event("reaction_test", **report)
+            if log_unwritten is None:
+                output.event("reaction_test", **report)
             print(f"Reaction test report: {output.write_json('reaction_test.json', report)}")
             print(json.dumps({key: report[key] for key in REACTION_SUMMARY_KEYS}, indent=2))
     except Exception as error:
@@ -400,6 +425,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
                 processor.result.processed_frames if processor else 0,
                 processor.result.dropped_frames if processor else 0,
                 started_at_monotonic_s,
+                log_available=log_unwritten is None,
                 render_dropped_frames=queue.dropped_renders if queue else 0,
                 log_dropped_records=queue.dropped_records if queue else 0,
             )

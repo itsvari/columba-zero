@@ -111,12 +111,18 @@ class SwitchingCameraStream:
             raise
         return stream
 
-    def _close_active(self) -> None:
+    def _close_active(self, retain: bool = True) -> None:
         stream, self._stream = self._stream, None
         if stream is not None:
             self._sequence_offset += stream.captured_frames
             self._previous_dropped_frames += stream.dropped_frames
-            stream.close()
+            try:
+                stream.close()
+            except BaseException:
+                # a failed release is retried once at teardown.
+                if retain:
+                    self._unreleased.append(stream)
+                raise
 
     def get(self, timeout_s: float) -> FramePacket:
         if self._stream is None:
@@ -177,7 +183,7 @@ class SwitchingCameraStream:
         """Close the active camera, then retry once any whose cleanup failed earlier."""
         errors: list[str] = []
         try:
-            self._close_active()
+            self._close_active(retain=False)
         except Exception as error:
             errors.append(str(error))
         unreleased, self._unreleased = self._unreleased, []
