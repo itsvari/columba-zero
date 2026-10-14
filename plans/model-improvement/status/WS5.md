@@ -13,9 +13,10 @@
    - Effective batch is 48 on T4 (accumulate 1) and 64 elsewhere.
    - Data is v1clean.
    - The optimizer is still AdamW (optimizer auto).
-2. Round 0 submitted. Seeds 0 (T4) and 2 (Titan V) are DONE for both
-   `baseline-repro` and `baseline-repro-p50`. Both seed-1 (Titan RTX) jobs
-   are pending.
+2. Round 0: seeds 0 (T4) and 2 (Titan V) DONE for both `baseline-repro`
+   and `baseline-repro-p50`. The coordinator made `baseline-repro-p50` the
+   section-1 baseline. `baseline-repro` stays a recorded 2-seed
+   reproduction: its seed 1 (945341) was cancelled by the coordinator.
 3. Patience 10 made `baseline-repro` stop very early, so I added
    `baseline-repro-p50.yaml`: the same args, patience 50. All 3 seeds
    submitted.
@@ -30,38 +31,31 @@
    and selection rules.
 7. Leaderboard rows for `baseline-repro` and `baseline-repro-p50` seeds 0
    and 2, added via `sweep.py fetch`.
-8. Round 1: `yolo11n-v1clean-640-r1` (945490) and `yolo26n-v1clean-640-r1`
-   (945491) DONE and fetched.
+8. Round 1 v1clean: all 4 DONE and fetched. `yolo11n` (945490), `yolo26n`
+   (945491), `yolo11s` (945564), `yolo26s` (945565).
+9. `cluster/excluded_nodes.txt` (xgpe6, xgpe2) is read by `cluster.sweep`
+   for every submission except `gpu-probe`. `--exclude-nodes` now adds to
+   the list instead of replacing it. Test:
+   `tests/test_cluster.py::test_excluded_nodes_file_is_default_and_extras_are_added`.
 
 ## In progress
 
-- `baseline-repro` s1 (945341) and `baseline-repro-p50` s1 (945409) are
-  pending for Titan RTX.
-- `yolo11s-v1clean-640-r1` (945564) and `yolo26s-v1clean-640-r1` (945565)
-  submitted after the nano runs freed their slots. Both run on xgpf11
-  (T4, batch 24). Measured: ≈ 12.1 s/epoch (yolo11s) and ≈ 14.4 s/epoch
-  (yolo26s), so ≈ 35 min each for 150 epochs.
+- `baseline-repro-p50` s1 resubmitted as **945774** (titanrtx, excludes
+  xgpe2/xgpe6). It is pending: xgpe4, the only working Titan RTX, is
+  running another user's job. The first attempt, 945409, failed in 1 s on
+  xgpe2 with "No devices were found".
+- Teacher memory probe **945775** (`cz-ws5-teacher-mem`, one manual
+  1-hour Titan V job). Script: `outputs/ws5/probe/teacher_mem.py`, copied
+  to `~/columba/scratch/ws5/`. It measures peak memory and step time for
+  yolo11x/26x at 960 with batches 2–8.
 - Waiting for WS2's `columba-train-v2` and `-v2s` before the other 8 round-1
   recipes and the teachers.
 
 ## Blockers and requests
 
-- **Coordinator decision:** make `baseline-repro-p50` the section-1
-  baseline instead of `baseline-repro`. With patience 10, T4 seed 0 stopped
-  at epoch 11 and kept its epoch-1 weights (measured test recall@p90 0.006).
-  That would be a straw-man baseline.
-- **WS3 bug:** `cluster/artifacts.py:143` `csv.DictWriter` writes CRLF, so
-  every fetch rewrites every line of `experiments/leaderboard.csv`. I
-  normalised the file back to LF by hand. Fix: `lineterminator="\n"`. Also,
-  `run_path` holds an absolute path into the fetching worktree.
-- **WS3 request:** `select_batch` gives batch 3 for x models at 960 on a 24 GB
-  Titan RTX (accumulate 21). Batch 8 probably fits (estimated, not measured).
-  Please allow a recipe batch override or a measured AutoBatch for teachers.
-  Otherwise the teachers take ≈ 60 h each (estimated).
-- Titan RTX capacity: usable nodes are xgpe2 and xgpe4 (xgpe3 down, xgpe6
-  excluded). Teacher and seed-1 queueing will be slow.
-- s-size Pi latency is not measured yet. Before round 2, I need one arm
-  benchmark job for COCO yolo11s/yolo26s, or the coordinator bundles it.
+- Bad nodes: **xgpe6** and **xgpe2** (Titan RTX, "No devices were found";
+  probe 945282, job 945409). **xgpe3** is down ("Node unexpectedly
+  rebooted"). Only **xgpe4** is a working Titan RTX.
 
 ## Results
 
@@ -76,22 +70,27 @@ start-up) is excluded. These are not Pi results.
 | baseline-repro-p50/seed0 | 945408 | xgpf11 / T4 | 48 | 7.0 | 151 (patience 50) | 0.529 | 0.283 | 0.571 | 0.000 | 0.219 |
 | baseline-repro-p50/seed2 | 945410 | xgpd2 / Titan V | 32 | 5.4 | 137 (patience 50) | 0.489 | 0.215 | 0.633 | 0.000 | 0.356 |
 
-Round 1 (measured, T4 xgpf10/xgpf11, batch 48, 150-epoch budget):
+Test precision/recall at the val threshold, and the round-1 table with all 4 v1clean runs, are in
+`experiments/reports/WS5-plan.md`.
+
+Round 1 (measured, T4 xgpf10/xgpf11, nano batch 48, 150-epoch budget):
 
 | Run | Job | s/epoch | Epochs | val R@P90 | test R@P90 | test AP50 | test empty FAR | test confuser FAR |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | yolo11n-v1clean-640-r1/seed0 | 945490 | 7.4 | 117 | 0.507 | 0.238 | 0.591 | 0.008 | 0.219 |
 | yolo26n-v1clean-640-r1/seed0 | 945491 | 8.3 | 136 | 0.664 | 0.006 | 0.643 | 0.000 | 0.301 |
+| yolo11s-v1clean-640-r1/seed0 | 945564 | 12.0 (batch 24) | 126 | 0.475 | 0.365 | 0.646 | 0.000 | 0.110 |
+| yolo26s-v1clean-640-r1/seed0 | 945565 | 14.6 (batch 24) | 114 | 0.525 | 0.190 | 0.618 | 0.000 | 0.274 |
 
 yolo26n's test precision never reaches 0.9 (precision 0.866 and recall 0.496
 at the val threshold), so test R@P90 collapses. See the caveat in
 `experiments/reports/WS5-plan.md`.
 
-Every run in the table has test small-pigeon recall@P90 = 0.0 (measured).
+Every run except yolo11s (0.039) has test small-pigeon recall@P90 = 0.0 (measured).
 v1clean val has no empty or confuser images. Its selected thresholds
 (0.99 and 0.76) therefore ignore false alarms.
 
 Artifacts:
 
-- Cluster: `~/columba/runs/baseline-repro{,-p50}/seed{0,2}/`.
-- Local: `experiments/runs/baseline-repro{,-p50}/seed{0,2}/` (git-ignored).
+- Cluster: `~/columba/runs/<recipe_id>/seed<k>/`.
+- Local: `experiments/runs/<recipe_id>/seed<k>/` (git-ignored).
