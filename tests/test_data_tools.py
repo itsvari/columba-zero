@@ -5,6 +5,7 @@ import os
 import random
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -13,10 +14,12 @@ import numpy
 import yaml
 from PIL import Image, ImageOps
 
+from tools.auto_label import auto_label, label_policy, reviewed_labels, summarize_review
 from tools.build_dataset import (
     DatasetError,
     archive_dataset,
     build_test,
+    build_test_styles,
     build_train,
     freeze,
     split_groups,
@@ -33,6 +36,15 @@ from tools.fetch_sources import (
     roboflow_original_stem,
     select_coco_images,
     yolo_to_xyxy,
+)
+from tools.style_augment import (
+    STYLES,
+    apply_style,
+    barrel_destination_points,
+    barrel_source_coordinates,
+    box_edge_points,
+    choose_style,
+    remap_box,
 )
 
 IMAGE_PX = 96
@@ -206,8 +218,10 @@ class DedupeTests(unittest.TestCase):
         self.assertEqual(assignment, split_groups(list(reversed(items)), 0.2, seed=0))
 
 
-class BuildDatasetTests(unittest.TestCase):
-    def setUp(self) -> None:
+class DatasetFixture(unittest.TestCase):
+    """Tiny raw sources and specs shared by the build tests (no tests of its own)."""
+
+    def make_fixture(self) -> None:
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
         self.environment = patch.dict(os.environ, {"COLUMBA_DATA_ROOT": str(self.root)})
@@ -269,6 +283,11 @@ class BuildDatasetTests(unittest.TestCase):
     def manifest(self, name: str) -> list[dict[str, Any]]:
         lines = (self.root / name / "manifest.jsonl").read_text(encoding="utf-8").splitlines()
         return [json.loads(line) for line in lines]
+
+
+class BuildDatasetTests(DatasetFixture):
+    def setUp(self) -> None:
+        self.make_fixture()
 
     def test_test_and_train_builds_meet_c1_without_leakage(self) -> None:
         test = build_test(self.test_spec, self.root)
@@ -388,3 +407,246 @@ class BuildDatasetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutoLabelTests(unittest.TestCase):
+    def test_policy_drops_missed_uncertain_and_mixed_birds(self) -> None:
+        box = [10.0, 10.0, 30.0, 30.0]
+        far = [60.0, 60.0, 80.0, 80.0]
+        kept = label_policy([(0.9, box)], "spotted_dove", 0.35, 0.1)
+        self.assertEqual(kept["decision"], "keep")
+        self.assertEqual(kept["boxes"][0]["class"], "spotted_dove")
+        self.assertEqual(label_policy([], "pigeon", 0.35, 0.1)["flags"], ["no_bird"])
+        uncertain = label_policy([(0.9, box), (0.2, far)], "pigeon", 0.35, 0.1)
+        self.assertEqual(uncertain["decision"], "drop")
+        overlapping = label_policy(
+            [(0.9, box), (0.2, [11.0, 11.0, 31.0, 31.0])], "pigeon", 0.35, 0.1
+        )
+        self.assertEqual(overlapping["decision"], "keep")
+        flock = label_policy([(0.9, box), (0.8, far)], "pigeon", 0.35, 0.1)
+        self.assertEqual((flock["decision"], flock["flags"]), ("keep", ["multi_bird"]))
+        mixed = label_policy([(0.9, box), (0.8, far)], "javan_myna", 0.35, 0.1)
+        self.assertEqual(mixed["decision"], "drop")
+
+    def test_labels_resume_and_need_a_passed_review(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_source(
+                root,
+                "inat-test",
+                [
+                    (f"i{index}", noise_image(index), {"extra": {"taxon": "pigeon"}, "boxes": None})
+                    for index in range(4)
+                ],
+            )
+            provenance = root / "raw" / "inat-test" / "provenance.jsonl"
+            calls: list[int] = []
+
+            def detector(paths: Any) -> list[list[tuple[float, list[float]]]]:
+                calls.append(len(paths))
+                return [
+                    [(0.9, [1.0, 1.0, 20.0, 20.0])] if "i3" not in str(p) else [] for p in paths
+                ]
+
+            auto_label(provenance, detector, "mock.pt", batch_size=3)
+            auto_label(provenance, detector, "mock.pt", batch_size=3)
+            self.assertEqual(calls, [3, 1])
+            labels = {
+                r["id"]: r
+                for r in map(
+                    json.loads, (provenance.parent / "auto_labels.jsonl").read_text().splitlines()
+                )
+            }
+            self.assertEqual(labels["i3"]["decision"], "drop")
+            self.assertEqual(labels["i0"]["status"], "pseudo_unreviewed")
+            review_dir = root / "review"
+            review_dir.mkdir()
+            self.assertIsNone(reviewed_labels(provenance, review_dir))
+            review = review_dir / "inat-test.review.jsonl"
+            lines = [{"id": f"r{n}", "boxes": 1} for n in range(199)]
+            lines.append({"id": "i1", "boxes": 1, "wrong_boxes": 1, "drop": True})
+            review.write_text("".join(json.dumps(line) + "\n" for line in lines))
+            summary = summarize_review(review)
+            self.assertTrue(summary["passed"])
+            self.assertEqual(summary["box_error_rate"], 0.005)
+            accepted = reviewed_labels(provenance, review_dir)
+            assert accepted is not None
+            self.assertEqual(sorted(accepted), ["i0", "i2"])
+            self.assertEqual(accepted["i0"]["status"], "pseudo_reviewed")
+            lines[:12] = [{"id": f"w{n}", "boxes": 1, "wrong_boxes": 1} for n in range(12)]
+            review.write_text("".join(json.dumps(line) + "\n" for line in lines))
+            self.assertFalse(summarize_review(review)["passed"])
+            self.assertIsNone(reviewed_labels(provenance, review_dir))
+
+
+class StyleAugmentTests(unittest.TestCase):
+    def test_barrel_box_mapping_inverts_the_pixel_mapping(self) -> None:
+        width, height, k = 640, 384, 0.25
+        points = numpy.array([[100.0, 50.0], [320.0, 192.0], [600.0, 300.0], [10.0, 380.0]])
+        destination = barrel_destination_points(points, width, height, k)
+        back_x, back_y = barrel_source_coordinates(
+            destination[:, 0], destination[:, 1], width, height, k
+        )
+        numpy.testing.assert_allclose(numpy.stack([back_x, back_y], axis=1), points, atol=1e-6)
+        corners = numpy.array([[0.0, 0.0], [640.0, 384.0]])
+        numpy.testing.assert_allclose(barrel_destination_points(corners, width, height, k), corners)
+        # Barrel: off-centre points move outwards; a centred box stays centred and grows.
+        box = remap_box([300.0, 172.0, 340.0, 212.0], width, height, k)
+        assert box is not None
+        self.assertAlmostEqual((box[0] + box[2]) / 2, 320.0, places=3)
+        self.assertGreater(box[2] - box[0], 40.0)
+        self.assertIsNone(remap_box([0.0, 180.0, 4.0, 200.0], width, height, k))
+
+    def test_styles_are_deterministic_and_move_boxes_consistently(self) -> None:
+        image = noise_image(5).resize((160, 96))
+        canvas = noise_image(6)
+        boxes = [{"class": "pigeon", "xyxy": [40.0, 30.0, 80.0, 60.0]}]
+        for style in STYLES:
+            first = apply_style(image, boxes, style, 0, "img", canvas)
+            second = apply_style(image, boxes, style, 0, "img", canvas)
+            self.assertEqual(first[0].tobytes(), second[0].tobytes(), style)
+            self.assertEqual(first[1], second[1])
+            self.assertEqual(first[0].size, (160, 96))
+            other_seed = apply_style(image, boxes, style, 1, "img", canvas)
+            self.assertNotEqual(first[0].tobytes(), other_seed[0].tobytes(), style)
+        night = apply_style(image, boxes, "noir_night", 0, "img")
+        pixels = numpy.asarray(night[0])
+        self.assertTrue((pixels[..., 0] == pixels[..., 2]).all())
+        self.assertEqual(night[1], boxes)
+        wide_image, wide_boxes, params = apply_style(image, boxes, "wide", 0, "img", canvas)
+        zoom, (left, top), k = params["zoom"], params["offset"], params["barrel_k"]
+        expected = barrel_destination_points(
+            box_edge_points([left + 40 * zoom, top + 30 * zoom, left + 80 * zoom, top + 60 * zoom]),
+            160,
+            96,
+            k,
+        )
+        self.assertAlmostEqual(
+            wide_boxes[0]["xyxy"][0], float(numpy.min(expected[:, 0])), delta=0.6
+        )
+        self.assertLess(wide_boxes[0]["xyxy"][2] - wide_boxes[0]["xyxy"][0], 40 * 0.62 + 2)
+        self.assertEqual(
+            choose_style({"a": 1, "b": 1}, 0, "x"), choose_style({"b": 1, "a": 1}, 0, "x")
+        )
+        picks = Counter(choose_style({"a": 3, "b": 1}, 0, f"i{n}") for n in range(400))
+        self.assertTrue(250 < picks["a"] < 350, picks)
+
+
+class PhaseTwoBuildTests(DatasetFixture):
+    def setUp(self) -> None:
+        self.make_fixture()
+        species = ["spotted_dove", "zebra_dove"]
+        write_source(
+            self.root,
+            "inat",
+            [
+                (
+                    f"n{index}",
+                    noise_image(400 + index),
+                    {
+                        "boxes": None,
+                        "label_origin": None,
+                        "classes_present": [species[index % 2]],
+                        "extra": {"taxon": species[index % 2]},
+                    },
+                )
+                for index in range(6)
+            ],
+        )
+        provenance = self.root / "raw" / "inat" / "provenance.jsonl"
+        auto_label(
+            provenance, lambda paths: [[(0.9, [5.0, 5.0, 50.0, 50.0])] for _ in paths], "m.pt"
+        )
+        self.review_dir = self.root / "review"
+        self.review_dir.mkdir()
+        review = [{"id": f"n{n % 6}-{n}", "boxes": 1} for n in range(200)]
+        (self.review_dir / "inat.review.jsonl").write_text(
+            "".join(json.dumps(line) + "\n" for line in review)
+        )
+        summarize_review(self.review_dir / "inat.review.jsonl")
+        coco_review = self.root / "coco-review.jsonl"
+        coco_review.write_text(
+            json.dumps({"id": "c0", "verdict": "pigeon"})
+            + "\n"
+            + json.dumps({"id": "c1", "verdict": "other_bird"})
+            + "\n"
+        )
+        write_source(
+            self.root,
+            "coco",
+            [
+                (
+                    f"c{index}",
+                    noise_image(500 + index),
+                    {
+                        "boxes": [{"class": "bird", "xyxy": [8, 8, 30, 30]}],
+                        "classes_present": ["bird"],
+                    },
+                )
+                for index in range(3)
+            ],
+        )
+        self.train_spec["sources"] = [
+            {"name": "pigeons", "require_boxes": True},
+            {"name": "streets"},
+            {"name": "inat", "labels": "auto"},
+            {"name": "coco", "image_review": str(coco_review)},
+        ]
+        patcher = patch("tools.build_dataset.REVIEW_DIRECTORY", self.review_dir)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        build_test(self.test_spec, self.root)
+
+    def test_single_v2_uses_reviews_and_keeps_birds_in_classes_present(self) -> None:
+        build_train(self.train_spec, self.root)
+        records = {record["id"]: record for record in self.manifest("tiny-train")}
+        self.assertNotIn("c2", records)  # not reviewed
+        self.assertEqual(records["c1"]["classes_present"], ["other_bird"])
+        self.assertEqual(records["n0"]["classes_present"], ["spotted_dove"])
+        self.assertEqual(records["n0"]["label_origin"], "pseudo_reviewed")
+        dataset = self.root / "tiny-train"
+
+        def label(record: dict[str, Any]) -> str:
+            return (dataset / "labels" / record["split"] / f"{record['id']}.txt").read_text()
+
+        self.assertEqual(label(records["n0"]), "")
+        self.assertEqual(label(records["c1"]), "")
+        self.assertTrue(label(records["c0"]).startswith("0 "))
+
+    def test_species_folds_rare_classes_and_style_copies_follow_their_original(self) -> None:
+        spec = {**self.train_spec, "name": "tiny-species", "taxonomy": "species"}
+        spec["style_copies"] = {"weights": {"noir_night": 1, "noir_day": 1, "wide": 1}, "seed": 0}
+        build_train(spec, self.root)
+        dataset = self.root / "tiny-species"
+        summary = json.loads((dataset / "DATASET.json").read_text())
+        self.assertEqual(summary["folded_classes"][:2], ["asian_glossy_starling", "asian_koel"])
+        self.assertIn("spotted_dove", summary["folded_classes"])
+        self.assertEqual(summary["counts"]["train"]["boxes"]["spotted_dove"], 0)
+        records = self.manifest("tiny-species")
+        originals = {r["id"]: r for r in records if r["style"] == "original"}
+        copies = [r for r in records if r["style"] != "original"]
+        train_originals = [r for r in originals.values() if r["split"] == "train"]
+        self.assertEqual(len(copies), len(train_originals))
+        for copy in copies:
+            original = originals[copy["derived_from"]]
+            self.assertEqual((copy["split"], copy["group"]), ("train", original["group"]))
+            self.assertEqual(copy["classes_present"], original["classes_present"])
+        validate_dataset(dataset)
+
+    def test_test_styles_copy_every_test_image_in_every_style(self) -> None:
+        spec = {
+            "name": "tiny-test-styles",
+            "kind": "test_styles",
+            "taxonomy": "single",
+            "from_dataset": "tiny-test",
+            "styles": list(STYLES),
+            "seed": 0,
+        }
+        dataset = build_test_styles(spec, self.root)
+        records = self.manifest("tiny-test-styles")
+        self.assertEqual(len(records), 4 * len(STYLES))
+        self.assertEqual({r["derived_from"] for r in records}, {"p0", "p1", "s0", "s1"})
+        summary = json.loads((dataset / "DATASET.json").read_text())
+        self.assertEqual(summary["composition"]["wide"]["empty_images"], 1)
+        wide_s1 = next(r for r in records if r["id"] == "s1-wide")
+        self.assertEqual(wide_s1["style_params"]["canvas"], "s0")  # bird-free, non-SA canvas

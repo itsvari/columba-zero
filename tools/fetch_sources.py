@@ -54,6 +54,9 @@ INATURALIST_PAGE_SIZE = 200
 ROBOFLOW_EXPORT_POLL_S = 5
 ROBOFLOW_EXPORT_ATTEMPTS = 60
 ROBOFLOW_STEM = re.compile(r"^(?P<original>.+)_(?P<ext>jpe?g|png|bmp|webp)\.rf\.[0-9a-f]+$", re.I)
+NETWORK_ATTEMPTS = 5
+RETRY_STATUS = (429, 500, 502, 503, 504)
+RETRY_BACKOFF_S = 30
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
 # COCO 2017 `licenses` table ids → SPDX-style identifiers.
@@ -128,16 +131,29 @@ def http_session() -> Any:
 
 
 def download(session: Any, url: str, target: Path, label: str) -> None:
-    """Stream `url` to `target` atomically. `label` is what gets logged, never the URL."""
+    """Stream `url` to `target` atomically, retrying network errors with back-off.
+    `label` is what gets logged, never the URL."""
+    import requests
+
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(target.suffix + ".part")
-    with session.get(url, stream=True, timeout=HTTP_TIMEOUT_S) as response:
-        if response.status_code != 200:
-            raise RuntimeError(f"download of {label} failed: HTTP {response.status_code}")
-        with open(temporary, "wb") as handle:
-            for chunk in response.iter_content(DOWNLOAD_CHUNK_BYTES):
-                handle.write(chunk)
-    temporary.replace(target)
+    for attempt in range(NETWORK_ATTEMPTS):
+        try:
+            with session.get(url, stream=True, timeout=HTTP_TIMEOUT_S) as response:
+                if response.status_code in RETRY_STATUS and attempt + 1 < NETWORK_ATTEMPTS:
+                    time.sleep(RETRY_BACKOFF_S * (attempt + 1))
+                    continue
+                if response.status_code != 200:
+                    raise RuntimeError(f"download of {label} failed: HTTP {response.status_code}")
+                with open(temporary, "wb") as handle:
+                    for chunk in response.iter_content(DOWNLOAD_CHUNK_BYTES):
+                        handle.write(chunk)
+            temporary.replace(target)
+            return
+        except requests.exceptions.RequestException as error:
+            if attempt + 1 == NETWORK_ATTEMPTS:
+                raise RuntimeError(f"download of {label} failed: {type(error).__name__}") from None
+            time.sleep(RETRY_BACKOFF_S * (attempt + 1))
 
 
 def safe_extract(archive: zipfile.ZipFile, target: Path) -> None:
@@ -409,16 +425,51 @@ class RateLimiter:
         self.last = self.clock()
 
 
+class SharedRateLimiter(RateLimiter):
+    """RateLimiter shared by every process on this machine through a lock file, so parallel
+    fetches together stay within the per-client API limit."""
+
+    def __init__(self, interval_s: float, path: Path) -> None:
+        super().__init__(interval_s)
+        self.path = path
+
+    def wait(self) -> None:
+        import fcntl
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.path, "a+", encoding="utf-8") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            handle.seek(0)
+            text = handle.read().strip()
+            last = float(text) if text else 0.0
+            delay = last + self.interval_s - time.time()
+            if delay > 0:
+                time.sleep(delay)
+            handle.seek(0)
+            handle.truncate()
+            handle.write(f"{time.time():.3f}")
+            handle.flush()
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def inaturalist_get(
     session: Any, limiter: RateLimiter, path: str, params: dict[str, Any]
 ) -> Record:
-    for attempt in range(5):
+    import requests
+
+    for attempt in range(NETWORK_ATTEMPTS):
         limiter.wait()
-        response = session.get(f"{INATURALIST_API}/{path}", params=params, timeout=HTTP_TIMEOUT_S)
+        try:
+            response = session.get(
+                f"{INATURALIST_API}/{path}", params=params, timeout=HTTP_TIMEOUT_S
+            )
+        except requests.exceptions.RequestException:
+            time.sleep(RETRY_BACKOFF_S * (attempt + 1))
+            continue
         if response.status_code == 200:
             return cast(Record, response.json())
-        if response.status_code in (429, 500, 502, 503, 504):
-            time.sleep(30 * (attempt + 1))  # back off well beyond their 1 request/s guidance
+        if response.status_code in RETRY_STATUS:
+            time.sleep(RETRY_BACKOFF_S * (attempt + 1))  # well beyond their 1 request/s guidance
             continue
         raise RuntimeError(f"iNaturalist {path} failed: HTTP {response.status_code}")
     raise RuntimeError(f"iNaturalist {path} kept failing")
@@ -443,7 +494,7 @@ def inaturalist_observations(
     }
     if taxon.get("exclude_taxon_ids"):
         params["without_taxon_id"] = ",".join(str(item) for item in taxon["exclude_taxon_ids"])
-    places = taxon.get("place_ids", source.get("place_ids", [None]))
+    places: list[int | None] = taxon.get("place_ids", source.get("place_ids")) or [None]
     yielded = 0
     for place in places:
         page_params = dict(params)
@@ -465,7 +516,9 @@ def inaturalist_observations(
 
 def fetch_inaturalist(source: Record, out_dir: Path, arguments: argparse.Namespace) -> list[Record]:
     session = http_session()
-    limiter = RateLimiter(INATURALIST_MIN_INTERVAL_S)
+    limiter = SharedRateLimiter(
+        INATURALIST_MIN_INTERVAL_S, data_root() / "raw" / "_inaturalist-api.lock"
+    )
     photo_limiter = RateLimiter(float(source.get("photo_interval_s", INATURALIST_MIN_INTERVAL_S)))
     size = source.get("photo_size", "large")
     default_limit = int(arguments.limit_per_taxon or source.get("limit_per_taxon", 50))

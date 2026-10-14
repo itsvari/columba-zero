@@ -75,6 +75,9 @@ MIN_BOX_PX = 1.0
 ZSTD_LEVEL = 10
 ARCHIVE_MTIME = 0
 TEST_DATASET_RELATIVE = "../{test}/images/test"
+REVIEW_DIRECTORY = Path("data_sources/review")
+STYLE_MAX_SIDE = 1280
+STYLE_WORKERS = 4
 
 Record = dict[str, Any]
 
@@ -102,10 +105,11 @@ def load_spec(path: Path) -> Record:
     spec = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(spec, dict):
         raise DatasetError(f"{path}: build spec must be a mapping")
-    if spec.get("kind") not in ("test", "train"):
-        raise DatasetError(f"{path}: kind must be test or train")
+    if spec.get("kind") not in ("test", "train", "test_styles"):
+        raise DatasetError(f"{path}: kind must be test, train or test_styles")
     spec["sources"] = [
-        source if isinstance(source, dict) else {"name": source} for source in spec["sources"]
+        source if isinstance(source, dict) else {"name": source}
+        for source in spec.get("sources", [])
     ]
     return cast(Record, spec)
 
@@ -242,10 +246,11 @@ def manifest_record(item: Record, split: str, file_name: str, classes_present: l
         "phash": item["phash"],
         "width": item["width"],
         "height": item["height"],
-        "style": "original",
-        "derived_from": None,
+        "style": item.get("style", "original"),
+        "derived_from": item.get("derived_from"),
         "label_origin": item["label_origin"],
         "classes_present": sorted(set(classes_present)),
+        **({"style_params": item["style_params"]} if item.get("style_params") else {}),
     }
 
 
@@ -264,17 +269,26 @@ def write_dataset(
         shutil.rmtree(staging)
     manifest = []
     counts: dict[str, Record] = {}
-    splits = TEST_SPLITS if spec["kind"] == "test" else TRAIN_SPLITS
+    splits = TRAIN_SPLITS if spec["kind"] == "train" else TEST_SPLITS
     for split in splits:
         (staging / "images" / split).mkdir(parents=True)
         (staging / "labels" / split).mkdir(parents=True)
         counts[split] = {"images": 0, "boxes": {name: 0 for name in names}, "backgrounds": 0}
     for item, split, boxes, classes_present in sorted(entries, key=lambda entry: entry[0]["id"]):
         source_path = Path(item["path"])
-        if exif_orientation(source_path) != 1:
-            raise DatasetError(f"{item['id']}: EXIF orientation is not 1; re-encode it first")
         file_name = item["id"] + source_path.suffix.lower().replace(".jpeg", ".jpg")
-        shutil.copyfile(source_path, staging / "images" / split / file_name)
+        destination = staging / "images" / split / file_name
+        if exif_orientation(source_path) != 1:
+            # Boxes and width/height are in EXIF-oriented pixels; store the oriented pixels.
+            from PIL import Image, ImageOps
+
+            file_name = item["id"] + ".jpg"
+            destination = staging / "images" / split / file_name
+            with Image.open(source_path) as opened:
+                ImageOps.exif_transpose(opened).convert("RGB").save(destination, quality=95)
+            item = {**item, "sha256": file_sha256(destination)}
+        else:
+            shutil.copyfile(source_path, destination)
         lines = yolo_lines(boxes, names, item["width"], item["height"])
         (staging / "labels" / split / f"{item['id']}.txt").write_text(
             "".join(line + "\n" for line in lines), encoding="utf-8"
@@ -288,7 +302,7 @@ def write_dataset(
         for record in manifest:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
     data: Record = {"names": list(names), "nc": len(names)}
-    if spec["kind"] == "test":
+    if spec["kind"] != "train":
         data["test"] = "images/test"
     else:
         data.update(
@@ -311,7 +325,7 @@ def write_dataset(
         "sources": sorted({record["source"] for record in manifest}),
         "counts": counts,
         "dedupe": {
-            "phash_max_distance": spec["phash_max_distance"],
+            "phash_max_distance": spec.get("phash_max_distance"),
             "mirror_aware": True,
             "test_dataset": spec.get("test_dataset", spec["name"]),
         },
@@ -325,6 +339,13 @@ def write_dataset(
     }
     if spec["kind"] == "train":
         summary["dedupe"]["test_exclusion_distance"] = spec["test_exclusion_distance"]
+    if any(record["style"] != "original" for record in manifest):
+        summary["styles"] = {
+            split: dict(
+                sorted(Counter(r["style"] for r in manifest if r["split"] == split).items())
+            )
+            for split in splits
+        }
     write_summary(staging, summary)
     validate_dataset(staging)
     staging.rename(output)
@@ -416,6 +437,129 @@ def raw_scene_ids(root: Path, records: Sequence[Record]) -> dict[str, str]:
     return scenes
 
 
+def load_image_review(path: Path) -> dict[str, Record]:
+    return {record["id"]: record for record in read_provenance(path)}
+
+
+def source_candidates(
+    root: Path, source: Record, names: Sequence[str], stats: Counter[str]
+) -> list[Record]:
+    """Images of one source with their boxes (`_boxes`, taxonomy names) and `_present`.
+
+    Source options: `labels: auto` (reviewed tools/auto_label.py boxes only), `image_review`
+    (per-image verdicts: `pigeon` / `other_bird` relabel every box and set classes_present,
+    `keep` keeps the source labels, `drop` removes the image; unlisted images take
+    `review_default`, and are dropped if it is unset), `class_map`, `classes_present_map`,
+    `require_boxes`.
+    """
+    from tools.auto_label import reviewed_labels
+
+    items = load_source_items(root, source["name"])
+    stats["fetched"] = len(items)
+    auto = None
+    if source.get("labels") == "auto":
+        auto = reviewed_labels(
+            root / "raw" / source["name"] / "provenance.jsonl", REPOSITORY / REVIEW_DIRECTORY
+        )
+        if auto is None:
+            raise DatasetError(f"{source['name']}: auto labels have not passed review")
+    review = (
+        load_image_review(REPOSITORY / source["image_review"]) if "image_review" in source else None
+    )
+    class_map = source.get("class_map", {})
+    present_map = source.get("classes_present_map", {})
+    candidates = []
+    for item in items:
+        if auto is not None:
+            label = auto.get(item["id"])
+            if label is None:
+                stats["dropped_by_auto_label_policy_or_review"] += 1
+                continue
+            item["boxes"] = [{"class": box["class"], "xyxy": box["xyxy"]} for box in label["boxes"]]
+            item["label_origin"] = "pseudo_reviewed"
+        if review is not None:
+            verdict = review.get(item["id"], {}).get("verdict", source.get("review_default"))
+            if verdict in (None, "drop"):
+                stats["dropped_by_review"] += 1
+                continue
+            if verdict in ("pigeon", "other_bird"):
+                item["boxes"] = [{**box, "class": verdict} for box in item.get("boxes") or []]
+                item["classes_present"] = [verdict]
+        boxes = [box for box in mapped_boxes(item, class_map) if box["class"] in names]
+        if source.get("require_boxes") and not boxes:
+            stats["dropped_without_boxes"] += 1
+            continue
+        if item["label_origin"] not in PUBLISHABLE_LABEL_ORIGINS:
+            stats["dropped_unpublishable_labels"] += 1
+            continue
+        present = {present_map.get(name, name) for name in item.get("classes_present") or []}
+        present.update(box["class"] for box in boxes)
+        item["_boxes"], item["_present"] = boxes, sorted(present)
+        item["_all_boxes"] = item.get("boxes") or []
+        candidates.append(item)
+    return candidates
+
+
+def stable_key(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def apply_caps(items: Sequence[Record], sources: Sequence[Record], stats: Record) -> list[Record]:
+    """Per source `max_images`: keep the preferred images. `prefer: small_birds` ranks images by
+    their number of small boxes (at the 384x640 deploy letterbox), then box count; otherwise
+    a stable pseudo-random order."""
+    from tools.contact_sheet import is_small
+
+    options = {source["name"]: source for source in sources}
+    by_source: dict[str, list[Record]] = defaultdict(list)
+    for item in items:
+        by_source[item["source"]].append(item)
+    kept: list[Record] = []
+    for name, source_items in sorted(by_source.items()):
+        option = options[name]
+        limit = option.get("max_images")
+        if limit is None or len(source_items) <= limit:
+            kept.extend(source_items)
+            continue
+        if option.get("prefer") == "small_birds":
+
+            def rank(item: Record) -> tuple[int, int, str]:
+                boxes = item["_all_boxes"]
+                small = sum(is_small(b["xyxy"], item["width"], item["height"]) for b in boxes)
+                return (-small, -len(boxes), stable_key(item["id"]))
+
+            ordered = sorted(source_items, key=rank)
+        else:
+            ordered = sorted(source_items, key=lambda item: stable_key(item["id"]))
+        kept.extend(ordered[:limit])
+        stats[name]["dropped_over_cap"] = len(source_items) - limit
+    return kept
+
+
+def fold_rare_classes(
+    entries: Sequence[tuple[Record, str, list[Record], list[str]]], taxonomy: Record
+) -> tuple[list[tuple[Record, str, list[Record], list[str]]], list[str]]:
+    """Species taxonomy: classes with fewer train boxes than `min_train_instances` become
+    `other_bird` boxes (classes_present keeps the real species)."""
+    minimum = int(taxonomy["taxonomies"]["species"]["min_train_instances"])
+    counts = Counter(
+        box["class"] for _, split, boxes, _ in entries if split == "train" for box in boxes
+    )
+    names = taxonomy_names(taxonomy, "species")
+    folded = sorted(
+        name for name in names if name not in ("pigeon", "other_bird") and counts[name] < minimum
+    )
+    if not folded:
+        return list(entries), []
+    result = []
+    for item, split, boxes, present in entries:
+        new_boxes = [
+            {**box, "class": "other_bird"} if box["class"] in folded else box for box in boxes
+        ]
+        result.append((item, split, new_boxes, present))
+    return result, folded
+
+
 def build_train(spec: Record, root: Path) -> Path:
     taxonomy = load_taxonomy()
     names = taxonomy_names(taxonomy, spec["taxonomy"])
@@ -428,23 +572,8 @@ def build_train(spec: Record, root: Path) -> Path:
     candidates: list[Record] = []
     report: Record = {"per_source": {}}
     for source in spec["sources"]:
-        items = load_source_items(root, source["name"])
-        stats: Counter[str] = Counter(fetched=len(items))
-        class_map = source.get("class_map", {})
-        for item in items:
-            boxes = mapped_boxes(item, class_map)
-            boxes = [box for box in boxes if box["class"] in names]
-            if source.get("require_boxes") and not boxes:
-                stats["dropped_without_boxes"] += 1
-                continue
-            if item["label_origin"] not in PUBLISHABLE_LABEL_ORIGINS:
-                stats["dropped_unpublishable_labels"] += 1
-                continue
-            present_map = source.get("classes_present_map", {})
-            present = {present_map.get(name, name) for name in item.get("classes_present") or []}
-            present.update(box["class"] for box in boxes)
-            item["_boxes"], item["_present"] = boxes, sorted(present)
-            candidates.append(item)
+        stats: Counter[str] = Counter()
+        candidates.extend(source_candidates(root, source, names, stats))
         report["per_source"][source["name"]] = stats
     unique, duplicates = drop_exact_duplicates(candidates)
     for item in duplicates:
@@ -482,12 +611,22 @@ def build_train(spec: Record, root: Path) -> Path:
             stats["dropped_near_test"] += 1
         else:
             kept.append(item)
+    kept = apply_caps(kept, spec["sources"], report["per_source"])
     assignment = split_groups(kept, spec["val_fraction"], spec["seed"])
     entries = [(item, assignment[item["group"]], item["_boxes"], item["_present"]) for item in kept]
     for item in kept:
         report["per_source"][item["source"]][f"kept_{assignment[item['group']]}"] += 1
     min_distance = min((nearest[item["id"]][0] for item in kept), default=None)
+    folded: list[str] = []
+    if spec["taxonomy"] == "species":
+        entries, folded = fold_rare_classes(entries, taxonomy)
+    style_report: Record = {}
+    if spec.get("style_copies"):
+        copies, style_report = style_copies(root, spec, entries)
+        entries = [*entries, *copies]
     extra = {
+        "folded_classes": folded,
+        "style_copies": style_report,
         "build_report": {
             "per_source": {name: dict(stats) for name, stats in report["per_source"].items()},
             "min_phash_distance_to_test": min_distance,
@@ -496,7 +635,195 @@ def build_train(spec: Record, root: Path) -> Path:
         },
         "label_conventions": spec.get("label_conventions", ""),
     }
-    return write_dataset(root / spec["name"], spec, entries, names, extra)
+    output = write_dataset(root / spec["name"], spec, entries, names, extra)
+    shutil.rmtree(root / "_style_cache" / spec["name"], ignore_errors=True)
+    return output
+
+
+# --- style copies ---------------------------------------------------------------------------
+
+
+def render_style_copy(job: Record) -> Record:
+    """Worker: write one style copy and return its boxes, size, hashes and parameters."""
+    from PIL import Image, ImageOps
+
+    from tools.style_augment import JPEG_QUALITY, apply_style
+
+    with Image.open(job["source"]) as opened:
+        image = ImageOps.exif_transpose(opened).convert("RGB")
+    scale = min(1.0, STYLE_MAX_SIDE / max(image.size))
+    boxes = job["boxes"]
+    if scale < 1.0:
+        image = image.resize(
+            (round(image.width * scale), round(image.height * scale)), Image.Resampling.LANCZOS
+        )
+        boxes = [{**box, "xyxy": [value * scale for value in box["xyxy"]]} for box in boxes]
+    canvas = None
+    if job.get("canvas"):
+        with Image.open(job["canvas"]) as opened:
+            canvas = ImageOps.exif_transpose(opened).convert("RGB")
+    styled, new_boxes, params = apply_style(
+        image, boxes, job["style"], job["seed"], job["original_id"], canvas
+    )
+    output = Path(job["output"])
+    output.parent.mkdir(parents=True, exist_ok=True)
+    styled.save(output, quality=JPEG_QUALITY)
+    phash, phash_mirror = perceptual_hashes(output)
+    return {
+        "boxes": new_boxes,
+        "params": params,
+        "width": styled.width,
+        "height": styled.height,
+        "sha256": file_sha256(output),
+        "phash": phash,
+        "phash_mirror": phash_mirror,
+    }
+
+
+def canvas_pool(
+    entries: Sequence[tuple[Record, str, list[Record], list[str]]], split: str
+) -> list[Record]:
+    """Bird-free scenes of one split whose licence lets any original keep its own licence."""
+    return sorted(
+        (
+            item
+            for item, entry_split, _, present in entries
+            if entry_split == split
+            and not present
+            and item.get("style", "original") == "original"
+            and "-SA-" not in item["license"]
+        ),
+        key=lambda item: item["id"],
+    )
+
+
+def make_style_entries(
+    root: Path,
+    name: str,
+    originals: Sequence[tuple[Record, str, list[Record], list[str]]],
+    styles_for: dict[str, list[str]],
+    canvases: Sequence[Record],
+    seed: int,
+) -> list[tuple[Record, str, list[Record], list[str]]]:
+    """Style copies of `originals`; `styles_for` maps an original id to its styles."""
+    from concurrent.futures import ProcessPoolExecutor
+
+    from tools.style_augment import style_rng
+
+    work = root / "_style_cache" / name
+    if work.exists():
+        shutil.rmtree(work)
+    jobs: list[tuple[Record, Record, str, list[str], Record | None]] = []
+    for item, split, boxes, present in originals:
+        for style in styles_for.get(item["id"], []):
+            canvas = None
+            if style == "wide" and canvases:
+                rng = style_rng(seed, item["id"], "canvas")
+                choices = [c for c in canvases if c["id"] != item["id"]]
+                canvas = choices[int(rng.integers(0, len(choices)))] if choices else None
+            job = {
+                "source": item["path"],
+                "boxes": boxes,
+                "style": style,
+                "seed": seed,
+                "original_id": item["id"],
+                "canvas": canvas["path"] if canvas else None,
+                "output": str(work / f"{item['id']}-{style}.jpg"),
+            }
+            jobs.append((job, item, split, present, canvas))
+    with ProcessPoolExecutor(max_workers=STYLE_WORKERS) as pool:
+        results = list(pool.map(render_style_copy, [job for job, *_ in jobs], chunksize=8))
+    copies = []
+    for (job, item, split, present, canvas), result in zip(jobs, results, strict=True):
+        attribution = item["attribution"]
+        if canvas is not None:
+            attribution += f"; background: {canvas['attribution']}"
+        copy = {
+            **{
+                key: item[key]
+                for key in ("source", "source_id", "group", "license", "label_origin")
+            },
+            "id": f"{item['id']}-{job['style']}",
+            "path": job["output"],
+            "attribution": attribution,
+            "sha256": result["sha256"],
+            "phash": result["phash"],
+            "width": result["width"],
+            "height": result["height"],
+            "style": job["style"],
+            "derived_from": item["id"],
+            "style_params": {
+                **result["params"],
+                **({"canvas": canvas["id"]} if canvas is not None else {}),
+            },
+        }
+        copies.append((copy, split, result["boxes"], present))
+    return copies
+
+
+def style_copies(
+    root: Path, spec: Record, entries: Sequence[tuple[Record, str, list[Record], list[str]]]
+) -> tuple[list[tuple[Record, str, list[Record], list[str]]], Record]:
+    """One style copy per train image (style drawn with `style_copies.weights`); val stays
+    original. Copies share their original's group."""
+    from tools.style_augment import choose_style
+
+    options = spec["style_copies"]
+    seed = int(options.get("seed", 0))
+    train = [entry for entry in entries if entry[1] == "train"]
+    styles_for = {
+        item["id"]: [choose_style(options["weights"], seed, item["id"])] for item, *_ in train
+    }
+    copies = make_style_entries(
+        root, spec["name"], train, styles_for, canvas_pool(entries, "train"), seed
+    )
+    report = {
+        "seed": seed,
+        "weights": options["weights"],
+        "copies": dict(sorted(Counter(copy["style"] for copy, *_ in copies).items())),
+        "split": "train only (val stays original)",
+        "max_side_px": STYLE_MAX_SIDE,
+    }
+    return copies, report
+
+
+def yolo_label_boxes(label: Path, names: Sequence[str], width: int, height: int) -> list[Record]:
+    boxes = []
+    for line in label.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        index, cx, cy, w, h = line.split()
+        x, y, bw, bh = float(cx) * width, float(cy) * height, float(w) * width, float(h) * height
+        boxes.append(
+            {"class": names[int(index)], "xyxy": [x - bw / 2, y - bh / 2, x + bw / 2, y + bh / 2]}
+        )
+    return boxes
+
+
+def build_test_styles(spec: Record, root: Path) -> Path:
+    """Every image of a frozen test dataset in every listed style (a new test dataset)."""
+    taxonomy = load_taxonomy()
+    names = taxonomy_names(taxonomy, spec["taxonomy"])
+    source = root / spec["from_dataset"]
+    originals = []
+    for record in load_dataset_manifest(source):
+        item = {**record, "path": str(source / record["file"])}
+        label = source / "labels" / "test" / f"{Path(record['file']).stem}.txt"
+        boxes = yolo_label_boxes(label, names, record["width"], record["height"])
+        originals.append((item, "test", boxes, list(record["classes_present"])))
+    seed = int(spec.get("seed", 0))
+    styles_for = {item["id"]: list(spec["styles"]) for item, *_ in originals}
+    copies = make_style_entries(
+        root, spec["name"], originals, styles_for, canvas_pool(originals, "test"), seed
+    )
+    composition = {
+        style: test_composition([entry for entry in copies if entry[0]["style"] == style])
+        for style in spec["styles"]
+    }
+    extra = {"from_dataset": spec["from_dataset"], "seed": seed, "composition": composition}
+    output = write_dataset(root / spec["name"], spec, copies, names, extra)
+    shutil.rmtree(root / "_style_cache" / spec["name"], ignore_errors=True)
+    return output
 
 
 # --- validation -----------------------------------------------------------------------------
@@ -580,8 +907,11 @@ def validate_dataset(dataset: Path, check_files: bool = True) -> list[str]:
             if not (0 <= cy - height / 2 + 1e-6 and cy + height / 2 <= 1 + 1e-6 and height > 0):
                 problems.append(f"{where}: box outside the image {line!r}")
             boxes_by_class[names[index]] += 1
+        non_pigeon_present = any(name != "pigeon" for name in record["classes_present"])
         for name in boxes_by_class:
-            if name not in record["classes_present"]:
+            # Species folded into other_bird keep their real name in classes_present.
+            folded_ok = name == "other_bird" and non_pigeon_present
+            if name not in record["classes_present"] and not folded_ok:
                 problems.append(f"{where}: boxed class {name} missing from classes_present")
         split_counts = counts[record["split"]]
         split_counts["images"] += 1
@@ -747,7 +1077,9 @@ def main() -> None:
     try:
         if arguments.command == "build":
             spec = load_spec(arguments.spec)
-            builder = build_test if spec["kind"] == "test" else build_train
+            builder = {"test": build_test, "train": build_train, "test_styles": build_test_styles}[
+                spec["kind"]
+            ]
             output = builder(spec, data_root())
             summary = json.loads((output / "DATASET.json").read_text(encoding="utf-8"))
             print(json.dumps({key: summary.get(key) for key in ("name", "counts")}, indent=1))
