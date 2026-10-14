@@ -9,10 +9,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import cast
 
-from app.json_data import JsonValue
-
 import yaml
 
+from app.json_data import JsonValue
 from cluster.gpu_selection import (
     GPU_CONSTRAINTS,
     GPU_PARTITIONS,

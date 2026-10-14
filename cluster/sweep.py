@@ -74,7 +74,7 @@ def remote_root() -> Path:
 
 def current_queue() -> tuple[Job, ...]:
     return parse_queue(
-        remote(["sh", "-c", 'squeue -u "$USER" --noheader --format="%i|%j|%T|%P|%b|%D|%V"'])
+        remote(["sh", "-c", 'squeue --array -u "$USER" --noheader --format="%i|%j|%T|%P|%b|%D|%V"'])
     )
 
 
@@ -275,6 +275,7 @@ def fetch(root: Path, runs: Sequence[DesiredRun], destination: Path, leaderboard
                 "--include=results.csv",
                 "--include=DONE",
                 "--include=TRAINED",
+                "--include=HOLD",
                 "--exclude=*",
                 f"{SSH_HOST}:{source}",
                 str(local) + "/",
@@ -299,10 +300,50 @@ def fetch(root: Path, runs: Sequence[DesiredRun], destination: Path, leaderboard
         update_leaderboard(leaderboard, rows)
 
 
+def fetch_orchestration(root: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for name in ("arrays", "transitions", "generated-recipes"):
+        completed = subprocess.run(
+            [
+                "rsync",
+                "-a",
+                "--prune-empty-dirs",
+                "-e",
+                "ssh -o BatchMode=yes -o ConnectTimeout=20",
+                "--include=*/",
+                "--include=*.json",
+                "--include=*.yaml",
+                "--include=DONE",
+                "--include=HOLD",
+                "--exclude=*",
+                f"{SSH_HOST}:{root / name}",
+                str(destination) + "/",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        if completed.stderr:
+            print(completed.stderr.strip())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "action", choices=("plan", "submit", "status", "fetch", "cancel", "arm-bundle", "gpu-probe")
+        "action",
+        choices=(
+            "plan",
+            "submit",
+            "status",
+            "fetch",
+            "cancel",
+            "arm-bundle",
+            "gpu-probe",
+            "submit-arrays",
+            "arm-transition",
+            "prepare-transition",
+            "throttle-arrays",
+        ),
     )
     parser.add_argument("--recipes", nargs="+", type=Path, default=[])
     parser.add_argument("--seeds", nargs="+", type=int)
@@ -335,6 +376,14 @@ def main() -> None:
         type=float,
         help="cancel expired PENDING requested cz- runs and re-target to free preferred GPUs",
     )
+    parser.add_argument("--rules", type=Path)
+    parser.add_argument("--after", nargs="+", default=[])
+    parser.add_argument("--teacher-after", nargs="+", default=[])
+    parser.add_argument("--signal-after-epoch", type=int)
+    parser.add_argument("--generated-round", nargs="+", default=[])
+    parser.add_argument(
+        "--state-destination", type=Path, default=REPOSITORY / "outputs/ws3/cluster-state"
+    )
     arguments = parser.parse_args()
     if (
         arguments.retarget_pending_after_hours is not None
@@ -348,11 +397,88 @@ def main() -> None:
             parser.error("--seeds must be present in the requested recipes")
         runs = tuple(run for run in runs if run.seed in arguments.seeds)
     root = remote_root()
+    if arguments.action in {
+        "submit-arrays",
+        "arm-transition",
+        "prepare-transition",
+        "throttle-arrays",
+    }:
+        if arguments.action in {"arm-transition", "prepare-transition"}:
+            from cluster.transitions import load_rules
+
+            if arguments.rules is None or (
+                arguments.action == "arm-transition"
+                and load_rules(arguments.rules).approval != "confirmed"
+            ):
+                parser.error("arm-transition requires WS5-confirmed rules")
+        checkout, commit = deploy(root)
+        if arguments.action == "throttle-arrays":
+            orchestration_payload = {"gpu_limit": arguments.gpu_limit}
+            module, action = "cluster.arrays", "throttle"
+        elif arguments.action == "submit-arrays":
+            tasks = [
+                {
+                    "recipe_path": str(checkout / run.recipe_path.relative_to(REPOSITORY)),
+                    "seed": run.seed,
+                    "signal_after_epoch": arguments.signal_after_epoch,
+                }
+                for run in runs
+            ]
+            orchestration_payload = {
+                "tasks": tasks,
+                "gpu_limit": arguments.gpu_limit,
+                "constraint": None
+                if arguments.constraint in {None, "any", "null"}
+                else arguments.constraint,
+                "required_node": arguments.node,
+            }
+            module, action = "cluster.arrays", "submit"
+        else:
+            orchestration_payload = {
+                "rules": str(checkout / arguments.rules.resolve().relative_to(REPOSITORY)),
+                "after": arguments.after,
+                "teacher_after": arguments.teacher_after,
+                "prepare_only": arguments.action == "prepare-transition",
+            }
+            module, action = "cluster.transitions", "arm"
+        print(
+            remote(
+                [
+                    "sh",
+                    "-c",
+                    f"cd {shlex.quote(str(checkout))} && python -m {module} {action} "
+                    f"--payload {shlex.quote(json.dumps(orchestration_payload))}",
+                ]
+            )
+        )
+        return
     jobs = current_queue()
     state = inspect_runs(root, runs)
+    orchestration = json.loads(
+        remote(
+            [
+                "python",
+                "-c",
+                (REPOSITORY / "cluster/state.py").read_text(),
+                "--root",
+                str(root),
+                "--jobs",
+                json.dumps({job.identifier: job.state for job in jobs if job.owned}),
+            ]
+        )
+    )
     done = {name for name, details in state.items() if details["done"]}
     if arguments.action in {"plan", "status"}:
-        for item in plan_runs(runs, done, jobs):
+        array_jobs = {
+            str(task["run_name"]): str(task["state"])
+            for task in orchestration["arrays"]
+            if task["state"] in ACTIVE_STATES
+        }
+        planned_jobs = (
+            *jobs,
+            *(Job("array", name, phase, "gpu", "gpu:1") for name, phase in array_jobs.items()),
+        )
+        for item in plan_runs(runs, done, planned_jobs):
             if arguments.action == "status":
                 report = state[item["run"]].get("report", {})
                 if isinstance(report, dict):
@@ -367,8 +493,24 @@ def main() -> None:
                         job.submitted_at.isoformat() if job.submitted_at else None
                     )
                     print(json.dumps(metadata))
+        if arguments.action == "status":
+            for item in [*orchestration["arrays"], *orchestration["transitions"]]:
+                print(json.dumps(item))
         return
     if arguments.action == "fetch":
+        fetch_orchestration(root, arguments.state_destination)
+        generated_paths: list[Path] = []
+        for identifier in arguments.generated_round:
+            if Path(identifier).name != identifier or identifier in {".", ".."}:
+                parser.error("--generated-round requires a round identifier")
+            generated_paths.extend(
+                sorted(
+                    (arguments.state_destination / "generated-recipes" / identifier).glob("*.yaml")
+                )
+            )
+        runs = (*runs, *desired_runs(generated_paths))
+        if generated_paths:
+            state = inspect_runs(root, runs)
         available = [run for run in runs if state[run.relative_run].get("report")]
         fetch(root, available, arguments.destination, arguments.leaderboard)
         print(

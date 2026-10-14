@@ -1,0 +1,24 @@
+version: 1
+id: smoke-followup-r4
+approval: confirmed
+confirmed_by: WS3 infrastructure smoke only
+notes: Synthetic smoke data; no model selection claims.
+inputs:
+- training/recipes/smoke-array-r4.yaml
+seeds:
+- 0
+top_k: 1
+tie_epsilon: 0.01
+minimum_small_gain: 0.04
+latency_records:
+  yolo11n.pt: experiments/latency/xcng0-pigeon_baseline_v1-2-ncnn-fp16-384x640.json
+tie_order: []
+training:
+  epochs: 2
+  patience: 0
+  cos_lr: true
+  nbs: 64
+  save_period: 1
+  cache: false
+nano_imgsz: null
+stage: plain

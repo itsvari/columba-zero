@@ -8,7 +8,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta
 from itertools import product
@@ -16,7 +16,17 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import Mock, patch
 
+import yaml
+
 from app.json_data import JsonValue
+from cluster.arrays import (
+    active_run_names,
+    group_tasks,
+    shares,
+    submit_arrays,
+    task_for,
+    throttle_arrays,
+)
 from cluster.artifacts import (
     LEADERBOARD_COLUMNS,
     REQUIRED_ARTIFACTS,
@@ -30,6 +40,7 @@ from cluster.gpu_policy import available_request, load_policy
 from cluster.gpu_selection import GPU_CONSTRAINTS, gpu_inventory, parse_inventory, request_for
 from cluster.hardware import allowed_gpu, select_batch
 from cluster.recipe import load_recipe, resolve_teacher, validate_recipe
+from cluster.requeue import MAX_REQUEUES, update_ledger
 from cluster.run_job import (
     Trainer,
     TrainingContext,
@@ -55,6 +66,7 @@ from cluster.slurm import (
     submit_pending,
 )
 from cluster.staging import stage_dataset
+from cluster.state import snapshot
 from cluster.sweep import (
     DesiredRun,
     excluded_nodes,
@@ -65,6 +77,18 @@ from cluster.sweep import (
 )
 from cluster.sweep import (
     main as sweep_main,
+)
+from cluster.transitions import (
+    Candidate,
+    HoldRequired,
+    Rules,
+    arm_transition,
+    completed_metric,
+    execute_transition,
+    generate_recipes,
+    load_rules,
+    recover_interrupted_inputs,
+    select_candidates,
 )
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -447,6 +471,7 @@ class ClusterTests(unittest.TestCase):
             patch("cluster.sweep.remote_root", return_value=Path("/columba")),
             patch("cluster.sweep.current_queue", return_value=(job,)),
             patch("cluster.sweep.inspect_runs", return_value={}),
+            patch("cluster.sweep.remote", return_value='{"arrays": [], "transitions": []}'),
             patch("sys.stdout", new_callable=io.StringIO) as output,
         ):
             sweep_main()
@@ -976,6 +1001,300 @@ class ClusterTests(unittest.TestCase):
             (root / "test.tar.zst.sha256").write_text("wrong  test.tar.zst\n")
             with self.assertRaisesRegex(ValueError, "checksum mismatch"):
                 stage_dataset("test", root, root / "stage")
+
+
+class OrchestrationTests(unittest.TestCase):
+    def write_recipe(self, path: Path, identifier: str = "nano", model: str = "yolo11n.pt") -> Path:
+        values = sample_recipe()
+        values.update(id=identifier, base_model=model, seeds=[0])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(values))
+        return path
+
+    def rules(self) -> Rules:
+        return replace(
+            load_rules(REPOSITORY / "training/rounds/round2.yaml"),
+            identifier="smoke-rules",
+            approval="confirmed",
+            top_k=1,
+            next_rules=None,
+            seeds=(0, 1, 2),
+        )
+
+    def test_qos_caps_and_predeclared_slots(self) -> None:
+        policy = load_policy()
+        self.assertEqual(policy.type_limits["a100-40"], 4)
+        self.assertEqual(policy.type_limits["a100-80"], 2)
+        self.assertEqual(policy.type_limits["h100-47"], 2)
+        self.assertEqual(policy.type_limits["h100-96"], 1)
+        self.assertEqual(policy.type_limits["h200-141"], 1)
+        self.assertEqual(policy.max_submit_jobs, 32)
+        self.assertLessEqual(sum(policy.array_gpu_slots.values()), 8)
+
+    def test_array_throttles_total_and_type_limits(self) -> None:
+        allocation = shares({"nv": 12, "h47": 6, "h96": 3}, {"nv": 8, "h47": 2, "h96": 1}, 8)
+        self.assertEqual(sum(allocation.values()), 8)
+        self.assertLessEqual(allocation["h47"], 2)
+        self.assertEqual(allocation["h96"], 1)
+        self.assertEqual(sum(shares({"nv": 12, "h47": 6}, {"nv": 8, "h47": 2}, 4).values()), 4)
+        with self.assertRaises(ValueError):
+            shares({}, {}, 9)
+
+    def test_arrays_group_light_or_features_and_heavy_types(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            light = self.write_recipe(path / "light.yaml")
+            heavy = self.write_recipe(path / "heavy.yaml", "teacher", "yolo11x.pt")
+            offers = parse_inventory(GPU_INVENTORY)
+            grouped = group_tasks([task_for(light, 0)], offers)
+            request, _ = next(iter(grouped.values()))
+            self.assertEqual(request.resources, "gpu:nv:1")
+            self.assertEqual(request.constraint, "t4|titanv|titanrtx")
+            self.assertEqual(request.partitions, ("gpu-long",))
+            request, _ = next(iter(group_tasks([task_for(heavy, 0)], offers).values()))
+            self.assertEqual(request.resources, "gpu:h100-47:1")
+            request, _ = next(
+                iter(group_tasks([task_for(light, 0)], offers, required_node="xgpj0").values())
+            )
+            self.assertEqual(request.resources, "gpu:a100-80:1")
+            self.assertEqual(request.time_limit, "03:00:00")
+
+    def test_array_submission_manifest_and_done_diff(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            root = home / "columba"
+            checkout = root / "checkouts/pinned"
+            recipe = self.write_recipe(checkout / "training/recipes/light.yaml", "smoke-manifest")
+            values = yaml.safe_load(recipe.read_text())
+            values["seeds"] = [0, 1, 2]
+            recipe.write_text(yaml.safe_dump(values))
+            (checkout / "cluster/templates").mkdir(parents=True)
+            (checkout / "cluster/templates/nv.sbatch").write_text(
+                (REPOSITORY / "cluster/templates/nv.sbatch").read_text()
+            )
+            (checkout / "cluster/excluded_nodes.txt").write_text("xgpe2\nxgpe6\n")
+            done = root / "runs/smoke-manifest/seed2/DONE"
+            done.parent.mkdir(parents=True)
+            done.write_text("complete")
+            commands: list[tuple[Sequence[str], dict[str, JsonValue]]] = []
+
+            def scheduler(
+                command: Sequence[str], **keywords: JsonValue
+            ) -> subprocess.CompletedProcess[str]:
+                commands.append((command, keywords))
+                return subprocess.CompletedProcess(
+                    command, 0, "1 project\n" if command[0] == "du" else "700\n", ""
+                )
+
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch("cluster.arrays.queue", return_value=()),
+                patch("cluster.arrays.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
+                patch("cluster.arrays.subprocess.run", side_effect=scheduler),
+            ):
+                records = submit_arrays(
+                    root, checkout, [task_for(recipe, seed) for seed in (0, 1, 2)], gpu_limit=1
+                )
+            self.assertEqual(records[0]["task_count"], 2)
+            command, keywords = commands[-1]
+            self.assertIn("--array=0-1%1", command)
+            self.assertIn("--gres=gpu:nv:1", command)
+            self.assertIn("--exclude=xgpe2,xgpe6", command)
+            self.assertIn("--nice=1000", command)
+            self.assertIn("--requeue", cast(str, keywords["input"]))
+            manifest = json.loads(Path(cast(str, records[0]["manifest"])).read_text())
+            self.assertEqual([item["seed"] for item in manifest["tasks"]], [0, 1])
+            jobs = parse_queue("700_0|cz-array-test|RUNNING|gpu-long|gres/gpu:nv:1|1")
+            self.assertEqual(active_run_names(root, jobs), {job_name("smoke-manifest", 0)})
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch("cluster.arrays.queue", return_value=jobs),
+                patch("cluster.arrays.subprocess.run") as control,
+            ):
+                throttle_arrays(root, 4)
+            self.assertIn("ArrayTaskThrottle=2", control.call_args.args[0])
+            state = cast(list[dict[str, JsonValue]], snapshot(root, {"700_0": "RUNNING"})["arrays"])
+            self.assertEqual(state[0]["state"], "RUNNING")
+
+    def test_array_tasks_count_against_submission_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            root = home / "columba"
+            path = self.write_recipe(root / "checkouts/pinned/recipe.yaml")
+            jobs = parse_queue(
+                "\n".join(
+                    f"{index}_0|cz-array-test|PENDING|gpu-long|gres/gpu:h100-96:1|1"
+                    for index in range(24)
+                )
+            )
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch("cluster.arrays.queue", return_value=jobs),
+                patch("cluster.arrays.subprocess.run") as scheduler,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "submitted-job cap"):
+                    submit_arrays(root, root / "checkouts/pinned", [task_for(path, 0)])
+            scheduler.assert_not_called()
+
+    def test_requeue_progress_signal_and_restart_are_counted_once(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / "weights").mkdir()
+            (path / "weights/last.pt").write_bytes(b"checkpoint")
+            (path / "run.json").write_text('{"epochs_done": 2}')
+            self.assertFalse(update_ledger(path, "701", 0, "start"))
+            self.assertTrue(update_ledger(path, "701", 0, "signal"))
+            self.assertFalse(update_ledger(path, "701", 1, "start"))
+            self.assertEqual(json.loads((path / "requeue.json").read_text())["count"], 1)
+            with self.assertRaisesRegex(RuntimeError, "no saved epoch"):
+                update_ledger(path, "701", 1, "signal")
+            self.assertTrue((path / "HOLD").exists())
+
+    def test_node_failure_restart_and_requeue_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / "weights").mkdir()
+            (path / "weights/last.pt").write_bytes(b"checkpoint")
+            (path / "run.json").write_text('{"epochs_done": 3}')
+            self.assertFalse(update_ledger(path, "702", 1, "start"))
+            self.assertEqual(json.loads((path / "requeue.json").read_text())["count"], 1)
+            (path / "requeue.json").write_text(json.dumps({"count": MAX_REQUEUES, "last_epoch": 2}))
+            with self.assertRaisesRegex(RuntimeError, "limit"):
+                update_ledger(path, "703", 0, "signal")
+
+    def test_force_signal_cannot_target_production(self) -> None:
+        with self.assertRaisesRegex(ValueError, "smoke epoch"):
+            task_for(BASELINE_RECIPE, 0, 1)
+
+    def test_transition_rank_small_gain_and_latency_tie(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            nano_path = self.write_recipe(root / "nano.yaml", "nano")
+            small_path = self.write_recipe(root / "small.yaml", "small", "yolo11s.pt")
+            nano = Candidate(nano_path, load_recipe(nano_path), 0.70, 20.0)
+            small = Candidate(small_path, load_recipe(small_path), 0.74, 40.0)
+            self.assertEqual(select_candidates([nano, small], self.rules()), (nano,))
+            small = replace(small, recall=0.741)
+            self.assertEqual(select_candidates([nano, small], self.rules()), (small,))
+            other_path = self.write_recipe(root / "other.yaml", "other", "yolo26n.pt")
+            other = Candidate(other_path, load_recipe(other_path), 0.705, 21.0)
+            self.assertEqual(select_candidates([nano, other], self.rules()), (nano,))
+            with self.assertRaisesRegex(HoldRequired, "tie"):
+                select_candidates([nano, replace(other, latency_ms=20.0)], self.rules())
+            resolved = replace(self.rules(), tie_order=("other", "nano"))
+            self.assertEqual(
+                select_candidates([nano, replace(other, latency_ms=20.0)], resolved)[0],
+                replace(other, latency_ms=20.0),
+            )
+
+    def test_generated_nano_800_and_small_deployment_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.write_recipe(root / "nano.yaml", "nano-640-r1")
+            nano = Candidate(source, load_recipe(source), 0.7, 20.0)
+            paths = generate_recipes([nano], self.rules(), root / "generated")
+            self.assertEqual({load_recipe(path).train["imgsz"] for path in paths}, {640, 800})
+            self.assertEqual(load_recipe(paths[0]).seeds, (0, 1, 2))
+            self.assertEqual(load_recipe(paths[0]).train["epochs"], 300)
+            self.assertEqual(generate_recipes([nano], self.rules(), root / "generated"), paths)
+            source = self.write_recipe(root / "small.yaml", "small-640-r1", "yolo11s.pt")
+            small = Candidate(source, load_recipe(source), 0.75, 40.0)
+            path = generate_recipes(
+                [small], self.rules(), root / "small-generated", "teacher/seed0"
+            )[0]
+            self.assertEqual(load_recipe(path).teacher, "teacher/seed0")
+            self.assertEqual(load_recipe(path).deploy_sizes, ((352, 608), (384, 640)))
+
+    def test_done_without_metrics_holds(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.write_recipe(root / "recipe.yaml")
+            run_path = root / "runs/nano/seed0"
+            run_path.mkdir(parents=True)
+            (run_path / "DONE").write_text("bad")
+            with self.assertRaisesRegex(HoldRequired, "incomplete"):
+                completed_metric(root, load_recipe(source), 0)
+
+    def test_draft_arm_refused_and_prepare_does_not_submit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            root = home / "columba"
+            checkout = root / "checkouts/pinned"
+            checkout.mkdir(parents=True)
+            source = checkout / "rules.yaml"
+            source.write_text((REPOSITORY / "training/rounds/round2.yaml").read_text())
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch("cluster.transitions.require_owned_dependencies"),
+                patch("cluster.transitions.queue", return_value=()),
+                patch("cluster.transitions.subprocess.run") as scheduler,
+            ):
+                with self.assertRaisesRegex(ValueError, "draft"):
+                    arm_transition(root, checkout, source, ["704"], ["705", "706"])
+                record = arm_transition(
+                    root, checkout, source, ["704"], ["705", "706"], prepare_only=True
+                )
+            self.assertEqual(record["status"], "prepared, not armed")
+            scheduler.assert_not_called()
+
+    def test_checkpoint_recovery_resubmits_and_rearms_with_two_attempt_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.write_recipe(root / "source.yaml")
+            rules = replace(self.rules(), inputs=(source,))
+            run_path = root / "runs/nano/seed0"
+            (run_path / "weights").mkdir(parents=True)
+            (run_path / "weights/last.pt").write_bytes(b"checkpoint")
+            (run_path / "run.json").write_text('{"epochs_done": 3, "job_id": "707"}')
+            transition = root / "transitions/first"
+            transition.mkdir(parents=True)
+            plan: dict[str, JsonValue] = {"rules": str(source), "teacher_after": ["709", "710"]}
+            with (
+                patch.dict(os.environ, {"SLURM_JOB_ID": "708"}),
+                patch("cluster.transitions.queue", return_value=()),
+                patch("cluster.transitions.terminal_state", return_value="TIMEOUT"),
+                patch(
+                    "cluster.transitions.submit_arrays", return_value=[{"array_id": "711"}]
+                ) as submission,
+                patch("cluster.transitions.arm_transition", return_value={"job_id": "712"}) as arm,
+            ):
+                self.assertTrue(recover_interrupted_inputs(root, root, rules, plan, transition))
+                self.assertEqual(arm.call_args.args[3], ["708", "711"])
+                submission.assert_called_once()
+                with self.assertRaisesRegex(HoldRequired, "no checkpoint progress"):
+                    recover_interrupted_inputs(root, root, rules, plan, transition)
+                (run_path / "run.json").write_text('{"epochs_done": 4, "job_id": "707"}')
+                self.assertTrue(recover_interrupted_inputs(root, root, rules, plan, transition))
+                (run_path / "run.json").write_text('{"epochs_done": 5, "job_id": "707"}')
+                with self.assertRaisesRegex(HoldRequired, "recovery limit"):
+                    recover_interrupted_inputs(root, root, rules, plan, transition)
+
+    def test_genuine_failure_holds_without_submitting(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.write_recipe(root / "source.yaml")
+            rules = replace(self.rules(), inputs=(source,))
+            run_path = root / "runs/nano/seed0"
+            run_path.mkdir(parents=True)
+            (run_path / "run.json").write_text('{"epochs_done": 0, "job_id": "713"}')
+            with (
+                patch("cluster.transitions.terminal_state", return_value="FAILED"),
+                patch("cluster.transitions.submit_arrays") as submission,
+            ):
+                with self.assertRaisesRegex(HoldRequired, "no mechanical recovery"):
+                    recover_interrupted_inputs(root, root, rules, {}, root)
+            submission.assert_not_called()
+
+    def test_transition_malformed_plan_writes_hold(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            plan = home / "columba/transitions/bad/plan.json"
+            plan.parent.mkdir(parents=True)
+            plan.write_text("{}")
+            with patch("pathlib.Path.home", return_value=home):
+                execute_transition(plan)
+            self.assertTrue((plan.parent / "HOLD").exists())
+            self.assertEqual(json.loads((plan.parent / "run.json").read_text())["status"], "HOLD")
 
 
 if __name__ == "__main__":

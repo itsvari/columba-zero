@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
 import json
 import os
-import re
 import shlex
 import subprocess
 from collections.abc import Sequence
@@ -19,11 +17,13 @@ from app.json_data import JsonValue
 from cluster.artifacts import atomic_json, read_json
 from cluster.gpu_policy import load_policy
 from cluster.gpu_selection import GpuOffer, GpuRequest, gpu_inventory, request_for
+from cluster.locking import submission_lock
 from cluster.recipe import load_recipe, recipe_sha256
-from cluster.slurm import ACTIVE_STATES, Budget, Job, job_name, queue, resource_type_for_job
+from cluster.slurm import ACTIVE_STATES, GPU_RUNNING_LIMIT, Budget, Job, job_name, queue
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 MAX_ARRAY_SIZE = 1001
+STORAGE_LIMIT_KIB = 80 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -69,10 +69,15 @@ def active_run_names(root: Path, jobs: Sequence[Job]) -> set[str]:
     names: set[str] = set()
     for manifest in manifests(root):
         record_path = Path(cast(str, manifest["directory"])) / "submission.json"
-        if not record_path.exists():
-            continue
-        record = read_json(record_path)
-        array_id = str(record["array_id"])
+        if record_path.exists():
+            array_id = str(read_json(record_path)["array_id"])
+        else:
+            matching = next(
+                (job for job in jobs if job.name == f"cz-array-{record_path.parent.name}"), None
+            )
+            if matching is None:
+                continue
+            array_id = matching.identifier.split("_")[0]
         for index, task in enumerate(cast(list[dict[str, JsonValue]], manifest["tasks"])):
             if f"{array_id}_{index}" in identifiers or array_id in identifiers:
                 names.add(cast(str, task["run_name"]))
@@ -80,7 +85,7 @@ def active_run_names(root: Path, jobs: Sequence[Job]) -> set[str]:
 
 
 def shares(counts: dict[str, int], limits: dict[str, int], total: int) -> dict[str, int]:
-    if not 0 < total <= 8:
+    if not 0 < total <= GPU_RUNNING_LIMIT:
         raise ValueError("array concurrency must be within 1..8")
     allocated = dict.fromkeys(counts, 0)
     while sum(allocated.values()) < total:
@@ -122,7 +127,13 @@ def group_tasks(
             )
             heavy_index += heavy
             choice = (
-                "t4"
+                next(
+                    feature
+                    for offer in offers
+                    if offer.resource_type == "nv"
+                    for feature in sorted(offer.features)
+                    if feature in {"t4", "titanv", "titanrtx"}
+                )
                 if resource_type == "nv"
                 else "h200"
                 if resource_type == "h200-141"
@@ -154,7 +165,7 @@ def submit_arrays(
     root: Path,
     checkout: Path,
     tasks: Sequence[ArrayTask],
-    gpu_limit: int = 8,
+    gpu_limit: int = GPU_RUNNING_LIMIT,
     constraint: str | None = None,
     required_node: str | None = None,
 ) -> list[dict[str, JsonValue]]:
@@ -165,8 +176,10 @@ def submit_arrays(
     ):
         raise ValueError("arrays must use ~/columba and its pinned checkouts")
     (root / "logs").mkdir(parents=True, exist_ok=True)
-    with (root / ".submission.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with submission_lock(root):
+        control = root / "arrays/concurrency.json"
+        if control.exists():
+            gpu_limit = min(gpu_limit, cast(int, read_json(control)["gpu_limit"]))
         jobs = queue()
         active = active_run_names(root, jobs) | {
             job.name for job in jobs if job.owned and job.state in ACTIVE_STATES
@@ -189,7 +202,7 @@ def submit_arrays(
         footprint = subprocess.run(
             ["du", "-sk", str(root)], check=True, capture_output=True, text=True
         )
-        if int(footprint.stdout.split()[0]) >= 80 * 1024 * 1024:
+        if int(footprint.stdout.split()[0]) >= STORAGE_LIMIT_KIB:
             raise RuntimeError("project storage limit reached")
         grouped = group_tasks(missing, gpu_inventory(), constraint, required_node)
         counts = {key: len(members) for key, (_, members) in grouped.items()}
@@ -223,7 +236,10 @@ def submit_arrays(
             payload["directory"] = str(directory)
             atomic_json(directory / "manifest.json", payload)
             script = (checkout / "cluster/templates/nv.sbatch").read_text()
-            exports = f"export COLUMBA_CHECKOUT={shlex.quote(str(checkout))}\nexport COLUMBA_ARRAY_MANIFEST={shlex.quote(str(directory / 'manifest.json'))}\n"
+            exports = (
+                f"export COLUMBA_CHECKOUT={shlex.quote(str(checkout))}\n"
+                f"export COLUMBA_ARRAY_MANIFEST={shlex.quote(str(directory / 'manifest.json'))}\n"
+            )
             exports += (
                 'eval "$(python -m cluster.arrays task-env --manifest "$COLUMBA_ARRAY_MANIFEST")"\n'
             )
@@ -272,6 +288,55 @@ def submit_arrays(
         return results
 
 
+def throttle_arrays(root: Path, gpu_limit: int) -> list[dict[str, JsonValue]]:
+    if root.resolve() != (Path.home() / "columba").resolve():
+        raise ValueError("array controls must stay in ~/columba")
+    policy = load_policy()
+    with submission_lock(root):
+        active = {job.identifier.split("_")[0] for job in queue() if job.owned}
+        records = [
+            read_json(path)
+            for path in (root / "arrays").glob("*/submission.json")
+            if str(read_json(path)["array_id"]) in active
+        ]
+        counts = {str(item["array_id"]): cast(int, item["task_count"]) for item in records}
+        type_groups: dict[str, list[str]] = {}
+        for item in records:
+            type_groups.setdefault(cast(str, item["resource_type"]), []).append(
+                str(item["array_id"])
+            )
+        limits: dict[str, int] = {}
+        for resource_type, identifiers in type_groups.items():
+            capacity = policy.type_limits[resource_type]
+            limits.update(
+                shares(
+                    {key: counts[key] for key in identifiers},
+                    dict.fromkeys(identifiers, capacity),
+                    capacity,
+                )
+            )
+        allocation = shares(counts, limits, gpu_limit)
+        if any(value == 0 for value in allocation.values()):
+            raise ValueError("more active arrays than slots; cannot assign zero/unlimited throttle")
+        atomic_json(root / "arrays/concurrency.json", {"gpu_limit": gpu_limit})
+        for record in records:
+            identifier = str(record["array_id"])
+            subprocess.run(
+                [
+                    "scontrol",
+                    "update",
+                    f"JobId={identifier}",
+                    f"ArrayTaskThrottle={allocation[identifier]}",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            record["throttle"] = allocation[identifier]
+            atomic_json(Path(cast(str, record["manifest"])).parent / "submission.json", record)
+        return records
+
+
 def task_environment(path: Path, index: int) -> dict[str, str]:
     manifest = read_json(path)
     tasks = cast(list[dict[str, JsonValue]], manifest["tasks"])
@@ -315,7 +380,7 @@ def task_environment(path: Path, index: int) -> dict[str, str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("submit", "task-env"))
+    parser.add_argument("action", choices=("submit", "task-env", "throttle"))
     parser.add_argument("--payload")
     parser.add_argument("--manifest", type=Path)
     arguments = parser.parse_args()
@@ -326,6 +391,9 @@ def main() -> None:
             print(f"export {name}={shlex.quote(value)}")
         return
     payload = cast(dict[str, JsonValue], json.loads(arguments.payload))
+    if arguments.action == "throttle":
+        print(json.dumps(throttle_arrays(Path.home() / "columba", cast(int, payload["gpu_limit"]))))
+        return
     tasks = [
         task_for(
             Path(cast(str, item["recipe_path"])),
@@ -340,7 +408,7 @@ def main() -> None:
                 Path.home() / "columba",
                 REPOSITORY,
                 tasks,
-                cast(int, payload.get("gpu_limit", 8)),
+                cast(int, payload.get("gpu_limit", GPU_RUNNING_LIMIT)),
                 cast(str | None, payload.get("constraint")),
                 cast(str | None, payload.get("required_node")),
             )

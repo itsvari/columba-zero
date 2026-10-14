@@ -11,8 +11,8 @@ import shutil
 import signal
 import subprocess
 import sys
-import time
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,8 +23,8 @@ from typing import Protocol, TypedDict, cast
 from app.json_data import JsonValue
 from cluster.artifacts import atomic_json, copy_artifacts, mark_done, read_json
 from cluster.hardware import configure_ultralytics, describe_hardware, select_batch
-from cluster.requeue import REQUEUE_EXIT_STATUS, RequeueRequested
 from cluster.recipe import Recipe, load_recipe, recipe_sha256, resolve_teacher
+from cluster.requeue import REQUEUE_EXIT_STATUS, RequeueRequested
 from cluster.staging import sha256_file, stage_dataset, stage_weights
 
 CHECKPOINT_PERIOD_EPOCHS = 5
