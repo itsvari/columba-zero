@@ -33,6 +33,7 @@ from cluster.slurm import ACTIVE_STATES, Budget, queue
 
 METRIC_EPSILON = 1e-12
 MAX_RECOVERY_ATTEMPTS = 2
+EXPECTED_TEACHER_COUNT = 2
 
 
 class HoldRequired(ValueError):
@@ -415,7 +416,7 @@ def _arm_transition(
     ).resolve() or not checkout.resolve().is_relative_to(root.resolve() / "checkouts"):
         raise ValueError("transitions must use pinned project checkouts")
     rules = load_rules(rules_path, checkout)
-    if rules.next_rules and not teacher_after:
+    if rules.next_rules and len(set(teacher_after)) != EXPECTED_TEACHER_COUNT:
         raise ValueError("second transition needs both teacher dependencies")
     if not prepare_only and rules.approval != "confirmed":
         raise ValueError("draft rules require WS5 confirmation before arming")
@@ -533,13 +534,18 @@ def terminal_state(job_id: str) -> str:
 
 
 def recover_interrupted_inputs(
-    root: Path, checkout: Path, rules: Rules, plan: dict[str, JsonValue], directory: Path
+    root: Path,
+    checkout: Path,
+    rules: Rules,
+    plan: dict[str, JsonValue],
+    directory: Path,
+    recovery_paths: Sequence[Path] | None = None,
 ) -> bool:
     pending: list[tuple[Path, int, str, int]] = []
     ledger_path = root / "transitions/recovery" / f"{rules.identifier}.json"
     ledger = read_json(ledger_path) if ledger_path.exists() else {"runs": {}}
     entries = cast(dict[str, JsonValue], ledger["runs"])
-    for path in rules.inputs:
+    for path in rules.inputs if recovery_paths is None else recovery_paths:
         recipe = load_recipe(path)
         for seed in recipe.seeds:
             relative = f"{recipe.identifier}/seed{seed}"
@@ -610,9 +616,9 @@ def recover_interrupted_inputs(
     return True
 
 
-def consolidate(root: Path, rules: Rules) -> None:
+def consolidate(root: Path, rules: Rules, additional_paths: Sequence[Path] = ()) -> None:
     rows: list[dict[str, str]] = []
-    for path in [*rules.inputs, *rules.teachers]:
+    for path in [*rules.inputs, *rules.teachers, *additional_paths]:
         recipe = load_recipe(path)
         for seed in recipe.seeds:
             run_path = root / "runs" / recipe.identifier / f"seed{seed}"
@@ -626,6 +632,24 @@ def consolidate(root: Path, rules: Rules) -> None:
         / ("leaderboard-smoke.csv" if rules.identifier.startswith("smoke-") else "leaderboard.csv")
     )
     update_leaderboard(leaderboard, rows)
+
+
+def plain_evidence(
+    root: Path, rules: Rules, plan: dict[str, JsonValue]
+) -> tuple[dict[str, JsonValue], tuple[Path, ...]]:
+    if rules.stage != "distill":
+        return {}, ()
+    upstream = safe_identifier(plan.get("upstream"), "upstream transition")
+    report = read_json(root / "transitions" / upstream / "run.json")
+    if report.get("round") != rules.selection_from or report.get("status") != "submitted":
+        raise HoldRequired("plain transition does not match selection_from or did not submit")
+    paths = tuple(Path(value).resolve() for value in cast(list[str], report["recipes"]))
+    if not paths or any(
+        not path.is_relative_to(root / "generated-recipes" / cast(str, rules.selection_from))
+        for path in paths
+    ):
+        raise HoldRequired("plain recipes missing/outside declared generated round")
+    return report, paths
 
 
 def execute_transition(plan_path: Path) -> None:
@@ -645,22 +669,24 @@ def execute_transition(plan_path: Path) -> None:
             raise HoldRequired("rules lost their confirmation")
         if rules.next_rules and not plan.get("teacher_after"):
             raise HoldRequired("teacher dependencies were not declared at arming")
-        if recover_interrupted_inputs(root, checkout, rules, plan, directory):
+        upstream_report, plain_paths = plain_evidence(root, rules, plan)
+        recovery_paths = (
+            (*rules.inputs, *rules.teachers, *plain_paths)
+            if rules.stage == "distill"
+            else rules.inputs
+        )
+        if recover_interrupted_inputs(root, checkout, rules, plan, directory, recovery_paths):
             return
-        consolidate(root, rules)
+        consolidate(root, rules, plain_paths)
         candidates = collect_candidates(root, rules)
         selected = select_candidates(candidates, rules)
         if rules.stage == "distill":
-            upstream = plan.get("upstream")
-            if not isinstance(upstream, str):
-                raise HoldRequired("distillation needs successful plain transition")
-            upstream_report = read_json(root / "transitions" / upstream / "run.json")
             expected_ids = cast(list[str], upstream_report["selected"])
             selected = tuple(item for item in candidates if item.recipe.identifier in expected_ids)
             if len(selected) != rules.top_k:
                 raise HoldRequired("plain selected combinations do not match distillation rules")
-            for generated_path in cast(list[str], upstream_report["recipes"]):
-                generated_recipe = load_recipe(Path(generated_path))
+            for generated_path in plain_paths:
+                generated_recipe = load_recipe(generated_path)
                 for seed in generated_recipe.seeds:
                     completed_metric(root, generated_recipe, seed)
         teacher = best_teacher(root, rules) if rules.stage == "distill" else None

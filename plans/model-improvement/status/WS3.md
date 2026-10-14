@@ -476,3 +476,170 @@ Fast-forwarded to main 04e9980. Implementing finite Slurm arrays and dependency
 transitions; no persistent login or compute orchestrator. Current jobs remain
 untouched. Verified normal QoS typed GPU caps and association MaxSubmitJobs=32.
 Round-2 rules will be drafts requiring WS5 confirmation before explicit arming.
+
+## Round 4 complete — cluster-side orchestration
+
+Implemented finite GPU arrays and finite arm/normal dependency jobs. No daemon,
+login polling process, sleeping compute orchestrator, tmux, tunnel or remote-access
+service was created. Branch remains ws3/cluster; main was fast-forwarded to
+04e9980 before implementation. Production transitions remain **unarmed**.
+
+### Implementation and limits
+
+- Array manifests map task index to recipe/seed and pin recipe SHA-256 plus an
+  immutable checkout. Active legacy/array runs and DONE runs are skipped.
+  Resubmission returns existing active array receipts, so dependent jobs keep
+  the correct dependencies after a partial submission/retry.
+- Expanded squeue tasks count against the project submitted-task cap of 24.
+  All account jobs count towards the **verified** association MaxSubmitJobs=32.
+  Approved array backlog is held by Slurm; running GPU limits are eight total
+  and the typed normal QoS caps. This differs from legacy single-job admission,
+  which also limits pending GPU requests.
+- **Verified** normal QoS caps: nv=8, A100-40=4, A100-80=2, H100-47=2,
+  H100-96=1, H200-141=1, H200-71=1, CPU=256. Project CPU jobs remain capped at
+  two. The data-driven array shares are nv=4, H100-47=2, H100-96=1, A100-80=1.
+  Shares are recalculated across active and newly submitted arrays, respecting
+  total/type caps. A persisted `throttle-arrays --gpu-limit 4` control also
+  constrains future submissions. It does not cancel existing running work.
+- Light arrays request typed nv with a t4|titanv|titanrtx feature OR-list. Heavy
+  arrays rotate through the declared heavy shares. Explicit recipe/seed/CLI
+  pins work; --constraint any removes a pin. A100-80 automatic groups accept
+  gpu-long,gpu at three hours, retaining aarch64 xgpj0 support. Node exclusions
+  remain xgpe2/xgpe6. The scheduler changed our twenty-minute gpu-long smoke
+  requests to gpu; manifests and SubmitLine preserve the original request.
+- GPU templates request --requeue and --signal=B:USR1@600. A signal finishes
+  and persists the current saved epoch, then requeues the specific array task.
+  Startup guards also cover scheduler node-failure restarts. Per-run
+  requeue.json permits ten lifetime requeues, requires checkpoint progress and
+  records HOLD when a loop would occur. Batch/data/teacher relocation on resume
+  still works; current memory selection or fixed batch_override is reapplied.
+- Transition recovery covers required round-1 inputs, later plain arms and
+  teachers: missing DONE after TIMEOUT/PREEMPTED/NODE_FAIL with last.pt and a
+  progressed saved epoch is resubmitted through arrays. The transition re-arms
+  after recovery. Its separate per-round recovery ledger allows two attempts
+  per run, then HOLD. Genuine failures, missing C6 metrics after DONE, uncovered
+  ties, bad latency evidence, insufficient eligible runs or budget failures HOLD.
+- The confirmed plain transition consolidates leaderboard/ranking evidence,
+  validates generated C5 recipes, submits arrays and declares a second
+  transition after the plain arrays and both teachers. The distilled stage
+  validates the declared upstream round, all plain seeds and both teachers.
+  It also consolidates the finished plain rows. Round 3/WS7 stay manual.
+- status includes expanded tasks, throttles, epochs, requeue counts, HOLD and
+  transition outcomes, including terminal sacct state. fetch copies manifests,
+  ledgers, transition records and generated YAML to outputs/ws3/cluster-state;
+  --generated-round fetches their C6 runs. Smoke rows use a scratch leaderboard.
+
+### Live verification (measured)
+
+| Job/array | Work | Result |
+| --- | --- | --- |
+| 947089 | <=1-minute normal/xcng0 scheduler verification | COMPLETED 0:0; final allocation elapsed 2 s; one successful scontrol requeue, SLURM_RESTART_COUNT=1; in-job squeue and sbatch --test-only passed |
+| 947128_0, 947128_1 | first two-task three-epoch smoke | Both DONE and COMPLETED 0:0; elapsed 59/56 s on final attempts, restart count 1 each |
+| 947161_0, 947161_1 | corrected task-specific USR1/requeue smoke | Both DONE and COMPLETED 0:0; elapsed 55/51 s, restart count 1 each; saved epoch 1 -> resumed -> epoch 3 |
+| 947181 -> 947182_0 | finite consolidation/generation -> one generated follow-up | CPU job COMPLETED in 30 s; generated GPU task DONE/COMPLETED in 50 s |
+| 947213_0, 947213_1 -> 947214 -> 947219_0 | live dependency chain, two-task array -> arm CPU transition -> generated one-task array | All COMPLETED 0:0; parent tasks 51/52 s, CPU 38 s, follow-up 51 s; actual afterany:947213 dependency was recorded and waited before CPU execution |
+
+The original smoke exposed that a numeric job ID can be the array root for one
+of its tasks. `scontrol requeue <numeric root>` can affect the whole array. Fixed
+this to always target <array>_<task>, and added regression coverage for both
+root-sharing and separately numbered tasks. The corrected smoke proved one
+requeue per task and resume on both. run.json retains both attempts and the
+checkpoint relocation. Signal interruption, ledger updates and Slurm restart
+counts are real; recovery failure/cap cases are mocked unit tests.
+
+Measured synthetic timings on Titan V (infrastructure only): corrected 320-pixel
+three-epoch runs averaged 7.952/7.670 s per epoch, batch 64. The final generated
+640-pixel two-epoch run averaged 5.374 s per epoch, batch 32. These short runs
+include warm-up effects and are not comparisons with production training or
+Pi inference. No accuracy claims arise from synthetic smoke data.
+
+Final generated C6 folder:
+`~/columba/runs/smoke-chain-r4-640-smoke-chain-followup-r4/seed0/`.
+Fetched to the matching experiments/runs directory. Artifacts: DONE, TRAINED,
+run.json, results.csv, weights/best.pt, weights/last.pt, predictions_val.json,
+predictions_val.meta.json, predictions_test.json, predictions_test.meta.json,
+metrics_val.json and metrics_test.json. Both val and test synthetic R@P90 are
+0.5; val selected threshold 0.7774906754493713, and test reused that exact value
+from metrics_val.json. All eight requested smoke runs were fetched to the
+scratch leaderboard outputs/ws3/leaderboard-smoke.csv. No production leaderboard
+was updated or committed.
+
+### Cancellation record and migration
+
+Only manual cancellation in round 4: **947130**, the pending initial smoke
+transition for smoke-followup-r4, cancelled after confirming its cz- name and
+PENDING state, to replace the array-root requeue test. It was a CPU transition,
+so recipe/seed, saved epoch and weights/last.pt are not applicable. No training
+job was manually cancelled. The original array tasks had started between the
+queue check and attempted pending-only retirement; the safety check refused
+the cancellation and they completed from their preserved epoch-1 checkpoints.
+Their scheduler-triggered requeues are recorded above and in each requeue.json.
+
+947094 (yolo26s-v2s-640-r1) remains on the old path as approved. No running WS5
+job was cancelled, resubmitted or modified. Current jobs at final verification:
+946641, 946662, 946664, 946665, 947094, 946961 and 946962 all RUNNING. In
+particular the H100-96 teacher 946961 has started. No WS3 job remains queued.
+The Mac auto-submitter stays stopped; the coordinator's periodic check stays
+paused. Neither was edited or restarted.
+
+### Production hand-off — not armed
+
+Prepared plan (no submission):
+`~/columba/transitions/6e2e08c19c779b72/plan.json`.
+Round-1 dependencies: 946641, 946662, 946663, 946664, 946665, 946963, 947094.
+Teacher dependencies for the second stage: 946961, 946962. All eight declared
+v2/v2s source combinations must have complete C6 evidence, including the already
+finished yolo11n-v2 source. Completed dependency IDs no longer in squeue are
+recorded but removed from the scheduler request; C6 checks still apply.
+
+After WS5 confirms **both** training/rounds/round2.yaml and round2-distill.yaml
+(approval: confirmed, named confirmed_by), the coordinator should run exactly:
+
+```sh
+python -m cluster.sweep arm-transition --rules training/rounds/round2.yaml \
+  --after 946641 946662 946663 946664 946665 946963 947094 \
+  --teacher-after 946961 946962
+```
+
+WS5 must confirm reference exclusion, latency bindings and tie orders. The draft
+excludes the four v1clean references, selects top three eligible v2/v2s combos by
+val R@P90 (within 0.01 use estimated Pi fp16 p95), gates small models at >0.04
+over the best same-dataset nano, restricts small deployment sizes, and uses
+three seeds / 300 epochs / patience 50 / cosine LR / nbs 64. Each selected plain
+nano also gets an 800 train arm. Distillation waits for both teachers and all
+plain seeds, then uses the best teacher by val R@P90. Empty tie_order fields
+intentionally HOLD unresolved metric/latency ties; WS5 can declare an order
+before arming. Teachers have a separate exact-score tie order.
+
+Useful check-in commands:
+
+```sh
+python -m cluster.sweep status
+python -m cluster.sweep fetch --generated-round round2-plain round2-distill
+python -m cluster.sweep throttle-arrays --gpu-limit 4
+```
+
+Requests for coordinator documentation: clarify PLAN section 6's distinction
+between the eight running-GPU cap and the 24 submitted array-task cap; document
+C6's optional array_job_id, array_task_id, slurm_restart_count and adjacent
+requeue/HOLD ledgers. No new C5 recipe field is required. WS5 confirmation and
+explicit coordinator arming are the only production prerequisites.
+
+### Checks and evidence
+
+Final section-0 checks: **262** unittest cases, seven dependency/hardware skips;
+all executed cases pass. All **68** cluster tests pass without skips and no
+network. Ruff check and format pass on app/tests/tools/cluster/training/native
+(87 Python files); strict mypy passes on 84 source files. git diff --check passes.
+Tests cover manifests/throttles and global/type caps, active/DONE diffing,
+root-sharing task requeue, node-failure and progress/cap guards, draft refusal,
+HOLD cases, ranking/small gating/ties, generated nano/small/teacher recipes,
+upstream validation, terminal recovery/re-arming and sacct state filtering.
+
+Evidence in git-ignored outputs/ws3/: evidence-round4.json, status-round4.jsonl,
+fetch-round4.log, unit-round4.log, ruff-round4.log, mypy-round4.log and
+cluster-state/{arrays,transitions,generated-recipes}/. The CPU scheduler proof
+is ~/columba/logs/ws3-injob-probe.txt. Live smoke snapshots were committed
+c3103a4 (corrected requeue), fcf0103 (generation) and 162e7dd (actual dependency
+chain). Final publication/preparation uses the final branch state without
+changing any job's pinned checkout.

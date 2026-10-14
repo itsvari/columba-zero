@@ -66,7 +66,7 @@ from cluster.slurm import (
     submit_pending,
 )
 from cluster.staging import stage_dataset
-from cluster.state import snapshot
+from cluster.state import historical_states, snapshot
 from cluster.sweep import (
     DesiredRun,
     excluded_nodes,
@@ -83,10 +83,13 @@ from cluster.transitions import (
     HoldRequired,
     Rules,
     arm_transition,
+    best_teacher,
+    collect_candidates,
     completed_metric,
     execute_transition,
     generate_recipes,
     load_rules,
+    plain_evidence,
     recover_interrupted_inputs,
     require_owned_dependencies,
     select_candidates,
@@ -1286,6 +1289,56 @@ class OrchestrationTests(unittest.TestCase):
             self.assertEqual(load_recipe(path).teacher, "teacher/seed0")
             self.assertEqual(load_recipe(path).deploy_sizes, ((352, 608), (384, 640)))
 
+    def test_candidate_collection_requires_all_source_seeds_and_valid_latency(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.write_recipe(root / "source.yaml")
+            latency = root / "latency.json"
+            latency.write_text(
+                '{"input_hw": [384, 640], "estimated_pi5": {"end_to_end_p95_ms": 20}}'
+            )
+            rules = replace(self.rules(), inputs=(source,), latency_records={"yolo11n.pt": latency})
+            with patch("cluster.transitions.completed_metric", return_value=0.7):
+                self.assertEqual(collect_candidates(root, rules)[0].recall, 0.7)
+                latency.write_text(
+                    '{"input_hw": [640, 640], "estimated_pi5": {"end_to_end_p95_ms": 20}}'
+                )
+                with self.assertRaisesRegex(HoldRequired, "latency"):
+                    collect_candidates(root, rules)
+            with patch(
+                "cluster.transitions.completed_metric", side_effect=HoldRequired("unfinished")
+            ):
+                with self.assertRaisesRegex(HoldRequired, "unfinished"):
+                    collect_candidates(root, rules)
+
+    def test_teacher_selection_requires_declared_tie_order(self) -> None:
+        rules = load_rules(REPOSITORY / "training/rounds/round2-distill.yaml")
+        identifiers = [load_recipe(path).identifier for path in rules.teachers]
+        with patch("cluster.transitions.completed_metric", side_effect=[0.6, 0.7]):
+            self.assertEqual(best_teacher(REPOSITORY, rules), identifiers[1] + "/seed0")
+        with patch("cluster.transitions.completed_metric", side_effect=[0.7, 0.7]):
+            with self.assertRaisesRegex(HoldRequired, "teacher tie"):
+                best_teacher(REPOSITORY, rules)
+        with patch("cluster.transitions.completed_metric", side_effect=[0.7, 0.7]):
+            ordered = replace(rules, teacher_tie_order=(identifiers[1], identifiers[0]))
+            self.assertEqual(best_teacher(REPOSITORY, ordered), identifiers[1] + "/seed0")
+
+    def test_status_retains_cancelled_transition_and_filters_other_jobs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record = root / "transitions/example/submission.json"
+            record.parent.mkdir(parents=True)
+            record.write_text('{"job_id": "740"}')
+            output = (
+                "740|CANCELLED by 123|cz-transition-example|\n"
+                "740.batch|COMPLETED|batch|\n741|RUNNING|moonshot-other|\n"
+            )
+            with patch(
+                "cluster.state.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 0, output, ""),
+            ):
+                self.assertEqual(historical_states(root), {"740": "CANCELLED"})
+
     def test_done_without_metrics_holds(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1365,6 +1418,51 @@ class OrchestrationTests(unittest.TestCase):
                 with self.assertRaisesRegex(HoldRequired, "no mechanical recovery"):
                     recover_interrupted_inputs(root, root, rules, {}, root)
             submission.assert_not_called()
+
+    def test_distill_checks_upstream_and_recovers_plain_and_teacher_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            plain = self.write_recipe(root / "generated-recipes/round2-plain/plain.yaml", "plain")
+            report_path = root / "transitions/parent/run.json"
+            report_path.parent.mkdir(parents=True)
+            report_path.write_text(
+                json.dumps(
+                    {"round": "round2-plain", "status": "submitted", "recipes": [str(plain)]}
+                )
+            )
+            rules = replace(self.rules(), stage="distill", selection_from="round2-plain", inputs=())
+            report, paths = plain_evidence(root, rules, {"upstream": "parent"})
+            self.assertEqual(paths, (plain,))
+            self.assertEqual(report["status"], "submitted")
+            run_path = root / "runs/plain/seed0"
+            (run_path / "weights").mkdir(parents=True)
+            (run_path / "weights/last.pt").write_bytes(b"checkpoint")
+            (run_path / "run.json").write_text(
+                '{"epochs_done": 2, "job_id": "750", "array_job_id": "749", "array_task_id": "0"}'
+            )
+            transition = root / "transitions/recovery-attempt"
+            transition.mkdir(parents=True)
+            with (
+                patch.dict(os.environ, {"SLURM_JOB_ID": "751"}),
+                patch("cluster.transitions.queue", return_value=()),
+                patch("cluster.transitions.terminal_state", return_value="NODE_FAIL") as state,
+                patch("cluster.transitions.submit_arrays", return_value=[{"array_id": "752"}]),
+                patch("cluster.transitions.arm_transition", return_value={"job_id": "753"}),
+            ):
+                self.assertTrue(
+                    recover_interrupted_inputs(
+                        root,
+                        root,
+                        rules,
+                        {"rules": str(plain), "upstream": "parent"},
+                        transition,
+                        paths,
+                    )
+                )
+                state.assert_called_once_with("749_0")
+            report_path.write_text('{"round": "other", "status": "submitted", "recipes": []}')
+            with self.assertRaisesRegex(HoldRequired, "selection_from"):
+                plain_evidence(root, rules, {"upstream": "parent"})
 
     def test_transition_malformed_plan_writes_hold(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

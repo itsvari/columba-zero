@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import subprocess
 from pathlib import Path
 from typing import TypeAlias, cast
 
@@ -15,6 +17,38 @@ def mapping(path: Path) -> dict[str, JsonValue]:
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON mapping: {path}")
     return value
+
+
+def historical_states(root: Path) -> dict[str, str]:
+    identifiers = {
+        str(record.get("array_id", record.get("job_id", "")))
+        for directory in ("arrays", "transitions")
+        for path in (root / directory).glob("*/submission.json")
+        for record in (mapping(path),)
+    }
+    if not identifiers:
+        return {}
+    if any(not identifier.isdecimal() for identifier in identifiers):
+        raise ValueError("invalid recorded job identity")
+    completed = subprocess.run(
+        [
+            "sacct",
+            "-j",
+            ",".join(sorted(identifiers)),
+            "--noheader",
+            "--parsable2",
+            "--format=JobID,State,JobName%100",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return {
+        identifier: state.split()[0].rstrip("+")
+        for row in completed.stdout.splitlines()
+        for identifier, state, name, *_ in (row.split("|"),)
+        if re.fullmatch(r"[0-9]+(?:_[0-9]+)?", identifier) and name.startswith("cz-")
+    }
 
 
 def snapshot(root: Path, job_states: dict[str, str]) -> dict[str, JsonValue]:
@@ -96,7 +130,8 @@ def main() -> None:
     arguments = parser.parse_args()
     if arguments.root.resolve() != (Path.home() / "columba").resolve():
         raise ValueError("state must stay under ~/columba")
-    print(json.dumps(snapshot(arguments.root, cast(dict[str, str], json.loads(arguments.jobs)))))
+    current = cast(dict[str, str], json.loads(arguments.jobs))
+    print(json.dumps(snapshot(arguments.root, {**historical_states(arguments.root), **current})))
 
 
 if __name__ == "__main__":

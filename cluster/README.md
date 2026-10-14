@@ -274,8 +274,8 @@ selected nanos get additional train-imgsz-800 arms. Both stages use three seeds,
 teacher by measured val R@P90; a teacher tie also needs a declared order. Test
 metrics are consolidated but never used to choose these arms.
 
-Missing DONE after TIMEOUT/PREEMPTED/NODE_FAIL, with last.pt and checkpoint
-progress, triggers mechanical resubmission under the array/self-requeue path.
+Missing DONE in required source, plain or teacher runs after
+TIMEOUT/PREEMPTED/NODE_FAIL, with last.pt and checkpoint progress, triggers mechanical resubmission under the array/self-requeue path.
 The same transition is re-armed after the recovery arrays. A separate ledger
 under `transitions/recovery/<round>.json` allows at most two such recoveries per
 run and requires epoch progress between attempts. Genuine failures, missing
