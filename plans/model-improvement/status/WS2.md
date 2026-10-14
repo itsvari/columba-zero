@@ -1,13 +1,16 @@
 # WS2 — Data
 
-- State: not started  <!-- not started | in progress | blocked | done -->
-- Branch:
-- Agent:
-- Last updated:
+- State: in progress  <!-- not started | in progress | blocked | done -->
+- Branch: `ws2/data`
+- Agent: Claude Opus 5.5 via T3 delegate
+- Last updated: 2026-10-14
 
 ## Done
 
 ## In progress
+
+Phase 1: source definitions, fetch/dedupe/build tools, `columba-test-v2`
+(frozen) and `columba-train-v1clean`.
 
 ## Blockers and requests
 
