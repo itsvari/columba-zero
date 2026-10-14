@@ -32,6 +32,7 @@ from app.config import (
 )
 from app.detector import (
     DetectorError,
+    FrameDetector,
     UltralyticsDetector,
     check_model,
     load_model_info,
@@ -42,6 +43,8 @@ from app.main import build_parser, create_detector, run
 from app.models import Detection, Frame, FramePacket
 from app.output import RunOutput
 from app.pipeline import FrameProcessor, OutputQueue, RenderJob
+from app.tracking import ConfirmationTracker
+from tools.summarize_run import summarize_log
 
 TEST_FRAME_SIZE_PX = 32
 COLOUR_CHANNEL_COUNT = 3
@@ -570,6 +573,113 @@ class ProcessorTests(unittest.TestCase):
             [record.event for record in records],
             ["frame", "frame", "camera_switch", "frame"],
         )
+
+
+class InstrumentationTests(unittest.TestCase):
+    def frame_records(
+        self, detector: object, tracker: ConfirmationTracker | None
+    ) -> list[dict[str, JsonValue]]:
+        source = Mock()
+        delivered_s = time.monotonic() - 0.25
+        source.get.side_effect = [
+            FramePacket(
+                0, 10.0, create_test_frame(), delivered_s, "wide", lux=12.0, delivery_ms=40.0
+            ),
+            EndOfStream(),
+        ]
+        source.dropped_frames = 0
+        queue = OutputQueue()
+        processor = FrameProcessor(
+            replace(AppConfig(), display=DisplayConfig(False)),
+            source,
+            cast(FrameDetector, detector),
+            tracker,
+            queue,
+            threading.Event(),
+            time.monotonic(),
+        )
+        processor.run()
+        return [record.fields for record in queue.take()[0] if record.event == "frame"]
+
+    def test_stage_timings_from_ultralytics_speed(self) -> None:
+        class Detector:
+            names = {0: "pigeon"}
+            last_stage_ms = {"preprocess": 1.0, "inference": 30.0, "postprocess": 2.0}
+
+            def warmup(self, width: int, height: int) -> None:
+                pass
+
+            def detect(self, packet: FramePacket) -> list[Detection]:
+                return [Detection("pigeon", 0.9, 1, 2, 30, 40)]
+
+        tracker = ConfirmationTracker(ConfirmationConfig(enabled=True), ["pigeon"])
+        (record,) = self.frame_records(Detector(), tracker)
+        stages = cast(dict[str, float], record["stage_ms"])
+        self.assertEqual(
+            [stages["preprocess"], stages["inference"], stages["postprocess"]], [1.0, 30.0, 2.0]
+        )
+        self.assertGreaterEqual(stages["wait"], 250)
+        self.assertGreaterEqual(stages["track"], 0)
+        self.assertGreaterEqual(cast(float, record["decision_ms"]), stages["wait"])
+        self.assertEqual(
+            (record["camera"], record["lux"], record["delivery_ms"]), ("wide", 12.0, 40.0)
+        )
+        self.assertAlmostEqual(cast(float, record["decided_at"]), time.time(), delta=5)
+
+    def test_backend_without_stage_timings(self) -> None:
+        detector = Mock(spec=["names", "warmup", "detect"])
+        detector.detect.return_value = []
+        (record,) = self.frame_records(detector, None)
+        stages = cast(dict[str, JsonValue], record["stage_ms"])
+        self.assertEqual(
+            (stages["preprocess"], stages["postprocess"], stages["track"]), (None, None, None)
+        )
+        self.assertAlmostEqual(
+            cast(float, stages["inference"]), cast(float, record["inference_s"]) * 1000
+        )
+
+    def test_summary_reports_distributions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "detections.jsonl"
+            records: list[dict[str, JsonValue]] = [
+                {
+                    "event": "frame",
+                    "inference_s": index / 1000,
+                    "stage_ms": {
+                        "wait": float(index),
+                        "preprocess": 1.0,
+                        "inference": 20.0,
+                        "postprocess": None,
+                        "track": 0.05,
+                    },
+                    "delivery_ms": 45.0,
+                    "decision_ms": 50.0 + index,
+                    "camera": "wide" if index < 90 else "noir",
+                }
+                for index in range(1, 101)
+            ]
+            records += [
+                {"event": "frame", "inference_s": 0.02},
+                {"event": "trigger", "first_seen_captured_at": 100.0, "confirmed_at": 100.3},
+                {"event": "camera_switch", "from": "wide", "to": "noir"},
+                {"event": "run_end", "error": None},
+            ]
+            path.write_text("".join(json.dumps(record) + "\n" for record in records))
+            summary = summarize_log(path)
+        distributions = cast(dict[str, dict[str, float] | None], summary["distributions_ms"])
+        wait = distributions["wait"]
+        assert wait is not None
+        # percentiles are the upper edge of their 0.1 ms bin.
+        self.assertEqual(
+            (wait["count"], wait["p50"], wait["p95"], wait["max"]), (100, 50.1, 95.1, 100)
+        )
+        self.assertAlmostEqual(wait["mean"], 50.5)
+        self.assertIsNone(distributions["postprocess"])
+        self.assertEqual(cast(dict[str, float], distributions["track"])["p99"], 0.05)
+        self.assertEqual(cast(dict[str, float], distributions["inference_total"])["count"], 101)
+        self.assertAlmostEqual(cast(dict[str, float], distributions["reaction"])["max"], 300)
+        self.assertEqual((summary["triggers"], summary["camera_switches"]), (1, 1))
+        self.assertEqual(summary["frames_by_camera"], {"wide": 89, "noir": 11})
 
 
 class RuntimeTests(unittest.TestCase):

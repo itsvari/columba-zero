@@ -17,14 +17,19 @@ from typing import Protocol
 
 from .capture import EndOfStream
 from .config import AppConfig
-from .detector import FrameDetector
+from .detector import FrameDetector, stage_timings
 from .json_data import JsonValue
 from .models import Detection, Frame, FramePacket
 from .output import health_snapshot
 from .tracking import ConfirmationTracker, TriggerEvent
 
 RENDER_QUEUE_CAPACITY = 2
+MILLISECONDS_PER_SECOND = 1000
 CONSUMER_POLL_S = 0.01
+
+
+def milliseconds(seconds: float) -> float:
+    return seconds * MILLISECONDS_PER_SECOND
 
 
 class FrameSource(Protocol):
@@ -143,6 +148,20 @@ class FrameProcessor:
         self.result = ProcessingResult()
         self._last_health_at_monotonic_s = started_at_monotonic_s
 
+    def stage_ms(
+        self, wait_s: float | None, inference_s: float, track_ms: float | None
+    ) -> dict[str, JsonValue]:
+        """C9 stage timings. Without per-stage figures from the detector, the
+        whole detect call counts as inference."""
+        stages = stage_timings(getattr(self.detector, "last_stage_ms", None))
+        if all(value is None for value in stages.values()):
+            stages["inference"] = milliseconds(inference_s)
+        return {
+            "wait": None if wait_s is None else milliseconds(wait_s),
+            **stages,
+            "track": track_ms,
+        }
+
     def run(self) -> None:
         result = self.result
         try:
@@ -158,19 +177,26 @@ class FrameProcessor:
 
     def process(self, packet: FramePacket) -> None:
         result = self.result
+        picked_up_monotonic_s = time.monotonic()
         if packet.camera != self._camera:
             if self.tracker is not None and self._camera is not None:
                 self.tracker.reset()
             self._camera = packet.camera
         inference_started_at_monotonic_s = time.monotonic()
         detections = self.detector.detect(packet)
-        inference_s = time.monotonic() - inference_started_at_monotonic_s
+        inference_finished_at_monotonic_s = time.monotonic()
+        inference_s = inference_finished_at_monotonic_s - inference_started_at_monotonic_s
         triggers: list[TriggerEvent] = []
         confirmed_track_ids: frozenset[int] = frozenset()
+        track_ms: float | None = None
         if self.tracker is not None:
             update = self.tracker.update(detections, packet.sequence, packet.captured_at)
             detections, triggers = update.detections, update.triggers
             confirmed_track_ids = self.tracker.confirmed_track_ids
+            track_ms = milliseconds(time.monotonic() - inference_finished_at_monotonic_s)
+        decided_at = time.time()
+        decided_at_monotonic_s = time.monotonic()
+        delivered_monotonic_s = packet.delivered_monotonic_s
         result.dropped_frames = self.source.dropped_frames
         result.processed_frames += 1
         elapsed_s = time.monotonic() - self.started_at_monotonic_s
@@ -192,6 +218,22 @@ class FrameProcessor:
             dropped_frames=result.dropped_frames,
             processing_fps=processing_fps,
             capture_fps=capture_fps,
+            stage_ms=self.stage_ms(
+                picked_up_monotonic_s - delivered_monotonic_s
+                if delivered_monotonic_s is not None
+                else None,
+                inference_s,
+                track_ms,
+            ),
+            camera=packet.camera,
+            lux=packet.lux,
+            delivery_ms=packet.delivery_ms,
+            decided_at=decided_at,
+            decision_ms=(
+                milliseconds(decided_at_monotonic_s - delivered_monotonic_s)
+                if delivered_monotonic_s is not None
+                else None
+            ),
         )
         for trigger in triggers:
             self.sink.event("trigger", **trigger.as_dict())
