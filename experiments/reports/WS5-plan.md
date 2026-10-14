@@ -83,6 +83,18 @@ Observations:
 
 ## Round 1 on v2/v2s (in progress)
 
+Measured, 1 seed (P/R at the val threshold are in the leaderboard and
+metrics files):
+
+| Recipe | GPU | Epochs | val R@P90 | test R@P90 | test small R@P90 | test AP50 | empty FAR | confuser FAR |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| yolo26n-v2-640-r1 | Titan V | 144 | 0.773 | 0.705 | 0.472 | 0.818 | 0.000 | 0.055 |
+| yolo11n-v2-640-r1 | T4 | 137 | 0.770 | 0.691 | 0.438 | 0.788 | 0.000 | 0.041 |
+| yolo11s-v2-640-r1 | Titan V → H100 NVL (resumed) | 136 | 0.758 | 0.734 | 0.534 | 0.808 | 0.000 | 0.014 |
+
+yolo11s-v2 has the best test numbers, but val R@P90 is the ranking metric
+and it does not beat the nanos on val by the 0.04 margin.
+
 The first result, measured: `yolo11n-v2-640-r1` (T4, 137 epochs)
 - val R@P90 0.770 (v2 val includes negatives).
 - test R@P90 **0.691**, test small R@P90 0.438, test AP50 0.788.
@@ -151,6 +163,12 @@ narrow it.
   verified on 15 Oct: yolo11s-v2 continued from epoch 33 on an H100 NVL
   with batch 16 → 64. nbs 64 keeps the effective batch at 64.
 
+- **Teachers measured (15 Oct):**
+  - yolo11x-b16 on a full H100 NVL (h100-96): ≈ 201 s/epoch → ≈ 17 h for
+    300 epochs.
+  - yolo26x-b12 on an H100 MIG 3g.47gb (h100-47, moved by the
+    coordinator): ≈ 367 s/epoch → ≈ 31 h.
+
 ### ETAs (estimated, 15 Oct, from the turn-4 snapshot)
 
 - **Round 1:** the 5 runs on Titan V need ≈ 0.7–3.7 h more each (measured
@@ -176,12 +194,44 @@ narrow it.
 
 ## Selection rules
 
-- **Round 1 → 2:** rank the 12 runs by val `pigeon_recall_at_p90` and take
-  the top 3 model × data combinations. Break ties (within 0.01) by the
-  lower estimated Pi 5 frame p95 (WS4 gate, fp16, 384×640).
-  - v1clean val has no negatives, while v2/v2s val does. Their val numbers
-    are on different val sets, so treat cross-dataset ranking as
-    approximate. Before ranking, also check each finalist's test FAR.
+- **Round 1 → 2: automatic.** Confirmed rules in `training/rounds/round2.yaml`,
+  applied by WS3's transition job; no agent reasoning in between.
+  - **Inputs:** the 8 v2/v2s round-1 runs. v1clean is excluded (its val has
+    no negatives). Any input not DONE → HOLD.
+  - **Ranking:** take the top 3 model × data combinations by val
+    `pigeon_recall_at_p90`. Test metrics are never used.
+  - **Ties:** recalls within 0.01 of the current leader go to the lower
+    estimated Pi 5 fp16 p95 at 384×640.
+    - All four models use the **COCO** latency records (yolo11n 38.7,
+      yolo26n 36.9, yolo11s 81.8, yolo26s 83.5 ms), so the class count is
+      the same and only the architecture differs. The draft's one-class
+      v1-2 record for yolo11n would have flipped the nano order.
+    - Exact latency ties occur only for the same model on v2 vs v2s. They
+      prefer **v2s** via `tie_order`: style copies cover the NoIR and wide
+      cameras, which the original-style val cannot measure.
+  - **s models** enter only with val R@P90 more than 0.04 above the best
+    nano on the same dataset, and deploy at ≤ 384×640 only.
+  - **Selected nanos** also get a 3-seed `imgsz 800` arm (deploy 448×800).
+  - **Training:** 3 seeds, 300 epochs, patience 50, cos_lr, nbs 64,
+    save_period 5, cache ram.
+    - Optimizer pinned to what `auto` resolved to on v2/v2s in round 1:
+      MuSGD, lr0 0.01, momentum 0.9, warmup_bias_lr 0.
+    - No `batch_override`: the runner's memory class picks the batch.
+    - GPU placement follows `cluster/gpu_policy.yaml`. The 800 arms count as
+      heavy. Generated recipes keep the round-1 `est_gpu_hours`
+      (nano v2 3.7 → light; v2s ≥ 7.3 → heavy).
+- **Distillation: automatic.** `training/rounds/round2-distill.yaml` runs
+  after the plain arrays and both teachers finish.
+  - Arms: the same 3 combinations at 640 only. The 800 arms are not
+    distilled automatically.
+  - Teacher: the higher teacher val R@P90. An exact tie prefers yolo11x.
+  - `dis` 6.0 (the Ultralytics default). Training block identical to the
+    plain arms.
+- **Dry run** (local, WS3's own functions on 3 real runs plus labelled
+  mocks; `outputs/ws5/scripts/dryrun_round2.py`): with current values and
+  v2s equal to v2, the selection is yolo26n-v2s, yolo26n-v2, yolo11n-v2s →
+  18 plain + 9 distilled = 27 runs. An s model is selected only in the
+  +0.06 scenario. An unfinished input HOLDs.
 - **Round 2 → winner:** best 3-seed mean val `pigeon_recall_at_p90`, then:
   - Section 1 promotion: 3-seed mean test `pigeon_recall_at_p90` beats the
     baseline mean by more than the larger of the two seed std devs.

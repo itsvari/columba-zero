@@ -55,40 +55,44 @@
 
 ## In progress
 
-Turn 4 (15 Oct): budget is now 8 GPUs and 24 queued, all GPU types. WS3
-cancelled 945884, 945885 and 946639.
+Turn 5 (15 Oct): orchestration now runs on the cluster (WS3 arrays and
+transitions). The Mac auto-submitter is stopped.
 
-| Job | Run | Placement | State | s/epoch (measured) |
-|---|---|---|---|---:|
-| 946961 | yolo11x-v2s-960-teacher-b16 (new, fresh) | h100-96, gpu-long | pending | – |
-| 946962 | yolo26x-v2s-960-teacher-b12 (new, fresh) | h100-96, gpu-long | pending | – |
-| 946963 | yolo11s-v2-640-r1 (resumes from epoch 32) | h100-47, gpu (3 h) | pending | 61.6 on Titan V |
-| 946641 | yolo11n-v2s-640-r1 | Titan V xgpd2 | running, epoch 60 | 83.3 |
-| 946662 | yolo11s-v2s-640-r1 | Titan V xgpd5 | running, epoch 39 | 118.5 |
-| 946663 | yolo26n-v2-640-r1 | Titan V xgpd6 | running, epoch 100 | 47.0 |
-| 946664 | yolo26n-v2s-640-r1 | Titan V xgpd7 | running, epoch 50 | 91.3 |
-| 946665 | yolo26s-v2-640-r1 | Titan V xgpd8 | running, epoch 62 | 75.0 |
-| – | yolo26s-v2s-640-r1 | not yet submitted (budget full: 8 of 8) | – | – |
+- **Round-2 rules confirmed** (`approval: confirmed`, `confirmed_by: WS5`):
+  `training/rounds/round2.yaml` and `round2-distill.yaml`.
+  - Latency records are COCO for all four models (the draft bound yolo11n
+    to the one-class v1-2 record).
+  - `tie_order` prefers v2s over v2 for the same model.
+  - Optimizer pinned to MuSGD / lr0 0.01 / momentum 0.9 /
+    warmup_bias_lr 0, which is what `auto` gave in round 1.
+  - cache ram, dis 6.0; teacher tie → yolo11x.
 
-- **Teacher decision:** restart fresh under new IDs (`-b16`, `-b12`)
-  instead of resuming:
-  - Raising `batch_override` changes the recipe hash, and
-    `run_job.validate_existing_run` then raises "recipe changed under an
-    existing run".
-  - Only 10 epochs (yolo11x) and 4 epochs (yolo26x) were lost.
-  - The old runs (`yolo11x-v2s-960-teacher`, cancelled at epoch 10;
-    `yolo26x-v2s-960-teacher`, cancelled at epoch 4) are superseded and
-    must not be resubmitted. Their run.json still says `running`, so I did
-    not fetch them into the leaderboard as running rows.
-- **For the auto-submitter:** keep the teachers out of the `--constraint any`
-  command. `--constraint any` overrides recipe pins and the policy could put
-  them on `xgpj0` (3-hour slices). Teachers:
-  `python -m cluster.sweep submit --recipes training/recipes/yolo11x-v2s-960-teacher-b16.yaml training/recipes/yolo26x-v2s-960-teacher-b12.yaml`
-  (no `--constraint`). Round 1: `python -m cluster.sweep submit --recipes
-  training/recipes/*-v2*-640-r1.yaml --constraint any
-  --retarget-pending-after-hours 2`.
-- ETAs are in `experiments/reports/WS5-plan.md`: round 1 ≈ 5–8 h, teachers
-  ≈ 1–1.5 days, round 2 ≈ 2–2.5 days.
+  Details in `experiments/reports/WS5-plan.md`.
+- **Rule checks:**
+  - `prepare-transition` ran (plan
+    `~/columba/transitions/4ddea01170a47126/plan.json`, status "prepared,
+    not armed"). Nothing was armed.
+  - Local dry run: `outputs/ws5/scripts/dryrun_round2.py`, output in
+    `outputs/ws5/dryrun_round2.txt`.
+  - Two WS3 tests assumed the rules files were drafts. They now build their
+    own draft or empty tie order.
+- **Superseded teachers:** `yolo11x-v2s-960-teacher` (945884, epoch 10) and
+  `yolo26x-v2s-960-teacher` (945885, epoch 4) have `run.json`
+  status `cancelled-superseded`, with `superseded_by`. The originals are kept
+  as `run.json.before-cancel-record`. Both are fetched to the leaderboard.
+- **Jobs (15 Oct):**
+
+  | Job | Run | Placement | State |
+  |---|---|---|---|
+  | 946961 | yolo11x-v2s-960-teacher-b16 | H100 NVL xgpi6 | running, ≈ 201 s/epoch |
+  | 946962 | yolo26x-v2s-960-teacher-b12 | h100-47 xgpi12 | running, ≈ 367 s/epoch |
+  | 946641 | yolo11n-v2s-r1 | Titan V | epoch 132 |
+  | 946662 | yolo11s-v2s-r1 | Titan V | epoch 90 |
+  | 946664 | yolo26n-v2s-r1 | Titan V | epoch 116 |
+  | 946665 | yolo26s-v2-r1 | Titan V | epoch 142 |
+  | 947094 | yolo26s-v2s-r1 | h100-47, gpu (3 h, self-requeue) | epoch 92 |
+- **DONE and fetched:** yolo11n-v2, yolo26n-v2, yolo11s-v2. Val R@P90 0.770 /
+  0.773 / 0.758; test R@P90 0.691 / 0.705 / 0.734.
 
 ## Blockers and requests
 
