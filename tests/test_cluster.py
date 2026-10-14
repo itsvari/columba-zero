@@ -41,7 +41,14 @@ from cluster.slurm import (
     submit_pending,
 )
 from cluster.staging import stage_dataset
-from cluster.sweep import DesiredRun, fetch, plan_runs, probe_submission, submission_for
+from cluster.sweep import (
+    DesiredRun,
+    excluded_nodes,
+    fetch,
+    plan_runs,
+    probe_submission,
+    submission_for,
+)
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 BASELINE_RECIPE = REPOSITORY / "training/recipes/baseline-repro.yaml"
@@ -420,6 +427,17 @@ class ClusterTests(unittest.TestCase):
         desired = DesiredRun(BASELINE_RECIPE, load_recipe(BASELINE_RECIPE), 0)
         with self.assertRaisesRegex(ValueError, "smoke"):
             submission_for(desired, Path("/root"), Path("/checkout"), "commit", 1)
+
+    def test_excluded_nodes_file_is_default_and_extras_are_added(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            listing = Path(directory) / "excluded_nodes.txt"
+            listing.write_text("# header\nxgpe6  # broken\n\nxgpe2\n", encoding="utf-8")
+            self.assertEqual(excluded_nodes(path=listing), ["xgpe6", "xgpe2"])
+            self.assertEqual(
+                excluded_nodes(["xgpd3", "xgpe6"], listing), ["xgpe6", "xgpe2", "xgpd3"]
+            )
+        self.assertIn("xgpe6", excluded_nodes())
+        self.assertIn("xgpe2", excluded_nodes())
 
     def test_gpu_probe_pins_only_an_allowed_nv_node(self) -> None:
         probe = probe_submission("xgpe6", Path("/home/user/columba"), Path("/checkout"))

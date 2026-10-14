@@ -20,8 +20,14 @@ from cluster.recipe import Recipe, load_recipe, recipe_sha256
 from cluster.slurm import ACTIVE_STATES, Budget, Job, Submission, job_name, parse_queue
 
 SSH_HOST = "columba-cluster"
-DEFAULT_EXCLUDED_NODES = ("xgpe6",)
 REPOSITORY = Path(__file__).resolve().parents[1]
+EXCLUDED_NODES_FILE = REPOSITORY / "cluster/excluded_nodes.txt"
+
+
+def excluded_nodes(extra: Sequence[str] = (), path: Path = EXCLUDED_NODES_FILE) -> list[str]:
+    """Return the default exclusion list from `path` followed by any extra nodes."""
+    listed = (line.split("#", 1)[0].strip() for line in path.read_text("utf-8").splitlines())
+    return list(dict.fromkeys([*(node for node in listed if node), *extra]))
 
 
 def remote(command: Sequence[str], input_bytes: bytes | None = None) -> str:
@@ -236,7 +242,12 @@ def main() -> None:
     parser.add_argument("--cpu-limit", type=int, default=2)
     parser.add_argument("--queue-limit", type=int, default=12)
     parser.add_argument("--job-ids", nargs="+", default=[])
-    parser.add_argument("--exclude-nodes", nargs="+", default=list(DEFAULT_EXCLUDED_NODES))
+    parser.add_argument(
+        "--exclude-nodes",
+        nargs="+",
+        default=[],
+        help="nodes to exclude in addition to cluster/excluded_nodes.txt",
+    )
     parser.add_argument("--probe-node", default="xgpe6")
     parser.add_argument("--stop-after-epoch", type=int)
     parser.add_argument("--destination", type=Path, default=REPOSITORY / "experiments/runs")
@@ -297,7 +308,7 @@ def main() -> None:
         ]
     for submission in submissions:
         submission["excluded_nodes"] = (
-            [] if arguments.action == "gpu-probe" else arguments.exclude_nodes
+            [] if arguments.action == "gpu-probe" else excluded_nodes(arguments.exclude_nodes)
         )
     payload: dict[str, JsonValue] = {
         "budget": cast(dict[str, JsonValue], asdict(budget)),

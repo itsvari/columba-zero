@@ -61,8 +61,10 @@ Environment paths:
 - `~/columba/venvs/x86_64-cu126`
 - `~/columba/venvs/aarch64-cpu`
 
-`xgpe6` is excluded from training by default after its CUDA driver failure.
-`--exclude-nodes` can replace the exclusion list. Exclusions accept only node names in the permitted lanes. They
+Every submission excludes the nodes listed in `cluster/excluded_nodes.txt`
+(currently `xgpe6` and `xgpe2`, whose GPUs report "No devices were found").
+`--exclude-nodes` adds nodes to that list; it cannot remove them. Edit the file
+to change the default. Exclusions accept only node names in the permitted lanes. They
 cannot broaden the GPU request or select restricted hardware.
 
 ARM export bundle:
