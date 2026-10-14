@@ -1,9 +1,12 @@
 # Shared contracts
 
-Version: **v1.3**. Changes go through the coordinator and bump the version.
+Version: **v1.4**. Changes go through the coordinator and bump the version.
 
 Changelog:
 
+- v1.4 (2026-10-14, coordinator): C1 clarifications from WS2: archive hash in a
+  sidecar, `data.yaml` paths relative to its folder, extra DATASET.json keys,
+  image-level `human` labels, public-domain licences allowed.
 - v1.3 (2026-10-14, coordinator): C5 gains WS3's recipe fields
   `seed_gpu_constraints`, `test_dataset`, `allow_missing_evaluation`.
 - v1.2 (2026-10-14, coordinator): C7 accepts WS4's optional extensions.
@@ -44,6 +47,21 @@ Training datasets contain only `train` and `val`. Their `data.yaml` has
 `test:` pointing at the frozen test dataset (`../columba-test-v2/images/test`,
 relative to `path:`), so the test dataset is always staged next to the training
 dataset. Test datasets contain only `test`.
+
+Clarifications (v1.4):
+
+- `data.yaml` has no `path:` key; Ultralytics resolves `train`/`val`/`test`
+  relative to the folder containing `data.yaml`.
+- The archived `DATASET.json` has `archive_sha256: null` (a file can't contain
+  its own archive's hash). The hash lives in the sidecar
+  `<name>.tar.zst.sha256` (`sha256sum -c` format) and in the unpacked Mac copy's
+  `DATASET.json`.
+- `DATASET.json` may carry extra keys (`licenses`, `composition`,
+  `build_report`, ...); consumers ignore unknown keys.
+- `label_origin: human` also covers image-level decisions made by a reviewer
+  (e.g. "contains no pigeon" on an unboxed confuser image).
+- Allowed licences also include public-domain equivalents ("No known copyright
+  restrictions", "US Government Work"), recorded as `PDM`.
 
 `manifest.jsonl` line:
 
