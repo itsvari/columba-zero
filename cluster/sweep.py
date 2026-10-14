@@ -302,7 +302,9 @@ def fetch(root: Path, runs: Sequence[DesiredRun], destination: Path, leaderboard
 
 def fetch_orchestration(root: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
-    for name in ("arrays", "transitions", "generated-recipes"):
+    names = ("arrays", "transitions", "generated-recipes")
+    remote(["mkdir", "-p", *(str(root / name) for name in names)])
+    for name in names:
         completed = subprocess.run(
             [
                 "rsync",

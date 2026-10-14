@@ -536,7 +536,12 @@ def recover_interrupted_inputs(
             if (run_path / "DONE").exists():
                 continue
             report = read_json(run_path / "run.json") if (run_path / "run.json").exists() else {}
-            job_id = str(report.get("job_id", ""))
+            job_id = (
+                f"{report['array_job_id']}_{report['array_task_id']}"
+                if report.get("array_job_id") is not None
+                and report.get("array_task_id") is not None
+                else str(report.get("job_id", ""))
+            )
             state = terminal_state(job_id)
             if (
                 state not in {"TIMEOUT", "PREEMPTED", "NODE_FAIL"}

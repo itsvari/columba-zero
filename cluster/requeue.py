@@ -20,6 +20,16 @@ class RequeueRequested(InterruptedError):
     pass
 
 
+def requeue_identifier(job_id: str, array_id: str | None, task_id: str | None) -> str:
+    if not job_id.isdecimal():
+        raise ValueError("invalid Slurm job id")
+    if array_id is None and task_id is None:
+        return job_id
+    if array_id is None or task_id is None or not array_id.isdecimal() or not task_id.isdecimal():
+        raise ValueError("invalid Slurm array identity")
+    return f"{array_id}_{task_id}"
+
+
 def update_ledger(directory: Path, job_id: str, restart_count: int, reason: str) -> bool:
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".requeue.lock").open("a") as lock:
@@ -81,8 +91,9 @@ def main() -> None:
     if not arguments.run_path.resolve().is_relative_to((Path.home() / "columba/runs").resolve()):
         raise ValueError("requeue ledger must be inside ~/columba/runs")
     job_id = os.environ["SLURM_JOB_ID"]
-    if not job_id.isdecimal():
-        raise ValueError("invalid Slurm job id")
+    target = requeue_identifier(
+        job_id, os.environ.get("SLURM_ARRAY_JOB_ID"), os.environ.get("SLURM_ARRAY_TASK_ID")
+    )
     requeue = update_ledger(
         arguments.run_path,
         job_id,
@@ -90,7 +101,7 @@ def main() -> None:
         arguments.action,
     )
     if requeue:
-        subprocess.run(["scontrol", "requeue", job_id], check=True)
+        subprocess.run(["scontrol", "requeue", target], check=True)
 
 
 if __name__ == "__main__":

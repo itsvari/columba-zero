@@ -40,7 +40,7 @@ from cluster.gpu_policy import available_request, load_policy
 from cluster.gpu_selection import GPU_CONSTRAINTS, gpu_inventory, parse_inventory, request_for
 from cluster.hardware import allowed_gpu, select_batch
 from cluster.recipe import load_recipe, resolve_teacher, validate_recipe
-from cluster.requeue import MAX_REQUEUES, update_ledger
+from cluster.requeue import MAX_REQUEUES, requeue_identifier, update_ledger
 from cluster.run_job import (
     Trainer,
     TrainingContext,
@@ -1161,6 +1161,13 @@ class OrchestrationTests(unittest.TestCase):
             (path / "requeue.json").write_text(json.dumps({"count": MAX_REQUEUES, "last_epoch": 2}))
             with self.assertRaisesRegex(RuntimeError, "limit"):
                 update_ledger(path, "703", 0, "signal")
+
+    def test_requeue_targets_one_array_task_even_when_its_job_id_is_the_array_root(self) -> None:
+        self.assertEqual(requeue_identifier("700", "700", "1"), "700_1")
+        self.assertEqual(requeue_identifier("701", "700", "0"), "700_0")
+        self.assertEqual(requeue_identifier("702", None, None), "702")
+        with self.assertRaises(ValueError):
+            requeue_identifier("700", "700", None)
 
     def test_force_signal_cannot_target_production(self) -> None:
         with self.assertRaisesRegex(ValueError, "smoke epoch"):
