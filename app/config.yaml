@@ -13,8 +13,10 @@ camera:
   name: null              # logged as frame.camera; null means camera<index>
 model:
   path: models/pigeon_baseline_v1-2/best_ncnn_model
-  image_size: 640
+  image_size: 640         # integer (square) or [height, width], e.g. [384, 640]
   confidence: 0.5
+  backend: ultralytics    # ultralytics | native (columba_native C++ detector)
+  threads: 4              # native backend CPU threads
 display:
   enabled: true
 output:
