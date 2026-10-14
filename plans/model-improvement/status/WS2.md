@@ -177,6 +177,7 @@ python -m tools.dataset_audit <dataset>/data.yaml      # also: python tools/data
 |---|---|---|---|
 | `columba-test-v2-styles` | 2026-10-14 | `a05b6055960dcea45dabea9ee051f44cccf0e321f7d557f708095480edb4ccab` | `~/columba/data/columba-test-v2-styles.tar.zst` |
 | `columba-train-v2` | 2026-10-14 | `90e8d09e7ad455c521ac04bcf72f7c0237e79fbf904fa3d03529e76ca1d00e9b` | `~/columba/data/columba-train-v2.tar.zst` |
+| `columba-train-v2s` | 2026-10-14 | `d0604b39476ac7b8df3ea2957a39c5ab20be86b667ec23d71aa3321b025b3230` | `~/columba/data/columba-train-v2s.tar.zst` |
 
 ## In progress
 
