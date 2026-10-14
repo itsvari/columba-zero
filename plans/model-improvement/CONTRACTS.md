@@ -1,7 +1,15 @@
 # Shared contracts
 
-Version: **v0 (draft)**. WS0 checks the items marked *(verify)* and marks this
-file `v1`. After that, changes go through the coordinator and bump the version.
+Version: **v1**. Changes go through the coordinator and bump the version.
+
+Changelog:
+
+- v1 (2026-10-14, WS0): C2 species list checked against the Singapore checklist,
+  with taxon ids; `green_pigeon` renamed `pink_necked_green_pigeon`. C5 records
+  the verified distillation arguments. C8 records the verified NCNN layouts:
+  YOLO26 exports are *not* end-to-end by default. C1, C3, C5 and C6 gain notes
+  on staging, `max_det`, model paths and `results.csv` columns.
+- v0: draft.
 
 Paths:
 
@@ -26,8 +34,9 @@ means a new name (`columba-train-v2` → `columba-train-v3`).
 ```
 
 Training datasets contain only `train` and `val`. Their `data.yaml` has
-`test:` pointing at the frozen test dataset (`../columba-test-v2/images/test`).
-Test datasets contain only `test`.
+`test:` pointing at the frozen test dataset (`../columba-test-v2/images/test`,
+relative to `path:`), so the test dataset is always staged next to the training
+dataset. Test datasets contain only `test`.
 
 `manifest.jsonl` line:
 
@@ -87,19 +96,45 @@ taxonomies:
       - pigeon                     # Columba livia, feral/rock pigeon
       - spotted_dove               # confuser (native)
       - zebra_dove                 # confuser (native)
-      - green_pigeon               # pink-necked green pigeon, confuser (native)
+      - pink_necked_green_pigeon   # confuser (native)
       - javan_myna
       - house_crow
       - asian_glossy_starling
       - eurasian_tree_sparrow
       - yellow_vented_bulbul
       - asian_koel
-      - other_bird                 # catch-all
+      - other_bird                 # catch-all, always last
     min_train_instances: 150       # rarer species fold into other_bird
+classes:                           # one entry per species name, same order
+  pigeon: {common_name: ..., scientific_name: Columba livia, inat_taxon_id: 3017,
+           sg_status: ..., role: trigger}   # role: trigger | confuser | other
 ```
 
-The species list is a proposal *(verify)* against an authoritative Singapore
-checklist. Each entry also records its iNaturalist taxon id.
+Verified against the Bird Society of Singapore Records Committee checklist
+(AviList taxonomy, 432 species), <https://singaporebirds.com/checklist>, data
+from <https://singaporebirds.com/api/species>, accessed 2026-10-14. Every
+named species is listed as a "very common" resident (Rock Dove, House Crow and
+Javan Myna as "very common introduced resident"). `green_pigeon` became
+`pink_necked_green_pigeon` because Thick-billed Green Pigeon is also resident.
+Pied Imperial Pigeon (common introduced resident) and Red Collared Dove
+(uncommon) are not named and fall into `other_bird`.
+
+| name | scientific name | iNaturalist taxon |
+|---|---|---|
+| pigeon | *Columba livia* | 3017 |
+| spotted_dove | *Spilopelia chinensis* | 1455918 |
+| zebra_dove | *Geopelia striata* | 3607 |
+| pink_necked_green_pigeon | *Treron vernans* | 3393 |
+| javan_myna | *Acridotheres javanicus* | 145095 |
+| house_crow | *Corvus splendens* | 8031 |
+| asian_glossy_starling | *Aplonis panayensis* | 14965 |
+| eurasian_tree_sparrow | *Passer montanus* | 13851 |
+| yellow_vented_bulbul | *Pycnonotus goiavier* | 14623 |
+| asian_koel | *Eudynamys scolopaceus* | 204510 |
+| other_bird | Aves | 3 |
+
+iNaturalist's place id for Singapore is 6734. `tests/test_taxonomy.py` checks
+the file's invariants.
 
 ## C3 — Predictions
 
@@ -113,8 +148,9 @@ COCO results format, written by any model or framework:
 
 - `image_id` is the C1 manifest `id`. `category_id` is the taxonomy index.
 - `bbox` is in **original image pixels**, `[left, top, width, height]`.
-- Confidence floor 0.001. Duplicate-box removal (NMS) as the deployed runtime
-  would do it (IoU 0.7, or none for end-to-end decoders).
+- Confidence floor 0.001, at most 300 boxes per image (Ultralytics `max_det`).
+  Duplicate-box removal (NMS) as the deployed runtime would do it (IoU 0.7
+  for `decode: yolo11`, none for `decode: yolo26`; see C8).
 
 Sidecar `<run>/predictions_<split>.meta.json`:
 
@@ -186,8 +222,77 @@ notes: ""
 ```
 
 `run_job.py` sets `batch` from the GPU's memory class; `seed`, `project`,
-`name` and `data` are set by the runner, not the recipe. The distillation
-arguments' exact names and meaning *(verify in WS0)* are recorded here.
+`name`, `data` and `distill_model` are set by the runner, not the recipe.
+`train.imgsz` must be an integer (training is square; the distillation set-up
+also assumes it).
+
+Runner notes (verified with Ultralytics 8.4.175 on the Mac, WS0):
+
+- Pass `base_model` and teacher weights as **absolute paths**. A bare name such
+  as `yolo26s.pt` is downloaded into the current directory, not `weights_dir`.
+- Ultralytics reads settings from `$YOLO_CONFIG_DIR/Ultralytics/settings.json`
+  (note the `Ultralytics/` subdirectory). Without one, `datasets_dir` defaults to
+  the parent of the git root plus `/datasets`. Set `datasets_dir`, `weights_dir`
+  and `runs_dir` per job, and `sync: false`.
+
+### Knowledge distillation (verified, Ultralytics 8.4.175)
+
+Two `train` arguments (`ultralytics/cfg/default.yaml`):
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `distill_model` | `None` | Path to the teacher `.pt`. Set → the trainer wraps the student in `ultralytics.nn.distill_model.DistillationModel`. `None` → no distillation. |
+| `dis` | `6.0` | Weight of the distillation loss term. May be set in the recipe's `train:` block. |
+
+The runner resolves the recipe's `teacher: "<recipe_id>/seed<k>"` to the
+absolute path of `$COLUMBA_RUNS_ROOT/<recipe_id>/seed<k>/weights/best.pt`
+(staged to the node) and passes it as `distill_model`.
+
+What it does (read from the installed source, then exercised):
+
+- **Feature distillation**, not box or logit distillation. Forward hooks
+  capture the Detect head's three input feature maps (P3/P4/P5 neck outputs:
+  layers 16, 19, 22 in both YOLO26n and YOLO11n) and the head output. Each student
+  map passes through a learnt projector (1×1 conv, ReLU, 1×1 conv) to the
+  teacher's channel count. The loss per level is an MSE weighted by the
+  teacher's per-anchor confidence (sigmoid, max over classes, averaged over its
+  one-to-many and one-to-one heads where present), summed over the 3 levels,
+  times `dis`, times batch size.
+- The teacher is frozen (eval mode, no gradients) and sees the **student's**
+  augmented batch at the student's `imgsz`. A teacher trained at 960 therefore
+  runs at 640 during distillation.
+- `compile` is forced off when distilling.
+- Checkpoints (`last.pt`, `best.pt`) contain only the student: they load as a
+  plain `DetectionModel` and export as usual. `train_args` keeps `distill_model`
+  and `dis`. On resume, the teacher is rebuilt from the `distill_model` path,
+  so that path must exist again on the resuming node.
+- `results.csv` gains `train/dis_loss` and `val/dis_loss` columns.
+  `val/dis_loss` is always 0 by design.
+
+Constraints:
+
+- Teacher and student need the same number of Detect input levels with the
+  same strides (8/16/32). All YOLO11 and YOLO26 detect models qualify, and the
+  families can be mixed (YOLO11 teacher → YOLO26 student was run).
+- Channel widths may differ (the projector maps them). Class counts may differ
+  (teacher scores are reduced by a max over classes). Run with a COCO-80
+  teacher and a 1-class student. A teacher trained on the same dataset and
+  taxonomy is still the sensible choice.
+- Cost: one teacher forward per batch. Not yet measured on a GPU (WS3/WS5
+  should record epoch time with and without a teacher).
+
+Evidence (Mac M2 Pro, CPU, coco8, `imgsz=320`; scripts in
+`outputs/ws0/scripts/`, not committed):
+
+- **Measured:** 2-epoch runs with teachers `yolo11n.pt` and `yolo26s.pt`
+  (student `yolo26n.pt`), and with `dis=1.0, single_cls=True`, completed. They
+  logged `train/dis_loss` ≈ 11.6 / 9.1 / 1.9 in epoch 1; the no-teacher
+  baseline has no such column.
+- **Measured:** same seed and teacher, `dis=0` vs `dis=6` (`nbs=2` so the
+  optimiser steps every batch): final student weights differ (max abs
+  difference 0.19). Back-propagating only the distillation term gives
+  non-zero gradients in the student (Σ|g| ≈ 3.1e4) and the projector, and zero in
+  the teacher.
 
 ## C6 — Run artifacts and leaderboard
 
@@ -202,6 +307,10 @@ predictions_val.json (+ .meta.json), predictions_test.json (+ .meta.json)
 metrics_val.json, metrics_test.json
 DONE                  written last; its presence means everything above is complete
 ```
+
+`results.csv` columns depend on the model and options: YOLO26 logs
+`train/l1_loss` where YOLO11 logs `train/dfl_loss`, and distillation adds
+`dis_loss` columns. Read columns by name.
 
 `experiments/leaderboard.csv` (committed; one row per run, failures included):
 
@@ -252,16 +361,67 @@ metadata.yaml        Ultralytics keys (task, imgsz, names, stride, end2end, ...)
                        pad_value: 114
                        color_order: bgr | rgb
                        normalize: {mean: [0,0,0], std: [255,255,255]}
-                       output_layout: "<verified layout, e.g. 1x(4+nc)xN xywh | 1x300x6 xyxy,score,cls>"
-                       nms: {iou: 0.7, agnostic: false}   # omitted for end-to-end decoders
+                       output_layout: "1x(4+nc)xN cxcywh-px sigmoid-scores"
+                       nms: {iou: 0.7, agnostic: false}   # decode: yolo11 only
+                       max_det: 300
                        quantization: fp32 | fp16 | int8
                        taxonomy: single | species
                        trigger_classes: [pigeon]
 ```
 
-Export output layouts for YOLO11 and YOLO26 under Ultralytics 8.4.175
-*(verify in WS0)*. `app/detector.py` still accepts the existing v1-2 package,
-which lacks a `columba:` block (treated as `decode: yolo11`, square input).
+`decode` values:
+
+- `yolo11`: anchor-grid output, per-class NMS (IoU 0.7). Used by YOLO11 **and by
+  standard YOLO26 exports** (see below).
+- `yolo26`: the same output tensor, taken from YOLO26's one-to-one head. Decode
+  by top-`max_det` score with **no NMS**. Ultralytics' NCNN exporter cannot
+  produce this; it needs the head swap described below.
+
+Ultralytics' Detect-family `end2end` flag and `columba.decode` are separate:
+the metadata's `end2end` is `false` for every verified NCNN export.
+`columba.decode` is authoritative.
+
+#### Verified NCNN layout (Ultralytics 8.4.175, ncnn 1.0.20260526, Mac M2 Pro)
+
+Exports of `yolo11n.pt` and `weights/yolo26n.pt` with
+`format="ncnn", imgsz=[384, 640]` were inspected and run with the `ncnn` Python
+module on `ultralytics/assets/bus.jpg`. Both have **the same layout**:
+
+| Item | Value |
+|---|---|
+| Input blob | `in0`, `[1, 3, 384, 640]` float32: RGB, 0–1 (`/255`), letterboxed to the full `input_hw` with **centred** padding, pad value 114. |
+| Output blob | one blob, `out0`. ncnn `Mat` dims=2, `h = 4 + nc`, `w = N` → array `(4 + nc, N)` (`(84, 5040)` for COCO). |
+| N | `(H/8)(W/8) + (H/16)(W/16) + (H/32)(W/32)`; 5040 at 384×640. Level order is stride 8, then 16, then 32. |
+| Rows 0–3 | box centre x, centre y, width, height, in **letterboxed input pixels** (not normalised). |
+| Rows 4… | per-class scores, already sigmoid-ed (0–1). No objectness row. |
+| Duplicates | Not removed. NMS is required (`decode: yolo11`). |
+| `metadata.yaml` | `imgsz: [384, 640]` (`[h, w]`), `stride: 32`, `task: detect`, `head: Detect`, `batch: 1`, `channels: 3`, `end2end: false`, `args: {batch: 1, quantize: null}`, `names: {0: ...}`. |
+
+Parity, **measured**: after NMS at IoU 0.7, raw ncnn boxes matched Ultralytics
+PyTorch predictions on the same letterboxed image to within 0.5 px, with
+confidences within 0.005 (YOLO26n: 5 boxes; YOLO11n: 4 boxes).
+
+Findings:
+
+1. **YOLO26 is not end-to-end in these exports.** In 8.4.175 the default
+   `nms=None` selects YOLO26's one-to-many head (with NMS) for predict, val and
+   export alike; only `nms=False` selects the one-to-one (NMS-free) head. The NCNN
+   exporter also forces `end2end` off ("format without top-k support").
+   `fuse()` then drops the one-to-one head from the export.
+2. **One-to-one head export works with a head swap** (**measured**, exploratory):
+   load the `.pt`, set `head.cv2, head.cv3 = head.one2one_cv2, head.one2one_cv3`,
+   set both `one2one_*` to `None`, save, and export as usual. Output layout is
+   identical to the table above. Top-k without NMS matched PyTorch `nms=False`
+   predictions to within 0.5 px. Whether one-to-one beats one-to-many + NMS on
+   our data is untested (WS5/WS7).
+3. Ultralytics `predict` on a rectangular NCNN export works. Ultralytics `val` on
+   a non-PyTorch export does not: "non-PyTorch val requires square images".
+   WS1 must produce C3 predictions through `predict` or its own loop.
+4. `half=`/`int8=` export arguments are deprecated in favour of `quantize`
+   (`16`/`8`); the old names still map onto it with a warning.
+
+`app/detector.py` still accepts the existing v1-2 package, which lacks a
+`columba:` block (treated as `decode: yolo11`, square input).
 
 ## C9 — Runtime records
 
