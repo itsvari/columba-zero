@@ -6,8 +6,8 @@ taxonomy: single
 seeds:
 - 0
 lane: nv
-gpu_constraint: titanrtx
-est_gpu_hours: 60.0
+gpu_constraint: titanv
+est_gpu_hours: 45.0
 teacher: null
 train:
   epochs: 300
@@ -27,6 +27,10 @@ deploy_sizes:
   - 640
 - - 448
   - 800
-notes: 'WS5 teacher for distillation and auto-labelling: 1 seed, 960, Titan RTX 24 GB. Runner
-  batch heuristic gives 3 at 960 for x models on 24 GB (accumulate 21 to nbs 64). Not a deploy
-  candidate.'
+notes: 'WS5 teacher for distillation and auto-labelling: 1 seed, 960, single taxonomy. Titan
+  V because only one Titan RTX (xgpe4) works and the two teachers would otherwise run serially
+  there; 960 kept so both teachers see the same resolution. batch_override 4 from probe 945775
+  (measured on Titan V, 960, AMP, v1clean: yolo11x 2.1 GiB/sample, yolo26x 2.6 GiB/sample;
+  batch 6 OOMs on 12 GB); expected peak 8.9 GiB of 11.8 GiB. nbs 64 -> accumulate 16. est_gpu_hours
+  assumes v2s is ~10x v1clean (8.7k train images) at ~16-18 img/s. Not a deploy candidate.'
+batch_override: 4

@@ -37,6 +37,16 @@
    for every submission except `gpu-probe`. `--exclude-nodes` now adds to
    the list instead of replacing it. Test:
    `tests/test_cluster.py::test_excluded_nodes_file_is_default_and_extras_are_added`.
+10. Teacher memory probe **945775** (`cz-ws5-teacher-mem`, one manual
+    Titan V job, xgpd2, done). Measured at 960 with AMP:
+    - yolo11x: 2.1 GiB/sample.
+    - yolo26x: 2.6 GiB/sample.
+    - Batch 6 OOMs on 12 GB.
+
+    Teachers set accordingly: yolo11x on Titan V with `batch_override: 4`,
+    yolo26x on Titan RTX with `batch_override: 6`. Results in
+    `~/columba/runs/ws5-probes/teacher-mem.json`; the script is
+    `~/columba/scratch/ws5/teacher_mem.py` (local copy in `outputs/ws5/probe/`).
 
 ## In progress
 
@@ -44,10 +54,6 @@
   xgpe2/xgpe6). It is pending: xgpe4, the only working Titan RTX, is
   running another user's job. The first attempt, 945409, failed in 1 s on
   xgpe2 with "No devices were found".
-- Teacher memory probe **945775** (`cz-ws5-teacher-mem`, one manual
-  1-hour Titan V job). Script: `outputs/ws5/probe/teacher_mem.py`, copied
-  to `~/columba/scratch/ws5/`. It measures peak memory and step time for
-  yolo11x/26x at 960 with batches 2–8.
 - Waiting for WS2's `columba-train-v2` and `-v2s` before the other 8 round-1
   recipes and the teachers.
 
