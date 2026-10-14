@@ -4,6 +4,13 @@ camera:
   height: 480
   fps: 15
   frame_timeout_s: 2.0
+  stream: main            # main | lores (hardware-scaled full field of view, e.g. 640x360)
+  main_size: null         # lores only: [width, height] of the main stream; null picks a binned mode
+  lens_position: null     # dioptres for manual focus (0 = infinity); null keeps autofocus
+  max_exposure_us: null   # cap automatic exposure, e.g. 16666 for 1/60 s
+  tuning_file: null       # e.g. imx708_noir.json for the NoIR camera
+  camera_index: 0
+  name: null              # logged as frame.camera; null means camera<index>
 model:
   path: models/pigeon_baseline_v1-2/best_ncnn_model
   image_size: 640

@@ -12,7 +12,7 @@ from types import FrameType
 from typing import Protocol, cast
 
 from .capture import LatestFrameStream, Picamera2Capture, VideoFileCapture
-from .config import AppConfig, ConfigError, ImageSize, ModelConfig
+from .config import AppConfig, CameraConfig, ConfigError, ImageSize, ModelConfig
 from .detector import DetectorError, FrameDetector, UltralyticsDetector, load_model_info
 from .json_data import JsonValue
 from .output import RunOutput, health_snapshot
@@ -54,6 +54,21 @@ class NativeDetectorFactory(Protocol):
     def __call__(
         self, model_path: str, image_size: ImageSize, confidence: float, threads: int = 4
     ) -> FrameDetector: ...
+
+
+def create_camera(camera: CameraConfig) -> Picamera2Capture:
+    return Picamera2Capture(
+        camera.width,
+        camera.height,
+        camera.fps,
+        stream=camera.stream,
+        main_size=camera.main_size,
+        lens_position=camera.lens_position,
+        max_exposure_us=camera.max_exposure_us,
+        tuning_file=camera.tuning_file,
+        camera_index=camera.camera_index,
+        name=camera.label,
+    )
 
 
 def create_detector(model: ModelConfig) -> tuple[FrameDetector, tuple[str, ...]]:
@@ -212,9 +227,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
         source = (
             VideoFileCapture(options.video)
             if options.video
-            else LatestFrameStream(
-                Picamera2Capture(config.camera.width, config.camera.height, config.camera.fps)
-            )
+            else LatestFrameStream(create_camera(config.camera), config.camera.label)
         )
         source.start()
         started_at_monotonic_s = time.monotonic()
