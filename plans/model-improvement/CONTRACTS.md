@@ -1,8 +1,12 @@
 # Shared contracts
 
-Version: **v1**. Changes go through the coordinator and bump the version.
+Version: **v1.1**. Changes go through the coordinator and bump the version.
 
 Changelog:
+
+- v1.1 (2026-10-14, coordinator): C4 gains exact evaluator semantics from WS1
+  (AP method, matching, ties, threshold sentinel, small recall, undefined rates,
+  subsets). C3 meta gains optional `ncnn_compute`.
 
 - v1 (2026-10-14, WS0): C2 species list checked against the Singapore checklist,
   with taxon ids; `green_pigeon` renamed `pink_necked_green_pigeon`. C5 records
@@ -160,6 +164,10 @@ Sidecar `<run>/predictions_<split>.meta.json`:
  "host": "xcng0", "dataset": "columba-test-v2", "created_at": "..."}
 ```
 
+Optional `ncnn_compute`: `runtime_default` (ncnn's fp16 packed/storage/arith
+defaults) or `fp32`. `format` describes the package's weight quantisation, not
+compute precision.
+
 ## C4 — Metrics
 
 Written by `tools/evaluate_predictions.py` as `<run>/metrics_<split>.json`:
@@ -193,6 +201,33 @@ Definitions:
 - `empty_false_alarm_rate`: share of images with no birds that get ≥ 1 pigeon prediction at the operating threshold.
 - `confuser_false_alarm_rate`: same, over images containing only non-pigeon birds.
 - `operating_threshold` is always taken from the validation split (`--select-threshold`). Never chosen on test.
+
+Exact semantics (v1.1, implemented by `tools/evaluate_predictions.py`):
+
+- AP uses pycocotools' 101-point interpolated precision, IoUs 0.50 through 0.95
+  in steps of 0.05, area=all and maxDets=300. A class with no ground-truth boxes
+  has null AP; a class with ground truths and no predictions has AP=0.
+- For operating metrics, predictions are matched per image/class in descending
+  score order to the highest-IoU unmatched ground truth with IoU >= 0.5.
+  Equal-score predictions use prediction-file order within an image. A
+  threshold includes all predictions with score >= threshold, including ties.
+- Validation selects the lowest observed pigeon score at which precision is
+  >= 0.90. With no eligible score, it writes `operating_threshold.value =
+  1.0000000000000002`, `source = selected`, `attainable = false`, `split = val`.
+  This sentinel produces no detections when reused on test. Precision with no
+  detections is 0. Recall with no ground truths is 0.
+- `small_recall_at_p90` is the highest recall of small pigeon ground truths at
+  any threshold where precision over all pigeon predictions is >= 0.90, using
+  the same matches as overall recall. Small means `min(box_w, box_h) *
+  min(input_h / image_h, input_w / image_w) < 32` px. With no small pigeon
+  boxes, small recall is 0.
+- Empty/confuser membership uses manifest `classes_present`, including
+  unlabelled other birds in single-taxonomy datasets, so the manifest must list
+  every bird species (or `other_bird`) present even when it is not boxed. A
+  false-alarm rate with no eligible images is null. All non-pigeon bird
+  classes count as confusers for this metric.
+- `by_style`/`by_source` recompute each subset's PR curve and AP and use the
+  shared validation operating threshold for precision, recall and false alarms.
 
 ## C5 — Recipe
 
