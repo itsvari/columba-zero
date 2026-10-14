@@ -210,11 +210,24 @@ Python pre/post-processing. Full table: `experiments/latency/reaction_budget.md`
 | v1-2 (YOLO11n, 1 class) | 640×640 | 54 ms | 189 ms | 305 ms | 369 ms | 398 ms |
 | YOLO26n (COCO) | 384×640 | 37 ms | 141 ms | 223 ms | 262 ms | 324 ms |
 
-Implications (estimates until WS10 measures on the Pi): nano models at every
-16:9 size fit the 70 ms target with headroom, so per section 4's last bullet
-the headroom goes to accuracy (s-size models, 448×800). FP16 beats int8 on
-both measured hosts. A nano model at 352×608 or 384×640 is close to the 35 ms
-needed for processing both cameras at once (Q1).
+| YOLO11s / YOLO26s (COCO) | 352×608 | 72 ms | 235–239 ms | 389–397 ms | — | 486–494 ms |
+| YOLO11s / YOLO26s (COCO) | 384×640 | 82–84 ms | 261–265 ms | 439–448 ms | — | 533–535 ms |
+| YOLO11s / YOLO26s (COCO) | 448×800 | 116–122 ms | 340–379 ms | 612–631 ms | — | 671–723 ms |
+
+Implications (estimates until WS10 measures on the Pi):
+
+- Nano models fit the 70 ms target at every 16:9 size, including 448×800
+  (49–52 ms). That is where the latency headroom goes first: a nano model
+  trained and deployed at 448×800 (WS5 round 2 `train imgsz 800` variant).
+- s-size models fail the 70 ms target at every size and the 100 ms hard limit
+  at 448×800; at ≤ 384×640 they pass the hard limit with a reaction p95 of
+  ~0.4–0.45 s (but > 0.5 s if misses are correlated). They are admissible only
+  at ≤ 384×640 and only if their accuracy gain is clear; prefer nano otherwise.
+- int8 is not faster than fp16 for s models either (≤ 4 %).
+- The YOLO26 one-to-one (NMS-free) export saves < 1 ms at one class; choose
+  between `decode: yolo11` and `yolo26` on accuracy, not speed.
+- A nano model at 352×608 or 384×640 is close to the 35 ms needed for
+  processing both cameras at once (Q1).
 
 Consequences:
 
