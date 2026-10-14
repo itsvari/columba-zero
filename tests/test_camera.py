@@ -5,7 +5,7 @@ import json
 import tempfile
 import threading
 import unittest
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, redirect_stderr
 from io import StringIO
 from pathlib import Path
@@ -296,6 +296,10 @@ def fake_stream(camera: str, lux: list[float | None]) -> Mock:
     return stream
 
 
+def opener(stream: Mock) -> Callable[[CameraConfig], LatestFrameStream]:
+    return lambda _camera: cast(LatestFrameStream, stream)
+
+
 class DayNightTests(unittest.TestCase):
     def test_lux_hysteresis_needs_a_sustained_change(self) -> None:
         hysteresis = LuxHysteresis(CameraSwitchConfig(10, 40, 5))
@@ -401,6 +405,36 @@ class DayNightTests(unittest.TestCase):
         processor.run()
         self.assertEqual(processor.result.reason, "error")
         self.assertIn("noir release failed", str(processor.result.error))
+
+    def test_abnormal_camera_start_is_cleaned_up(self) -> None:
+        cameras = {"day": CameraConfig(name="wide"), "night": CameraConfig(name="noir")}
+        for cleanup_error in (None, RuntimeError("wide release failed")):
+            stream = fake_stream("wide", [])
+            stream.start.side_effect = KeyboardInterrupt()
+            stream.close.side_effect = cleanup_error
+            source = SwitchingCameraStream(cameras, CameraSwitchConfig(), opener(stream))
+            with self.subTest(cleanup_error=cleanup_error):
+                with redirect_stderr(StringIO()), self.assertRaises(KeyboardInterrupt):
+                    source.start()
+                stream.close.assert_called_once()
+                stream.close.side_effect = None
+                source.close()
+                # a stream whose cleanup failed is retried once at teardown.
+                self.assertEqual(stream.close.call_count, 1 if cleanup_error is None else 2)
+
+    def test_failed_cleanup_is_retried_at_teardown(self) -> None:
+        stream = fake_stream("wide", [])
+        stream.start.side_effect = CaptureError("wide unavailable")
+        stream.close.side_effect = [RuntimeError("wide release failed"), RuntimeError("again")]
+        cameras = {"day": CameraConfig(name="wide"), "night": CameraConfig(name="noir")}
+        source = SwitchingCameraStream(cameras, CameraSwitchConfig(), opener(stream))
+        with self.assertRaisesRegex(CaptureError, "wide release failed"):
+            source.start()
+        with self.assertRaisesRegex(CaptureError, "again"):
+            source.close()
+        self.assertEqual(stream.close.call_count, 2)
+        source.close()
+        self.assertEqual(stream.close.call_count, 2)
 
     def test_cameras_config(self) -> None:
         config = CameraConfigTests.load(

@@ -81,6 +81,7 @@ class SwitchingCameraStream:
         self._previous_dropped_frames = 0
         self._events: list[dict[str, JsonValue]] = []
         self._retry_at_s = float("-inf")
+        self._unreleased: list[LatestFrameStream] = []
 
     @property
     def camera(self) -> CameraConfig:
@@ -93,11 +94,16 @@ class SwitchingCameraStream:
         stream = self.open_stream(self.cameras[role])
         try:
             stream.start()
-        except Exception as start_error:
+        except BaseException as start_error:
+            # also SystemExit/KeyboardInterrupt: the camera may already be acquired.
             try:
                 stream.close()
             except Exception as cleanup_error:
-                # the camera may still be held; recovering onto the other one is unsafe.
+                # keep it so teardown retries once; recovering onto the other camera
+                # while this one may still be held is unsafe.
+                self._unreleased.append(stream)
+                if not isinstance(start_error, Exception):
+                    raise start_error from cleanup_error
                 raise CameraCleanupError(
                     f"camera {self.cameras[role].label} failed to start ({start_error}) "
                     f"and its cleanup failed ({cleanup_error})"
@@ -168,4 +174,17 @@ class SwitchingCameraStream:
         return self._stream.capture_fps if self._stream is not None else 0.0
 
     def close(self) -> None:
-        self._close_active()
+        """Close the active camera, then retry once any whose cleanup failed earlier."""
+        errors: list[str] = []
+        try:
+            self._close_active()
+        except Exception as error:
+            errors.append(str(error))
+        unreleased, self._unreleased = self._unreleased, []
+        for stream in unreleased:
+            try:
+                stream.close()
+            except Exception as error:
+                errors.append(f"retried camera cleanup failed: {error}")
+        if errors:
+            raise CaptureError("; ".join(errors))

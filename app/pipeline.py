@@ -9,12 +9,14 @@ frames to render go to a bounded queue that drops the oldest waiting frame.
 
 from __future__ import annotations
 
+import heapq
 import sys
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
+from operator import itemgetter
 from typing import Protocol
 
 from .capture import EndOfStream
@@ -27,6 +29,7 @@ from .tracking import ConfirmationTracker, TriggerEvent
 
 RENDER_QUEUE_CAPACITY = 2
 LOG_QUEUE_CAPACITY = 4096
+LOG_EVENT_ALLOWANCE = 1024
 # only per-frame records may be dropped; trigger, camera_switch, health, stimulus and
 # error/run records are always kept.
 DROPPABLE_EVENTS = frozenset({"frame"})
@@ -73,11 +76,19 @@ class LogRecord:
 class OutputQueue:
     """A bounded log queue and a bounded queue of frames to render.
 
-    Logs: past `log_capacity` the oldest frame record is dropped (counted in
-    `dropped_records`); other records are never dropped. Frames: with
-    `drop_oldest` the producer never waits and a full queue loses its oldest
-    frame. Without it (replay, which has no real-time pacing) the producer waits
-    for space so that recordings keep every processed frame.
+    Logs: frame records and other events wait in separate deques, merged back into
+    order by sequence number, so enqueueing is O(1). Past `log_capacity` records
+    the oldest queued frame record is dropped, or the incoming one when none is
+    queued (both counted in `dropped_records`). Other events are never dropped:
+    they may exceed the capacity by `event_allowance`. Past that the log writer is
+    too far behind to record triggers, so `overflow_error` is set, `on_overflow`
+    is called once (it stops the run), and further events are refused while
+    those already accepted are kept.
+
+    Frames to render: with `drop_oldest` the producer never waits and a full
+    queue loses its oldest frame. Without it (replay, which has no real-time
+    pacing) the producer waits for space so that recordings keep every
+    processed frame.
     """
 
     def __init__(
@@ -85,35 +96,65 @@ class OutputQueue:
         render_capacity: int = RENDER_QUEUE_CAPACITY,
         drop_oldest: bool = True,
         log_capacity: int = LOG_QUEUE_CAPACITY,
+        event_allowance: int = LOG_EVENT_ALLOWANCE,
+        on_overflow: Callable[[], None] = lambda: None,
     ):
         self.render_capacity = render_capacity
         self.drop_oldest = drop_oldest
         self.log_capacity = log_capacity
+        self.event_allowance = event_allowance
+        self.on_overflow = on_overflow
         self.dropped_renders = 0
         self.dropped_records = 0
-        self._records: deque[LogRecord] = deque()
+        self.overflow_error: str | None = None
+        self._sequence = 0
+        self._frame_records: deque[tuple[int, LogRecord]] = deque()
+        self._event_records: deque[tuple[int, LogRecord]] = deque()
         self._renders: deque[RenderJob] = deque()
         self._log_condition = threading.Condition()
         self._render_condition = threading.Condition()
         self._closed = False
 
     def event(self, event: str, **fields: JsonValue) -> None:
+        overflowed = False
         with self._log_condition:
-            if len(self._records) >= self.log_capacity:
-                for index, record in enumerate(self._records):
-                    if record.event in DROPPABLE_EVENTS:
-                        del self._records[index]
-                        self.dropped_records += 1
-                        break
-            self._records.append(LogRecord(event, fields))
+            queued = len(self._frame_records) + len(self._event_records)
+            if event in DROPPABLE_EVENTS:
+                if queued >= self.log_capacity:
+                    self.dropped_records += 1
+                    if not self._frame_records:
+                        return
+                    self._frame_records.popleft()
+                self._frame_records.append((self._sequence, LogRecord(event, fields)))
+            else:
+                if self.overflow_error is not None:
+                    return
+                if queued >= self.log_capacity and self._frame_records:
+                    self._frame_records.popleft()
+                    self.dropped_records += 1
+                if len(self._event_records) >= self.log_capacity + self.event_allowance:
+                    self.overflow_error = (
+                        f"log writer fell more than {self.log_capacity + self.event_allowance} "
+                        "events behind; stopping because triggers can no longer be recorded"
+                    )
+                    overflowed = True
+                else:
+                    self._event_records.append((self._sequence, LogRecord(event, fields)))
+            self._sequence += 1
             self._log_condition.notify_all()
+        if overflowed:
+            self.on_overflow()
 
     def take_logs(self, timeout_s: float = 0.0) -> list[LogRecord]:
         with self._log_condition:
             if timeout_s > 0:
-                self._log_condition.wait_for(lambda: self._records, timeout_s)
-            records = list(self._records)
-            self._records.clear()
+                self._log_condition.wait_for(
+                    lambda: self._frame_records or self._event_records, timeout_s
+                )
+            merged = heapq.merge(self._frame_records, self._event_records, key=itemgetter(0))
+            records = [record for _, record in merged]
+            self._frame_records.clear()
+            self._event_records.clear()
             return records
 
     def render(self, job: RenderJob) -> None:

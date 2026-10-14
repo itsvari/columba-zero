@@ -88,6 +88,32 @@ Each fix has a regression test that failed on the old code.
    Test: `InstrumentationTests.test_summary_reports_values_beyond_the_histogram`
    (60 s sample).
 
+### Round 3 (review fixes, rebased onto main a15ed4c)
+
+Each fix has a regression test that failed on the old code.
+
+1. **Log queue bound:** frame records and other events wait in separate deques
+   and are merged back by sequence number, so enqueueing is O(1). When the queue
+   is full and no queued frame can be evicted, the incoming frame is dropped and
+   counted. Protected events may exceed the capacity by
+   `LOG_EVENT_ALLOWANCE = 1024`. Past that, `overflow_error` is set, the run stops,
+   events already accepted are still written, and `run_end` reports
+   `reason: error` with exit 1. Tests:
+   - `OutputQueueTests.test_event_only_backlog_drops_frames_and_fails_past_allowance`
+   - `OutputQueueTests.test_log_enqueue_cost_does_not_grow_with_backlog` (the old
+     queue was ≈ 178× slower with a full backlog; the limit is 5×)
+   - `RuntimeTests.test_trigger_backlog_beyond_allowance_stops_the_run`
+2. **Reaction-test race:** `ReactionAnalysis` only collects stimulus, trigger and
+   detection records; `report()` matches them by timestamp afterwards, so arrival
+   order does not matter. Test:
+   `ReactionTests.test_analysis_is_independent_of_arrival_order` (trigger
+   delivered before the stimulus is registered).
+3. **Abnormal camera start:** `SwitchingCameraStream._open` cleans up on any
+   `BaseException` and re-raises it. A stream whose cleanup failed is kept, and
+   `close()` retries it once, reporting failures. Tests:
+   - `DayNightTests.test_abnormal_camera_start_is_cleaned_up` (`KeyboardInterrupt`)
+   - `DayNightTests.test_failed_cleanup_is_retried_at_teardown`
+
 ## In progress
 
 Nothing.
@@ -140,6 +166,7 @@ ncnn 1.0.20260526. Timings are noisy and say nothing about the Pi.
 | Tracker overhead, 20 detections × 1000 frames (unit benchmark, best of 3) | ≈ 0.07 ms/frame (budget 1 ms) | measured |
 | Replay, `pigeon_baseline_v1-2/best_ncnn_model`, 5-frame clip (blank/positive tile alternating, from `outputs/validation/style-cleanup/images/`), default config | pigeon counts `0, 1, 0, 1, 0` (conf 0.866), 0 drops, `video_complete`, recording decodes to 5 frames; inference p50 ≈ 12 ms, decision max ≈ 21 ms | measured |
 | Same, `confirmation.enabled: true` | identical counts; 1 `trigger` (track 1, first seen frame 1, confirmed at frame 3, k=2/n=3) | measured |
+| Round 3 rerun of both replays (after rebase onto a15ed4c and fixes) | identical: counts `0, 1, 0, 1, 0`, trigger at frame 3 with confirmation, 5 processed, 0 drops, 5 recorded | measured |
 | Round 2 rerun of both replays above (after rebase and fixes) | identical: counts `0, 1, 0, 1, 0`, trigger at frame 3 with confirmation, 5 processed, 0 log and render drops, 5 recorded frames | measured |
 | Rectangular C8-style package: WS0's `yolo26n` NCNN export at `[384, 640]`, class 0 relabelled `pigeon` for the smoke test, `columba:` block, `image_size: [384, 640]`, confirmation on | runs via Ultralytics; tile detected as `bird` (class_id 14, tracked as track 1), no trigger (not a trigger class) | measured |
 

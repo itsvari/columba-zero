@@ -573,6 +573,43 @@ class OutputQueueTests(unittest.TestCase):
         )
         self.assertEqual(queue.dropped_records, 8)
 
+    def test_event_only_backlog_drops_frames_and_fails_past_allowance(self) -> None:
+        overflows: list[str] = []
+        queue = OutputQueue(
+            log_capacity=4, event_allowance=3, on_overflow=lambda: overflows.append("stop")
+        )
+        for track_id in range(5):
+            queue.event("trigger", track_id=track_id)
+        # no queued frame can make room, so the incoming frame is dropped.
+        queue.event("frame", frame_number=0)
+        self.assertEqual(queue.dropped_records, 1)
+        self.assertIsNone(queue.overflow_error)
+        for track_id in range(5, 100):
+            queue.event("trigger", track_id=track_id)
+        queue.event("frame", frame_number=1)
+        self.assertEqual(overflows, ["stop"])
+        assert queue.overflow_error is not None
+        self.assertIn("log writer", queue.overflow_error)
+        records = queue.take_logs()
+        # events accepted before the overflow are kept, in order.
+        self.assertEqual([record.fields["track_id"] for record in records], list(range(7)))
+        self.assertEqual(queue.dropped_records, 2)
+
+    def test_log_enqueue_cost_does_not_grow_with_backlog(self) -> None:
+        def enqueue_seconds(backlog: int) -> float:
+            queue = OutputQueue(log_capacity=4096, event_allowance=8192)
+            for track_id in range(backlog):
+                queue.event("trigger", track_id=track_id)
+            started_s = time.perf_counter()
+            for frame_number in range(2000):
+                queue.event("frame", frame_number=frame_number)
+            return time.perf_counter() - started_s
+
+        # best of a few attempts; the Mac is shared with other jobs.
+        empty = min(enqueue_seconds(0) for _ in range(3))
+        saturated = min(enqueue_seconds(4096) for _ in range(3))
+        self.assertLess(saturated, empty * 5)
+
     def test_live_queue_drops_oldest_frames_but_never_logs(self) -> None:
         queue = OutputQueue(render_capacity=2)
         for index in range(5):
@@ -800,6 +837,37 @@ class ReactionTests(unittest.TestCase):
         self.assertIsNone(schedule.advance(16))
         self.assertTrue(schedule.done)
         self.assertEqual(schedule.trial, 2)
+
+    def test_analysis_is_independent_of_arrival_order(self) -> None:
+        pigeon: list[JsonValue] = [{"label": "pigeon"}]
+        records: list[tuple[str, dict[str, JsonValue]]] = [
+            ("frame", {"captured_at": 100.1, "decided_at": 100.15, "detections": pigeon}),
+            ("trigger", {"confirmed_at": 100.3, "track_id": 1}),
+        ]
+        orders = (
+            # the log writer saw the trigger before the stimulus was registered.
+            ["records", "on", "off"],
+            ["on", "records", "off"],
+            ["on", "off", "records"],
+        )
+        for order in orders:
+            analysis = ReactionAnalysis(ReactionPlan(grace_s=1))
+            for step in order:
+                if step == "records":
+                    for event, fields in records:
+                        analysis.observe(event, fields)
+                elif step == "on":
+                    analysis.stimulus(1, "on", 100.0)
+                else:
+                    analysis.stimulus(1, "off", 103.0)
+            report = analysis.report()
+            with self.subTest(order=order):
+                self.assertEqual(
+                    (report["triggered"], report["missed"], report["false_triggers"]), (1, 0, 0)
+                )
+                trial = cast(list[dict[str, JsonValue]], report["per_trial"])[0]
+                self.assertAlmostEqual(cast(float, trial["reaction_s"]), 0.3)
+                self.assertAlmostEqual(cast(float, trial["first_detection_s"]), 0.15)
 
     def test_analysis_matches_triggers_to_trials(self) -> None:
         analysis = ReactionAnalysis(ReactionPlan(grace_s=1))
@@ -1037,6 +1105,7 @@ class RuntimeTests(unittest.TestCase):
         output: Mock,
         detections: Sequence[Sequence[Detection]],
         processed: threading.Event,
+        config: AppConfig | None = None,
     ) -> int:
         """Run live with a fast fake camera, confirmation and display on; `processed`
         is set once the last frame has been detected."""
@@ -1052,7 +1121,7 @@ class RuntimeTests(unittest.TestCase):
         detector = Mock()
         detector.detect.side_effect = detect
         detector.trigger_classes = ("pigeon",)
-        config = replace(
+        config = config or replace(
             AppConfig(),
             display=DisplayConfig(True),
             confirmation=ConfirmationConfig(enabled=True),
@@ -1100,6 +1169,51 @@ class RuntimeTests(unittest.TestCase):
         status = self.live_run(output, [[]] * frame_limit, processed)
         self.assertEqual(status, 0)
         self.assertEqual(logged_during_stall[0], frame_limit)
+
+    def test_trigger_backlog_beyond_allowance_stops_the_run(self) -> None:
+        frame_limit = 200
+        output = Mock()
+        output.poll.return_value = True
+        output.render.return_value = True
+        processed = threading.Event()
+        released_at: list[float] = []
+
+        def stalled_event(event: str, **_fields: JsonValue) -> None:
+            # the log writer stalls for a second on its first record.
+            if event in ("frame", "trigger"):
+                if not released_at:
+                    released_at.append(time.monotonic() + 1.0)
+                while time.monotonic() < released_at[0]:
+                    time.sleep(0.01)
+
+        output.event.side_effect = stalled_event
+        # a new bird far from the last one every frame, each confirming at once.
+        detections = [
+            [Detection("pigeon", 0.9, index * 50, 0, index * 50 + 20, 20)]
+            for index in range(frame_limit)
+        ]
+        config = replace(
+            AppConfig(),
+            display=DisplayConfig(True),
+            confirmation=ConfirmationConfig(enabled=True, k=1, n=1),
+        )
+        with (
+            patch("app.main.LOG_QUEUE_CAPACITY", 4),
+            patch("app.main.LOG_EVENT_ALLOWANCE", 4),
+        ):
+            status = self.live_run(output, detections, processed, config)
+        self.assertEqual(status, 1)
+        run_end = output.event.call_args.kwargs
+        self.assertEqual(run_end["reason"], "error")
+        self.assertIn("log writer", run_end["error"])
+        self.assertLess(run_end["processed_frames"], frame_limit)
+        triggers = [
+            call.kwargs["track_id"]
+            for call in output.event.call_args_list
+            if call.args[0] == "trigger"
+        ]
+        self.assertEqual(triggers, sorted(triggers))
+        self.assertGreaterEqual(len(triggers), 4)
 
     def test_log_writer_stall_drops_frames_but_keeps_triggers(self) -> None:
         frame_limit = 40

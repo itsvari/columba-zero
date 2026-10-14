@@ -106,9 +106,12 @@ so a stalled display never delays logging and the processing loop never waits
 for either. When drawing falls behind, the oldest waiting frame is dropped from
 the display and recording (`render_dropped_frames` in `health` and `run_end`).
 Replay waits for the display instead, so replay recordings keep every frame. If
-the log writer falls more than 4096 records behind, the oldest `frame` records
-are dropped and counted (`log_dropped_records`); `trigger`, `camera_switch`,
-`health` and run records are never dropped. Every queued record is written before
+the log writer falls more than 4096 records behind, the oldest queued `frame`
+record is dropped (or the incoming one, when only other events are queued) and
+counted as `log_dropped_records`. `trigger`, `camera_switch`, `health` and run
+records are never dropped; they may exceed the limit by 1024. Beyond that the
+run stops with an error, because triggers could no longer be recorded; records
+already accepted are still written. Every queued record is written before
 `run_end`, also after a display or recording failure.
 
 ### Configuration reference
@@ -186,7 +189,9 @@ logging each change as a `stimulus` event. Confirmation is enabled for the run
 (with the configured k and n) and the annotated window stays closed. At the end
 it writes `reaction_test.json` and a `reaction_test` log record: per-trial time
 from display to confirmed trigger and to first pigeon detection, misses, and
-triggers outside trials. Display times are taken when OpenCV finishes drawing, so
+triggers outside trials. Results are matched by timestamps after the run, so the
+order in which records reach the log does not matter. Display times are taken
+when OpenCV finishes drawing, so
 monitor latency makes the results slight overestimates. No image ships with the
 repository; use a pigeon photo whose licence you have checked.
 

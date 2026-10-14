@@ -16,6 +16,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from operator import itemgetter
 from typing import cast
 
 import numpy
@@ -111,31 +112,25 @@ def percentiles(values: list[float]) -> dict[str, JsonValue] | None:
 
 
 class ReactionAnalysis:
-    """Match stimulus, frame and trigger records into per-trial reaction times."""
+    """Match stimulus, frame and trigger records into per-trial reaction times.
+
+    Records are only collected while the test runs; `report` matches them by their
+    timestamps afterwards, so the order in which threads deliver them (a trigger
+    may reach the log writer before its stimulus is registered) does not matter.
+    """
 
     def __init__(self, plan: ReactionPlan, trigger_classes: tuple[str, ...] = ("pigeon",)):
         self.plan = plan
         self.trigger_classes = trigger_classes
-        self.trials: list[Trial] = []
-        self.false_triggers = 0
+        self._stimuli: list[tuple[float, int, str]] = []
+        self._triggers: list[tuple[float, int | None]] = []
+        self._detections: list[tuple[float, float]] = []
         # stimuli arrive from the main thread, frames and triggers from the log writer.
         self._lock = threading.Lock()
 
     def stimulus(self, number: int, state: str, displayed_at: float) -> None:
         with self._lock:
-            self._stimulus(number, state, displayed_at)
-
-    def _stimulus(self, number: int, state: str, displayed_at: float) -> None:
-        if state == "on":
-            self.trials.append(Trial(number, on_at=displayed_at))
-        elif self.trials:
-            self.trials[-1].off_at = displayed_at
-
-    def trial_at(self, moment: float) -> Trial | None:
-        for trial in reversed(self.trials):
-            if trial.contains(moment, self.plan.grace_s):
-                return trial
-        return None
+            self._stimuli.append((displayed_at, number, state))
 
     def observe(self, event: str, fields: dict[str, JsonValue]) -> None:
         with self._lock:
@@ -144,15 +139,11 @@ class ReactionAnalysis:
     def _observe(self, event: str, fields: dict[str, JsonValue]) -> None:
         if event == "trigger":
             confirmed_at = fields.get("confirmed_at")
-            if not isinstance(confirmed_at, (int, float)):
-                return
-            trial = self.trial_at(float(confirmed_at))
-            if trial is None:
-                self.false_triggers += 1
-            elif trial.trigger_at is None:
-                trial.trigger_at = float(confirmed_at)
-                track_id = fields.get("track_id")
-                trial.track_id = track_id if isinstance(track_id, int) else None
+            track_id = fields.get("track_id")
+            if isinstance(confirmed_at, (int, float)):
+                self._triggers.append(
+                    (float(confirmed_at), track_id if isinstance(track_id, int) else None)
+                )
         elif event == "frame":
             decided_at = fields.get("decided_at")
             captured_at = fields.get("captured_at")
@@ -161,21 +152,47 @@ class ReactionAnalysis:
                 captured_at, (int, float)
             ):
                 return
-            if not isinstance(detections, list) or not any(
+            if isinstance(detections, list) and any(
                 isinstance(item, dict) and item.get("label") in self.trigger_classes
                 for item in detections
             ):
-                return
-            trial = self.trial_at(float(captured_at))
+                self._detections.append((float(captured_at), float(decided_at)))
+
+    def trial_at(self, trials: list[Trial], moment: float) -> Trial | None:
+        for trial in reversed(trials):
+            if trial.contains(moment, self.plan.grace_s):
+                return trial
+        return None
+
+    def matched_trials(self) -> tuple[list[Trial], int]:
+        """Trials with their first trigger and detection, and the count of triggers
+        outside every trial."""
+        trials: list[Trial] = []
+        for displayed_at, number, state in sorted(self._stimuli):
+            if state == "on":
+                trials.append(Trial(number, on_at=displayed_at))
+            elif trials and trials[-1].off_at is None:
+                trials[-1].off_at = displayed_at
+        false_triggers = 0
+        for confirmed_at, track_id in sorted(self._triggers, key=itemgetter(0)):
+            trial = self.trial_at(trials, confirmed_at)
+            if trial is None:
+                false_triggers += 1
+            elif trial.trigger_at is None:
+                trial.trigger_at, trial.track_id = confirmed_at, track_id
+        for captured_at, decided_at in sorted(self._detections):
+            trial = self.trial_at(trials, captured_at)
             if trial is not None and trial.first_detection_at is None:
-                trial.first_detection_at = float(decided_at)
+                trial.first_detection_at = decided_at
+        return trials, false_triggers
 
     def report(self) -> dict[str, JsonValue]:
         with self._lock:
             return self._report()
 
     def _report(self) -> dict[str, JsonValue]:
-        completed = [trial for trial in self.trials if trial.on_at is not None]
+        trials, false_triggers = self.matched_trials()
+        completed = [trial for trial in trials if trial.on_at is not None]
         reactions = [
             trial.trigger_at - trial.on_at
             for trial in completed
@@ -190,7 +207,7 @@ class ReactionAnalysis:
             "trials": len(completed),
             "triggered": len(reactions),
             "missed": len(completed) - len(reactions),
-            "false_triggers": self.false_triggers,
+            "false_triggers": false_triggers,
             "reaction_s": percentiles(reactions),
             "first_detection_s": percentiles(detections),
             "per_trial": [

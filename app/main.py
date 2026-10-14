@@ -20,6 +20,7 @@ from .json_data import JsonValue
 from .output import RunOutput, health_snapshot
 from .pipeline import (
     CONSUMER_POLL_S,
+    LOG_EVENT_ALLOWANCE,
     LOG_QUEUE_CAPACITY,
     FrameProcessor,
     LogWriter,
@@ -304,7 +305,12 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
         live_source = (
             source if isinstance(source, (LatestFrameStream, SwitchingCameraStream)) else None
         )
-        queue = OutputQueue(drop_oldest=not options.video, log_capacity=LOG_QUEUE_CAPACITY)
+        queue = OutputQueue(
+            drop_oldest=not options.video,
+            log_capacity=LOG_QUEUE_CAPACITY,
+            event_allowance=LOG_EVENT_ALLOWANCE,
+            on_overflow=stop.set,
+        )
         processor = FrameProcessor(
             config,
             source,
@@ -355,8 +361,13 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             reason = "window_closed_or_q"
         elif reaction is not None and reaction.finished and reason == "stopped":
             reason = "reaction_test_complete"
+        log_failures: list[str] = []
         if log_writer.error is not None:
-            log_failure = f"log writing failed: {describe(log_writer.error)}"
+            log_failures.append(f"log writing failed: {describe(log_writer.error)}")
+        if queue.overflow_error is not None:
+            log_failures.append(queue.overflow_error)
+        for log_failure in log_failures:
+            print(f"error: {log_failure}", file=sys.stderr)
             status, reason = 1, "error"
             failure = f"{failure}; {log_failure}" if failure else log_failure
         if reaction is not None:
