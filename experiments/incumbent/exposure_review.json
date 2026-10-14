@@ -1,0 +1,15 @@
+{
+  "reviewer": "gpt-6.1-sol, visual inspection",
+  "date": "2026-10-14",
+  "rejected_groups": [
+    {
+      "id": "inat-404123303-742092805",
+      "matched_ids": [
+        "roboflow-nea-7B92887D-4C25-4F5D-91D0F623EFE9EAC0_source_png_jpg.rf.3e5da4d40d9c1c2a54995bf0fb7aeb42",
+        "roboflow-nea-7B92887D-4C25-4F5D-91D0F623EFE9EAC0_source_png_jpg.rf.d0ca282d6c4c89025c35b5903eb713d8",
+        "roboflow-nea-7B92887D-4C25-4F5D-91D0F623EFE9EAC0_source_png_jpg.rf.ff9c4526bb8043e50e38fa4388ab29f3"
+      ],
+      "reason": "phash distance 10 is a false match: the query is a Javan myna on grey paving, and both references are noise-augmented copies of a pigeon against a white background. Different birds, photographs and backgrounds; not prior exposure."
+    }
+  ]
+}

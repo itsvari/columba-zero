@@ -12,6 +12,11 @@ import numpy as np
 import yaml
 
 from app.json_data import JsonValue
+from experiments.incumbent.rescore import (
+    HistoricalImage,
+    coco_splits,
+    primary_exposure,
+)
 from tools.evaluate_predictions import (
     NO_DETECTION_THRESHOLD,
     Box,
@@ -506,6 +511,83 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(metadata["format"], "ncnn-fp16")
         self.assertEqual(metadata["ncnn_compute"], "fp32")
         self.assertIsNone(metadata["nms_iou"])
+
+    def test_subset_filters_images_and_predictions_after_full_split_validation(self) -> None:
+        self.dataset(
+            [
+                FixtureImage("unseen", ((0, PERFECT_BOX),), ("pigeon",)),
+                FixtureImage("seen", ((0, PERFECT_BOX),), ("pigeon",)),
+                FixtureImage("negative"),
+            ]
+        )
+        self.predictions.write_text(
+            json.dumps(
+                [
+                    detection("unseen"),
+                    detection("seen", FALSE_BOX),
+                    detection("negative"),
+                ]
+            )
+        )
+        subset = self.root / "unseen.txt"
+        subset.write_text("unseen\nnegative\n")
+        report = evaluate(self.root, "val", self.predictions, subset=subset, threshold=0.5)
+        self.assertEqual(mapping(report["counts"], "counts")["images"], 2)
+        self.assertEqual(mapping(report["pigeon"], "pigeon")["precision_at_threshold"], 0.5)
+        self.assertEqual(report["empty_false_alarm_rate"], 1.0)
+        self.assertEqual(report["subset"], str(subset))
+        self.predictions.write_text(json.dumps([detection("not-in-split")]))
+        with self.assertRaisesRegex(ValueError, "prediction image not in dataset split"):
+            evaluate(self.root, "val", self.predictions, subset=subset)
+
+    def test_subset_rejects_unknown_and_empty_ids(self) -> None:
+        self.dataset([FixtureImage("image")])
+        self.predictions.write_text("[]")
+        subset = self.root / "subset.txt"
+        for ids in ("absent\n", "\n"):
+            with self.subTest(ids=ids):
+                subset.write_text(ids)
+                with self.assertRaisesRegex(ValueError, "subset"):
+                    evaluate(self.root, "val", self.predictions, subset=subset)
+
+    def test_contamination_train_precedes_val_and_old_test_is_unseen(self) -> None:
+        original = HistoricalImage(
+            "image", "source", "test", "unseen", "stem", "scene", "sha", "hash", "mirror"
+        )
+        validation = HistoricalImage(
+            "validation", "source", "valid", "seen_val", "stem", "scene", "sha", "hash", "mirror"
+        )
+        training = HistoricalImage(
+            "training", "source", "train", "seen_train", "stem", "scene", "sha", "hash", "mirror"
+        )
+        self.assertEqual(primary_exposure([original]), "unseen")
+        self.assertEqual(primary_exposure([original, validation]), "seen_val")
+        self.assertEqual(primary_exposure([validation, training]), "seen_train")
+        self.assertEqual(primary_exposure([]), "unseen")
+
+    def test_coco_reconstruction_uses_all_birds_before_licence_filter(self) -> None:
+        annotation = self.root / "instances_val2017.json"
+        bird_count = 20
+        annotation.write_text(
+            json.dumps(
+                {
+                    "images": [{"id": index} for index in range(bird_count + 1)],
+                    "categories": [{"id": 16, "name": "bird"}, {"id": 1, "name": "person"}],
+                    "annotations": [
+                        {"id": index, "image_id": index, "category_id": 16}
+                        for index in range(bird_count)
+                    ]
+                    + [{"id": bird_count, "image_id": bird_count, "category_id": 1}],
+                }
+            )
+        )
+        splits, original_order = coco_splits(annotation)
+        self.assertEqual(len(original_order), bird_count)
+        self.assertNotIn(bird_count, splits)
+        self.assertEqual(sum(split == "train" for split in splits.values()), 16)
+        self.assertEqual(sum(split == "valid" for split in splits.values()), 2)
+        self.assertEqual(sum(split == "test" for split in splits.values()), 2)
+        self.assertEqual(coco_splits(annotation), (splits, original_order))
 
 
 if __name__ == "__main__":

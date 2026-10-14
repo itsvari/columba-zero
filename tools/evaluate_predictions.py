@@ -61,6 +61,10 @@ by_style/by_source recompute metrics within each group at the shared operating
 threshold, with each group's own PR curve. Counts include manifest group IDs.
 Without manifest.jsonl, IDs are unique image stems; style/source are unknown
 and bird presence is inferred from labels, so unlabelled confusers are unknown.
+--subset FILE evaluates only manifest IDs listed one per line. Predictions are
+first validated against the full split, then restricted to the subset. An empty
+subset or unknown subset ID is an error. Threshold selection on a subset is
+still restricted to val. Subset test metrics retain the supplied val threshold.
 """
 
 
@@ -638,11 +642,30 @@ def evaluate(
     select_threshold: bool = False,
     threshold_from: str | Path | None = None,
     threshold: float | None = None,
+    subset: str | Path | None = None,
 ) -> dict[str, JsonValue]:
     """Return C4 metrics; write the result as JSON for reuse by cluster jobs."""
     prediction_path = Path(predictions)
     loaded = load_dataset(Path(dataset), split, Path(classes) if classes is not None else None)
     detections = read_predictions(prediction_path, loaded)
+    if subset is not None:
+        subset_ids = frozenset(
+            line.strip() for line in Path(subset).read_text().splitlines() if line.strip()
+        )
+        if not subset_ids:
+            raise ValueError("subset must contain at least one image ID")
+        unknown_ids = subset_ids - {image.image_id for image in loaded.images}
+        if unknown_ids:
+            raise ValueError(f"subset IDs not in dataset split: {sorted(unknown_ids)}")
+        loaded = Dataset(
+            loaded.name,
+            loaded.names,
+            tuple(image for image in loaded.images if image.image_id in subset_ids),
+            loaded.id_source,
+        )
+        detections = tuple(
+            prediction for prediction in detections if prediction.image_id in subset_ids
+        )
     if input_hw is None:
         metadata = mapping(read_json(sidecar_path(prediction_path)), "prediction meta")
         input_hw = input_shape(metadata.get("input_hw"))
@@ -670,6 +693,7 @@ def evaluate(
             "label": "measured",
             "host": platform.node(),
             "definitions": METRIC_HELP.strip(),
+            "subset": str(subset) if subset is not None else None,
         }
     )
     for field in ("style", "source"):
@@ -677,9 +701,9 @@ def evaluate(
         for value in sorted({getattr(image, field) for image in loaded.images}):
             images = tuple(image for image in loaded.images if getattr(image, field) == value)
             image_ids = {image.image_id for image in images}
-            subset = Dataset(loaded.name, loaded.names, images, loaded.id_source)
+            subset_dataset = Dataset(loaded.name, loaded.names, images, loaded.id_source)
             breakdown[value] = metric_group(
-                subset,
+                subset_dataset,
                 tuple(prediction for prediction in detections if prediction.image_id in image_ids),
                 input_hw,
                 operating_value,
@@ -700,6 +724,7 @@ def main() -> None:
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--input-hw", nargs=2, type=int, metavar=("H", "W"))
     parser.add_argument("--classes", type=Path, default=DEFAULT_CLASSES)
+    parser.add_argument("--subset", type=Path, help="one dataset image ID per line")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--select-threshold", action="store_true")
     selection.add_argument("--threshold-from", type=Path)
@@ -715,6 +740,7 @@ def main() -> None:
             select_threshold=arguments.select_threshold,
             threshold_from=arguments.threshold_from,
             threshold=arguments.threshold,
+            subset=arguments.subset,
         )
         arguments.out.parent.mkdir(parents=True, exist_ok=True)
         arguments.out.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
