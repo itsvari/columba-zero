@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
+from typing import cast
+
+from app.json_data import JsonValue
 
 import yaml
 
@@ -19,6 +23,15 @@ from cluster.gpu_selection import (
     selector,
 )
 
+QOS_GPU_LIMITS = {
+    "nv": 8,
+    "a100-40": 4,
+    "a100-80": 2,
+    "h100-47": 2,
+    "h100-96": 1,
+    "h200-141": 1,
+    "h200-71": 1,
+}
 POLICY_PATH = Path(__file__).with_name("gpu_policy.yaml")
 
 
@@ -29,6 +42,9 @@ class GpuPolicy:
     allow_short_partition: bool
     light_preferences: tuple[str, ...]
     heavy_preferences: tuple[str, ...]
+    type_limits: Mapping[str, int]
+    array_gpu_slots: Mapping[str, int]
+    max_submit_jobs: int
 
     def preferences(
         self, model: str, image_size_px: int, teacher: bool, est_gpu_hours: float
@@ -72,7 +88,37 @@ def load_policy(path: Path = POLICY_PATH) -> GpuPolicy:
         raise ValueError("policy hours must be positive")
     if type(allow_short) is not bool:
         raise ValueError("allow_short_partition must be boolean")
-    return GpuPolicy(image_size_px, float(est_gpu_hours), allow_short, *preferences)
+    limits = positive_limits(cast(JsonValue, values.get("type_limits")), "type_limits")
+    if set(limits) != set(QOS_GPU_LIMITS) or any(
+        value > QOS_GPU_LIMITS[key] for key, value in limits.items()
+    ):
+        raise ValueError("type_limits cannot raise the verified QoS caps")
+    slots = positive_limits(cast(JsonValue, values.get("array_gpu_slots")), "array_gpu_slots")
+    if sum(slots.values()) > 8 or any(
+        key not in limits or value > limits[key] for key, value in slots.items()
+    ):
+        raise ValueError("array GPU shares exceed total or per-type caps")
+    max_submit = values.get("max_submit_jobs")
+    if type(max_submit) is not int or not 1 <= max_submit <= 32:
+        raise ValueError("max_submit_jobs must be within verified association cap 32")
+    return GpuPolicy(
+        image_size_px,
+        float(est_gpu_hours),
+        allow_short,
+        preferences[0],
+        preferences[1],
+        limits,
+        slots,
+        max_submit,
+    )
+
+
+def positive_limits(value: JsonValue, field: str) -> Mapping[str, int]:
+    if not isinstance(value, dict) or not value:
+        raise ValueError(f"{field} must be a nonempty resource/count mapping")
+    if any(type(count) is not int or count <= 0 for count in value.values()):
+        raise ValueError(f"{field} counts must be positive integers")
+    return MappingProxyType(cast(dict[str, int], value))
 
 
 def offer_choice(offer: GpuOffer) -> str:

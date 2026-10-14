@@ -1,6 +1,6 @@
 # WS3 — Cluster infrastructure
 
-- State: done
+- State: in progress
 - Branch: `ws3/cluster`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-15
@@ -469,3 +469,10 @@ hash and then-current base commit; corrected re-target job used 13fa1db and
 final typed probe used 2153f8a. Final source publication after the status commit
 is recorded in final-deployment.json. Only CONTRACTS C5 wording remains for the
 coordinator to update; no implementation blocker remains.
+
+## Round 4 in progress
+
+Fast-forwarded to main 04e9980. Implementing finite Slurm arrays and dependency
+transitions; no persistent login or compute orchestrator. Current jobs remain
+untouched. Verified normal QoS typed GPU caps and association MaxSubmitJobs=32.
+Round-2 rules will be drafts requiring WS5 confirmation before explicit arming.

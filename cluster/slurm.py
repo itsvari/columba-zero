@@ -130,7 +130,14 @@ def parse_queue(output: str) -> tuple[Job, ...]:
 
 def queue() -> tuple[Job, ...]:
     completed = subprocess.run(
-        ["squeue", "-u", os.environ["USER"], "--noheader", "--format=%i|%j|%T|%P|%b|%D|%V"],
+        [
+            "squeue",
+            "--array",
+            "-u",
+            os.environ["USER"],
+            "--noheader",
+            "--format=%i|%j|%T|%P|%b|%D|%V",
+        ],
         check=True,
         text=True,
         capture_output=True,
@@ -175,10 +182,32 @@ def request_arguments(request: GpuRequest, submission: Submission) -> tuple[str,
     )
 
 
+def resource_type_for_job(job: Job) -> str | None:
+    matched = re.search(r"(?:gres/)?gpu:([^:,]+):[0-9]+", job.resources)
+    return matched.group(1) if matched else None
+
+
 def scheduling_request(
-    submission: Submission, offers: Sequence[GpuOffer], avoid: tuple[str, str] | None = None
+    submission: Submission,
+    offers: Sequence[GpuOffer],
+    avoid: tuple[str, str] | None = None,
+    jobs: Sequence[Job] = (),
 ) -> tuple[tuple[str, ...], str] | None:
     policy = load_policy()
+    offers = tuple(
+        offer
+        for offer in offers
+        if sum(
+            job.gpu_count
+            for job in jobs
+            if job.owned
+            and job.state in ACTIVE_STATES
+            and resource_type_for_job(job) == offer.resource_type
+        )
+        < policy.type_limits.get(offer.resource_type, 0)
+    )
+    if not offers:
+        return None
     preferences = policy.preferences(
         submission.get("base_model", "yolo11n.pt"),
         submission.get("image_size_px", 640),
@@ -305,6 +334,11 @@ def submit_pending(
         if (Path(submission["run_path"]) / "DONE").is_file():
             results.append({"name": submission["name"], "status": "done"})
             continue
+        from cluster.arrays import active_run_names
+
+        if submission["name"] in active_run_names(Path.home() / "columba", jobs):
+            results.append({"name": submission["name"], "status": "active array task"})
+            continue
         active = next(
             (job for job in jobs if job.name == submission["name"] and job.state in ACTIVE_STATES),
             None,
@@ -321,7 +355,7 @@ def submit_pending(
                 >= retarget_pending_after_hours * 3600
             )
             scheduling = (
-                scheduling_request(submission, offers, pending_target(active, submission))
+                scheduling_request(submission, offers, pending_target(active, submission), jobs)
                 if expired
                 else None
             )
@@ -357,7 +391,7 @@ def submit_pending(
         if submission["lane"] == "nv":
             command.append("--nodes=1")
             command.extend(resource_arguments)
-            scheduling = scheduling or scheduling_request(submission, offers)
+            scheduling = scheduling or scheduling_request(submission, offers, jobs=jobs)
             if scheduling is None:
                 results.append({"name": submission["name"], "status": "no free preferred GPU"})
                 continue

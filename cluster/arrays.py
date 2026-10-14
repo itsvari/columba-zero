@@ -1,0 +1,352 @@
+"""Finite GPU arrays, immutable task manifests and cluster-side submission."""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import re
+import shlex
+import subprocess
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass, replace
+from pathlib import Path
+from typing import cast
+
+from app.json_data import JsonValue
+from cluster.artifacts import atomic_json, read_json
+from cluster.gpu_policy import load_policy
+from cluster.gpu_selection import GpuOffer, GpuRequest, gpu_inventory, request_for
+from cluster.recipe import load_recipe, recipe_sha256
+from cluster.slurm import ACTIVE_STATES, Budget, Job, job_name, queue, resource_type_for_job
+
+REPOSITORY = Path(__file__).resolve().parents[1]
+MAX_ARRAY_SIZE = 1001
+
+
+@dataclass(frozen=True)
+class ArrayTask:
+    recipe_path: str
+    recipe_id: str
+    seed: int
+    run_name: str
+    recipe_sha256: str
+    signal_after_epoch: int | None = None
+
+    @property
+    def relative_run(self) -> str:
+        return f"{self.recipe_id}/seed{self.seed}"
+
+
+def task_for(path: Path, seed: int, signal_after_epoch: int | None = None) -> ArrayTask:
+    recipe = load_recipe(path)
+    recipe.constraint_for_seed(seed)
+    if recipe.lane != "nv":
+        raise ValueError("training arrays require GPU recipes")
+    if signal_after_epoch is not None and (
+        not recipe.identifier.startswith("smoke-")
+        or not 0 < signal_after_epoch < cast(int, recipe.train["epochs"])
+    ):
+        raise ValueError("forced signal requires an unfinished smoke epoch")
+    return ArrayTask(
+        str(path.resolve()),
+        recipe.identifier,
+        seed,
+        job_name(recipe.identifier, seed),
+        recipe_sha256(path),
+        signal_after_epoch,
+    )
+
+
+def manifests(root: Path) -> tuple[dict[str, JsonValue], ...]:
+    return tuple(read_json(path) for path in sorted((root / "arrays").glob("*/manifest.json")))
+
+
+def active_run_names(root: Path, jobs: Sequence[Job]) -> set[str]:
+    identifiers = {job.identifier for job in jobs if job.owned and job.state in ACTIVE_STATES}
+    names: set[str] = set()
+    for manifest in manifests(root):
+        record_path = Path(cast(str, manifest["directory"])) / "submission.json"
+        if not record_path.exists():
+            continue
+        record = read_json(record_path)
+        array_id = str(record["array_id"])
+        for index, task in enumerate(cast(list[dict[str, JsonValue]], manifest["tasks"])):
+            if f"{array_id}_{index}" in identifiers or array_id in identifiers:
+                names.add(cast(str, task["run_name"]))
+    return names
+
+
+def shares(counts: dict[str, int], limits: dict[str, int], total: int) -> dict[str, int]:
+    if not 0 < total <= 8:
+        raise ValueError("array concurrency must be within 1..8")
+    allocated = dict.fromkeys(counts, 0)
+    while sum(allocated.values()) < total:
+        eligible = [key for key in counts if allocated[key] < min(counts[key], limits[key])]
+        if not eligible:
+            break
+        for key in eligible:
+            if sum(allocated.values()) >= total:
+                break
+            allocated[key] += 1
+    return allocated
+
+
+def group_tasks(
+    tasks: Sequence[ArrayTask],
+    offers: Sequence[GpuOffer],
+    constraint: str | None = None,
+    required_node: str | None = None,
+) -> dict[str, tuple[GpuRequest, tuple[ArrayTask, ...]]]:
+    policy = load_policy()
+    grouped: dict[str, tuple[GpuRequest, list[ArrayTask]]] = {}
+    heavy_types = [key for key in policy.array_gpu_slots if key != "nv"]
+    heavy_index = 0
+    for task in tasks:
+        recipe = load_recipe(Path(task.recipe_path))
+        choice = constraint or recipe.constraint_for_seed(task.seed)
+        if choice is None and required_node is None:
+            heavy = (
+                policy.preferences(
+                    recipe.base_model,
+                    cast(int, recipe.train["imgsz"]),
+                    recipe.teacher is not None or "teacher" in recipe.identifier,
+                    recipe.estimated_gpu_hours,
+                )
+                == policy.heavy_preferences
+            )
+            resource_type = (
+                heavy_types[heavy_index % len(heavy_types)] if heavy and heavy_types else "nv"
+            )
+            heavy_index += heavy
+            choice = (
+                "t4"
+                if resource_type == "nv"
+                else "h200"
+                if resource_type == "h200-141"
+                else resource_type
+            )
+            request = request_for(choice, offers)
+            if resource_type == "nv":
+                request = replace(request, constraint="t4|titanv|titanrtx")
+            if resource_type == "a100-80" and policy.allow_short_partition:
+                partitions = tuple(
+                    partition
+                    for partition in ("gpu-long", "gpu")
+                    if any(
+                        offer.resource_type == resource_type and offer.partition == partition
+                        for offer in offers
+                    )
+                )
+                request = replace(request, partitions=partitions, time_limit="03:00:00")
+        else:
+            request = request_for(choice, offers, required_node=required_node)
+        key = json.dumps(asdict(request), sort_keys=True)
+        if key not in grouped:
+            grouped[key] = (request, [])
+        grouped[key][1].append(task)
+    return {key: (request, tuple(members)) for key, (request, members) in grouped.items()}
+
+
+def submit_arrays(
+    root: Path,
+    checkout: Path,
+    tasks: Sequence[ArrayTask],
+    gpu_limit: int = 8,
+    constraint: str | None = None,
+    required_node: str | None = None,
+) -> list[dict[str, JsonValue]]:
+    policy = load_policy()
+    root = root.resolve()
+    if root != (Path.home() / "columba").resolve() or not checkout.resolve().is_relative_to(
+        root / "checkouts"
+    ):
+        raise ValueError("arrays must use ~/columba and its pinned checkouts")
+    (root / "logs").mkdir(parents=True, exist_ok=True)
+    with (root / ".submission.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        jobs = queue()
+        active = active_run_names(root, jobs) | {
+            job.name for job in jobs if job.owned and job.state in ACTIVE_STATES
+        }
+        missing = tuple(
+            task
+            for task in tasks
+            if task.run_name not in active
+            and not (root / "runs" / task.relative_run / "DONE").exists()
+        )
+        if len({task.relative_run for task in tasks}) != len(tasks):
+            raise ValueError("duplicate recipe/seed in array")
+        if not missing:
+            return []
+        if (
+            len(jobs) + len(missing) > policy.max_submit_jobs
+            or sum(job.owned for job in jobs) + len(missing) > Budget().queued_jobs
+        ):
+            raise RuntimeError("array tasks exceed project/association submitted-job cap")
+        footprint = subprocess.run(
+            ["du", "-sk", str(root)], check=True, capture_output=True, text=True
+        )
+        if int(footprint.stdout.split()[0]) >= 80 * 1024 * 1024:
+            raise RuntimeError("project storage limit reached")
+        grouped = group_tasks(missing, gpu_inventory(), constraint, required_node)
+        counts = {key: len(members) for key, (_, members) in grouped.items()}
+        type_groups: dict[str, list[str]] = {}
+        for key, (request, _) in grouped.items():
+            resource_type = request.resources.split(":")[1]
+            type_groups.setdefault(resource_type, []).append(key)
+        limits: dict[str, int] = {}
+        for resource_type, keys in type_groups.items():
+            capacity = min(
+                policy.type_limits[resource_type],
+                policy.array_gpu_slots.get(resource_type, policy.type_limits[resource_type]),
+            )
+            limits.update(
+                shares({key: counts[key] for key in keys}, dict.fromkeys(keys, capacity), capacity)
+            )
+        throttles = shares(counts, limits, gpu_limit)
+        if any(value == 0 for value in throttles.values()):
+            raise RuntimeError("too many GPU groups for concurrency budget; split the submission")
+        results: list[dict[str, JsonValue]] = []
+        for key, (request, members) in grouped.items():
+            if len(members) > MAX_ARRAY_SIZE:
+                raise ValueError("array exceeds MaxArraySize")
+            payload: dict[str, JsonValue] = {
+                "checkout": str(checkout),
+                "request": cast(dict[str, JsonValue], asdict(request)),
+                "tasks": cast(list[JsonValue], [asdict(task) for task in members]),
+            }
+            digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
+            directory = root / "arrays" / digest
+            payload["directory"] = str(directory)
+            atomic_json(directory / "manifest.json", payload)
+            script = (checkout / "cluster/templates/nv.sbatch").read_text()
+            exports = f"export COLUMBA_CHECKOUT={shlex.quote(str(checkout))}\nexport COLUMBA_ARRAY_MANIFEST={shlex.quote(str(directory / 'manifest.json'))}\n"
+            exports += (
+                'eval "$(python -m cluster.arrays task-env --manifest "$COLUMBA_ARRAY_MANIFEST")"\n'
+            )
+            script = script.replace(
+                "set -euo pipefail",
+                "set -euo pipefail\ncd " + shlex.quote(str(checkout)) + "\n" + exports,
+            )
+            command = [
+                "sbatch",
+                "--parsable",
+                "--nice=1000",
+                "--export=NONE",
+                "--nodes=1",
+                f"--job-name=cz-array-{digest}",
+                f"--array=0-{len(members) - 1}%{throttles[key]}",
+                f"--output={root}/logs/%x-%A_%a.log",
+                *request.arguments(),
+            ]
+            exclusions = [
+                line.split("#")[0].strip()
+                for line in (checkout / "cluster/excluded_nodes.txt").read_text().splitlines()
+            ]
+            exclusions = [node for node in exclusions if node]
+            if exclusions:
+                command.append("--exclude=" + ",".join(exclusions))
+            if required_node:
+                command.append("--nodelist=" + required_node)
+            if all(task.recipe_id.startswith("smoke-") for task in members):
+                command.extend(["--time=20", "--cpus-per-task=4", "--mem=16G"])
+            # Slurm holds the backlog; QoS enforces total/type caps while legacy jobs finish.
+            completed = subprocess.run(
+                command, input=script, check=True, capture_output=True, text=True
+            )
+            identifier = completed.stdout.strip().split(";")[0]
+            if not identifier.isdecimal():
+                raise RuntimeError("invalid sbatch array id")
+            record: dict[str, JsonValue] = {
+                "array_id": identifier,
+                "throttle": throttles[key],
+                "resource_type": request.resources.split(":")[1],
+                "task_count": len(members),
+                "manifest": str(directory / "manifest.json"),
+            }
+            atomic_json(directory / "submission.json", record)
+            results.append(record)
+        return results
+
+
+def task_environment(path: Path, index: int) -> dict[str, str]:
+    manifest = read_json(path)
+    tasks = cast(list[dict[str, JsonValue]], manifest["tasks"])
+    task = tasks[index]
+    recipe_path = Path(cast(str, task["recipe_path"])).resolve()
+    checkout = Path(cast(str, manifest["checkout"])).resolve()
+    root = Path.home() / "columba"
+    if not recipe_path.is_relative_to(checkout) and not recipe_path.is_relative_to(
+        root / "generated-recipes"
+    ):
+        raise ValueError("recipe outside pinned checkout/generated recipes")
+    if recipe_sha256(recipe_path) != task["recipe_sha256"]:
+        raise ValueError("array recipe changed since submission")
+    recipe = load_recipe(recipe_path)
+    seed = cast(int, task["seed"])
+    recipe.constraint_for_seed(seed)
+    ready = read_json(checkout / ".columba-ready.json")
+    metadata: dict[str, JsonValue] = {
+        "recipe_id": recipe.identifier,
+        "seed": seed,
+        "dataset": recipe.dataset,
+        "taxonomy": recipe.taxonomy,
+        "model": recipe.base_model,
+        "train_imgsz": recipe.train["imgsz"],
+        "recipe_sha256": task["recipe_sha256"],
+        "git_commit": ready["commit"],
+        "source_snapshot": checkout.name,
+    }
+    values = {
+        "COLUMBA_ROOT": str(root),
+        "COLUMBA_RECIPE": str(recipe_path),
+        "COLUMBA_SEED": str(seed),
+        "COLUMBA_RUN_PATH": str(root / "runs" / recipe.identifier / f"seed{seed}"),
+        "COLUMBA_GIT_COMMIT": str(ready["commit"]),
+        "COLUMBA_RUN_METADATA": json.dumps(metadata),
+    }
+    if task.get("signal_after_epoch") is not None:
+        values["COLUMBA_SIGNAL_AFTER_EPOCH"] = str(task["signal_after_epoch"])
+    return values
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("submit", "task-env"))
+    parser.add_argument("--payload")
+    parser.add_argument("--manifest", type=Path)
+    arguments = parser.parse_args()
+    if arguments.action == "task-env":
+        for name, value in task_environment(
+            arguments.manifest, int(os.environ["SLURM_ARRAY_TASK_ID"])
+        ).items():
+            print(f"export {name}={shlex.quote(value)}")
+        return
+    payload = cast(dict[str, JsonValue], json.loads(arguments.payload))
+    tasks = [
+        task_for(
+            Path(cast(str, item["recipe_path"])),
+            cast(int, item["seed"]),
+            cast(int | None, item.get("signal_after_epoch")),
+        )
+        for item in cast(list[dict[str, JsonValue]], payload["tasks"])
+    ]
+    print(
+        json.dumps(
+            submit_arrays(
+                Path.home() / "columba",
+                REPOSITORY,
+                tasks,
+                cast(int, payload.get("gpu_limit", 8)),
+                cast(str | None, payload.get("constraint")),
+                cast(str | None, payload.get("required_node")),
+            )
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

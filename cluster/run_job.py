@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import time
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,6 +23,7 @@ from typing import Protocol, TypedDict, cast
 from app.json_data import JsonValue
 from cluster.artifacts import atomic_json, copy_artifacts, mark_done, read_json
 from cluster.hardware import configure_ultralytics, describe_hardware, select_batch
+from cluster.requeue import REQUEUE_EXIT_STATUS, RequeueRequested
 from cluster.recipe import Recipe, load_recipe, recipe_sha256, resolve_teacher
 from cluster.staging import sha256_file, stage_dataset, stage_weights
 
@@ -59,6 +61,7 @@ class TrainingContext:
     batch_size: int
     device: str
     stop_after_epoch: int | None = None
+    requeue_requested: Callable[[], bool] = lambda: False
 
 
 class Adapter(Protocol):
@@ -163,6 +166,16 @@ class UltralyticsAdapter:
             persist(trainer)
             if context.stop_after_epoch == trainer.epoch + 1:
                 raise InterruptedError(f"smoke stopped after saved epoch {trainer.epoch + 1}")
+            forced_epoch = os.environ.get("COLUMBA_SIGNAL_AFTER_EPOCH")
+            if (
+                forced_epoch
+                and context.recipe.identifier.startswith("smoke-")
+                and int(os.environ.get("SLURM_RESTART_COUNT", "0")) == 0
+                and trainer.epoch + 1 == int(forced_epoch)
+            ):
+                os.kill(os.getpid(), signal.SIGUSR1)
+            if context.requeue_requested():
+                raise RequeueRequested("checkpoint saved for Slurm requeue")
 
         model.add_callback("on_model_save", persist)
         model.add_callback("on_fit_epoch_end", record_epoch)
@@ -355,6 +368,9 @@ def execute(
         "python_executable": sys.executable,
         "venv_path": sys.prefix,
         "job_id": job_id,
+        "array_job_id": os.environ.get("SLURM_ARRAY_JOB_ID"),
+        "array_task_id": os.environ.get("SLURM_ARRAY_TASK_ID"),
+        "slurm_restart_count": int(os.environ.get("SLURM_RESTART_COUNT", "0")),
         "start": previous.get("start", now()),
         "end": None,
         "status": "running",
@@ -366,6 +382,8 @@ def execute(
         "error": None,
     }
     started_s = time.monotonic()
+    requeue_requested = threading.Event()
+    signal.signal(signal.SIGUSR1, lambda signal_number, frame: requeue_requested.set())
     signal.signal(signal.SIGTERM, interrupt_job)
     signal.signal(signal.SIGINT, interrupt_job)
     exit_status = 1
@@ -417,6 +435,7 @@ def execute(
             batch_size,
             "0" if recipe.lane == "nv" else "cpu",
             stop_after_epoch,
+            requeue_requested.is_set,
         )
         adapter_for(recipe.framework).train(context, report)
         report["evaluation"] = evaluate(context, test_dataset, repository)
@@ -424,6 +443,10 @@ def execute(
             "complete" if report["evaluation"] == "complete" else "evaluation_missing"
         )
         exit_status = 0
+    except RequeueRequested as error:
+        report["status"] = "requeue_pending"
+        report["error"] = str(error)
+        exit_status = REQUEUE_EXIT_STATUS
     except Exception as error:
         report["status"] = "failed"
         report["error"] = f"{type(error).__name__}: {error}"
