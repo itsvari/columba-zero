@@ -29,3 +29,26 @@ Reproduce a row with:
 python tools/reaction_budget.py experiments/latency/xcng0-pigeon_baseline_v1-2-ncnn-fp16-384x640.json \
   --calibration experiments/latency/calibration.json --camera-fps 30 --recall 0.8 --k 2 --n 3 --seed 42
 ```
+
+## Round 2: s-model reaction budget
+
+Per-frame Pi times are **estimated** from measured xcng0 samples. Reaction values are **simulated**, 20,000 trials, seed 42, 30 FPS, sensor delay uniform 1–2 camera periods, latest-frame policy, recall 0.8, k=2/n=3. Correlation rho=.6 is a sensitivity assumption on captured-frame hits, not a measured temporal recall. Both FP16 and latency-only int8 are shown.
+
+| Model | Input H×W | Format | Estimated Pi frame p95 | Simulated reaction p50 | Simulated reaction p95 | Simulated rho=.6 p95 | 500 ms reaction gate |
+|---|---|---|---:|---:|---:|---:|---|
+| yolo11s-coco | 352×608 | ncnn-fp16 | 72.15 | 239.00 | 396.62 | 494.21 | PASS |
+| yolo11s-coco | 384×640 | ncnn-fp16 | 81.83 | 260.55 | 438.67 | 532.67 | PASS |
+| yolo11s-coco | 448×800 | ncnn-fp16 | 116.39 | 340.33 | 612.45 | 670.56 | FAIL |
+| yolo11s-coco | 640×640 | ncnn-fp16 | 131.42 | 407.00 | 685.26 | 776.56 | FAIL |
+| yolo11s-coco | 352×608 | ncnn-int8 | 67.40 | 227.10 | 378.60 | 466.41 | PASS |
+| yolo11s-coco | 384×640 | ncnn-int8 | 77.72 | 263.40 | 433.65 | 532.36 | PASS |
+| yolo11s-coco | 448×800 | ncnn-int8 | 113.34 | 315.41 | 600.20 | 646.79 | FAIL |
+| yolo11s-coco | 640×640 | ncnn-int8 | 129.28 | 407.82 | 715.57 | 777.55 | FAIL |
+| yolo26s-coco | 352×608 | ncnn-fp16 | 72.46 | 235.20 | 389.15 | 486.48 | PASS |
+| yolo26s-coco | 384×640 | ncnn-fp16 | 83.54 | 264.98 | 448.37 | 535.15 | PASS |
+| yolo26s-coco | 448×800 | ncnn-fp16 | 121.74 | 379.21 | 630.96 | 723.41 | FAIL |
+| yolo26s-coco | 640×640 | ncnn-fp16 | 139.15 | 427.71 | 730.93 | 813.93 | FAIL |
+| yolo26s-coco | 352×608 | ncnn-int8 | 70.35 | 241.94 | 393.42 | 496.26 | PASS |
+| yolo26s-coco | 384×640 | ncnn-int8 | 80.52 | 263.60 | 446.44 | 528.45 | PASS |
+| yolo26s-coco | 448×800 | ncnn-int8 | 119.39 | 384.12 | 721.02 | 755.59 | FAIL |
+| yolo26s-coco | 640×640 | ncnn-int8 | 136.55 | 414.65 | 758.66 | 799.40 | FAIL |

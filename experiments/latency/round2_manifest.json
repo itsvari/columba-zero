@@ -1,0 +1,14 @@
+{
+  "round": "ws4-round2",
+  "camera_hw": [480, 640],
+  "s_models": ["yolo11s-coco", "yolo26s-coco"],
+  "input_sizes": [[352, 608], [384, 640], [448, 800], [640, 640]],
+  "formats": ["fp16", "int8"],
+  "head_probes": ["yolo26n-coco-one2many", "yolo26n-coco-one2one"],
+  "head_input_hw": [384, 640],
+  "head_format": "fp16",
+  "confidence": 0.5,
+  "warmup": 20,
+  "iterations": 200,
+  "calibration_id": "cal-v0-published"
+}

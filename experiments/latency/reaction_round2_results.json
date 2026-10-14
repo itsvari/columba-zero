@@ -1,0 +1,1399 @@
+{
+  "label": "simulated",
+  "processing_host": "estimated Pi5 from measured xcng0",
+  "benchmark_round": "ws4-round2",
+  "rows": [
+    {
+      "model_id": "yolo11s-coco",
+      "format": "ncnn-fp16",
+      "input_hw": [
+        352,
+        608
+      ],
+      "estimated_pi5_p95_ms": 72.15477588830714,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 239.00178212233507,
+          "p95": 396.6189152959624,
+          "mean": 257.00182935924107,
+          "std": 68.71866477752691
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 36.90266663676768,
+          "p95": 64.2647239032106,
+          "mean": 35.31170571399683,
+          "std": 19.815689679180295
+        },
+        "mean_processed_visible_frames": 2.5505,
+        "mean_dropped_visible_frames": 2.5852,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 234.64598534243657,
+          "p95": 494.20956475494677,
+          "mean": 269.0155113370445,
+          "std": 106.01824363063355
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 36.90266663676768,
+          "p95": 64.2647239032106,
+          "mean": 35.31170571399683,
+          "std": 19.815689679180295
+        },
+        "mean_processed_visible_frames": 2.72925,
+        "mean_dropped_visible_frames": 2.76575,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo11s-coco",
+      "format": "ncnn-fp16",
+      "input_hw": [
+        384,
+        640
+      ],
+      "estimated_pi5_p95_ms": 81.82689846120095,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 260.55132843719366,
+          "p95": 438.66747845033325,
+          "mean": 282.47790321398827,
+          "std": 77.05379178096692
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 40.811877348686856,
+          "p95": 71.53398475566794,
+          "mean": 39.433999160814786,
+          "std": 21.314690008081175
+        },
+        "mean_processed_visible_frames": 2.55785,
+        "mean_dropped_visible_frames": 3.19035,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 256.2078084165229,
+          "p95": 532.6657534764362,
+          "mean": 293.7734672571343,
+          "std": 112.53018593622446
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 40.811877348686856,
+          "p95": 71.53398475566794,
+          "mean": 39.433999160814786,
+          "std": 21.314690008081175
+        },
+        "mean_processed_visible_frames": 2.70805,
+        "mean_dropped_visible_frames": 3.37615,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo11s-coco",
+      "format": "ncnn-fp16",
+      "input_hw": [
+        448,
+        800
+      ],
+      "estimated_pi5_p95_ms": 116.38638256788501,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 340.3329294274663,
+          "p95": 612.4463621841039,
+          "mean": 380.56788147415364,
+          "std": 107.97214993286347
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 48.5561726728754,
+          "p95": 91.50370147511352,
+          "mean": 49.74347479243471,
+          "std": 23.35366313594703
+        },
+        "mean_processed_visible_frames": 2.54815,
+        "mean_dropped_visible_frames": 5.86885,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 337.2541748827563,
+          "p95": 670.5639981455043,
+          "mean": 390.08938467454266,
+          "std": 138.70726236880375
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 48.5561726728754,
+          "p95": 91.50370147511352,
+          "mean": 49.74347479243471,
+          "std": 23.35366313594703
+        },
+        "mean_processed_visible_frames": 2.63465,
+        "mean_dropped_visible_frames": 6.062,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo11s-coco",
+      "format": "ncnn-fp16",
+      "input_hw": [
+        640,
+        640
+      ],
+      "estimated_pi5_p95_ms": 131.42340588938288,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 407.00389774030305,
+          "p95": 685.2558527710987,
+          "mean": 424.5075916506466,
+          "std": 129.89290543858013
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 34.67335686492035,
+          "p95": 122.29871243861352,
+          "mean": 54.24163774749537,
+          "std": 44.781052134716475
+        },
+        "mean_processed_visible_frames": 2.557,
+        "mean_dropped_visible_frames": 6.9902,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 403.31265946586365,
+          "p95": 776.564688134268,
+          "mean": 432.4683331757085,
+          "std": 154.61534693226847
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 34.67335686492035,
+          "p95": 122.29871243861352,
+          "mean": 54.24163774749537,
+          "std": 44.781052134716475
+        },
+        "mean_processed_visible_frames": 2.62075,
+        "mean_dropped_visible_frames": 7.1651,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo11s-coco",
+      "format": "ncnn-int8",
+      "input_hw": [
+        352,
+        608
+      ],
+      "estimated_pi5_p95_ms": 67.39819619966192,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 227.1010925505481,
+          "p95": 378.59708967612744,
+          "mean": 243.33243974221872,
+          "std": 65.65095863531988
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 23.511455885815693,
+          "p95": 61.70626455050683,
+          "mean": 27.98680048738759,
+          "std": 19.37608283771606
+        },
+        "mean_processed_visible_frames": 2.5607,
+        "mean_dropped_visible_frames": 2.3948,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 221.07385672624198,
+          "p95": 466.4091729695393,
+          "mean": 255.45962537660964,
+          "std": 102.42194290408793
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 23.511455885815693,
+          "p95": 61.70626455050683,
+          "mean": 27.98680048738759,
+          "std": 19.37608283771606
+        },
+        "mean_processed_visible_frames": 2.74845,
+        "mean_dropped_visible_frames": 2.57155,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo11s-coco",
+      "format": "ncnn-int8",
+      "input_hw": [
+        384,
+        640
+      ],
+      "estimated_pi5_p95_ms": 77.72152135673296,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 263.40192610836596,
+          "p95": 433.65287400316464,
+          "mean": 281.0263507842923,
+          "std": 76.4575811055189
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 47.5859384943623,
+          "p95": 72.23403355908101,
+          "mean": 40.498632491681946,
+          "std": 24.776073138889576
+        },
+        "mean_processed_visible_frames": 2.5585,
+        "mean_dropped_visible_frames": 3.0824,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 259.46572544487435,
+          "p95": 532.363255677088,
+          "mean": 293.00630641581324,
+          "std": 113.56396860192253
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 47.5859384943623,
+          "p95": 72.23403355908101,
+          "mean": 40.498632491681946,
+          "std": 24.776073138889576
+        },
+        "mean_processed_visible_frames": 2.71935,
+        "mean_dropped_visible_frames": 3.2823,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo11s-coco",
+      "format": "ncnn-int8",
+      "input_hw": [
+        448,
+        800
+      ],
+      "estimated_pi5_p95_ms": 113.34226688518632,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 315.40690100879374,
+          "p95": 600.1987775989691,
+          "mean": 362.6621031054637,
+          "std": 108.80928188617267
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 25.937054842329644,
+          "p95": 104.01344678970668,
+          "mean": 33.52508884216283,
+          "std": 28.36662286983173
+        },
+        "mean_processed_visible_frames": 2.5489,
+        "mean_dropped_visible_frames": 5.76795,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 312.0844456524708,
+          "p95": 646.7910194568616,
+          "mean": 371.74982616234144,
+          "std": 137.68567729418322
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 25.937054842329644,
+          "p95": 104.01344678970668,
+          "mean": 33.52508884216283,
+          "std": 28.36662286983173
+        },
+        "mean_processed_visible_frames": 2.632,
+        "mean_dropped_visible_frames": 5.95285,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo11s-coco",
+      "format": "ncnn-int8",
+      "input_hw": [
+        640,
+        640
+      ],
+      "estimated_pi5_p95_ms": 129.27529686658505,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 407.81833611956824,
+          "p95": 715.5697447946557,
+          "mean": 454.3647899135891,
+          "std": 123.52839219870272
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 93.2978513942858,
+          "p95": 119.19934681193412,
+          "mean": 87.1020738792258,
+          "std": 28.887879060568707
+        },
+        "mean_processed_visible_frames": 2.5535,
+        "mean_dropped_visible_frames": 6.9305,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 405.95568251608165,
+          "p95": 777.5473356125461,
+          "mean": 463.1000612885071,
+          "std": 150.69269179518082
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 93.2978513942858,
+          "p95": 119.19934681193412,
+          "mean": 87.1020738792258,
+          "std": 28.887879060568707
+        },
+        "mean_processed_visible_frames": 2.6237,
+        "mean_dropped_visible_frames": 7.121,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo26s-coco",
+      "format": "ncnn-fp16",
+      "input_hw": [
+        352,
+        608
+      ],
+      "estimated_pi5_p95_ms": 72.45913720198524,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 235.20100445229377,
+          "p95": 389.1475274534716,
+          "mean": 254.03031185942507,
+          "std": 67.10528733691777
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 34.09633463054942,
+          "p95": 63.28740342504154,
+          "mean": 33.84470468486849,
+          "std": 18.596412499757513
+        },
+        "mean_processed_visible_frames": 2.53965,
+        "mean_dropped_visible_frames": 2.55555,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 231.08505205527564,
+          "p95": 486.47680215292695,
+          "mean": 266.42547728751794,
+          "std": 104.67990320924234
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 34.09633463054942,
+          "p95": 63.28740342504154,
+          "mean": 33.84470468486849,
+          "std": 18.596412499757513
+        },
+        "mean_processed_visible_frames": 2.7245,
+        "mean_dropped_visible_frames": 2.7444,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo26s-coco",
+      "format": "ncnn-fp16",
+      "input_hw": [
+        384,
+        640
+      ],
+      "estimated_pi5_p95_ms": 83.54151885633785,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 264.98330919399626,
+          "p95": 448.3712275554041,
+          "mean": 285.82773185820724,
+          "std": 80.09200254194513
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 36.015366720361676,
+          "p95": 74.28302846483994,
+          "mean": 37.6302831514734,
+          "std": 22.92686493971725
+        },
+        "mean_processed_visible_frames": 2.5573,
+        "mean_dropped_visible_frames": 3.32635,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 259.8602334896553,
+          "p95": 535.1500988871961,
+          "mean": 296.1661174499008,
+          "std": 113.08501718315046
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 36.015366720361676,
+          "p95": 74.28302846483994,
+          "mean": 37.6302831514734,
+          "std": 22.92686493971725
+        },
+        "mean_processed_visible_frames": 2.6907,
+        "mean_dropped_visible_frames": 3.4976,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo26s-coco",
+      "format": "ncnn-fp16",
+      "input_hw": [
+        448,
+        800
+      ],
+      "estimated_pi5_p95_ms": 121.73827273192677,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 379.20885481792766,
+          "p95": 630.9585134827842,
+          "mean": 409.826426554701,
+          "std": 117.62614985346252
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 80.61203215281819,
+          "p95": 111.1092166944025,
+          "mean": 67.63770182793321,
+          "std": 37.036732378619305
+        },
+        "mean_processed_visible_frames": 2.5513,
+        "mean_dropped_visible_frames": 6.1635,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 376.85079650403526,
+          "p95": 723.4080363779157,
+          "mean": 418.6844190130269,
+          "std": 145.8939047470112
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 80.61203215281819,
+          "p95": 111.1092166944025,
+          "mean": 67.63770182793321,
+          "std": 37.036732378619305
+        },
+        "mean_processed_visible_frames": 2.62865,
+        "mean_dropped_visible_frames": 6.35305,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo26s-coco",
+      "format": "ncnn-fp16",
+      "input_hw": [
+        640,
+        640
+      ],
+      "estimated_pi5_p95_ms": 139.15483632472004,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 427.70681772247394,
+          "p95": 730.9252461833483,
+          "mean": 471.5466824483542,
+          "std": 130.11836640578528
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 94.84118581477294,
+          "p95": 126.8371163661364,
+          "mean": 86.43597811605596,
+          "std": 34.47982113673969
+        },
+        "mean_processed_visible_frames": 2.5403,
+        "mean_dropped_visible_frames": 7.49785,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 425.61337508303075,
+          "p95": 813.9307413018195,
+          "mean": 479.33303929217965,
+          "std": 155.89361988190976
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 94.84118581477294,
+          "p95": 126.8371163661364,
+          "mean": 86.43597811605596,
+          "std": 34.47982113673969
+        },
+        "mean_processed_visible_frames": 2.59935,
+        "mean_dropped_visible_frames": 7.67295,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo26s-coco",
+      "format": "ncnn-int8",
+      "input_hw": [
+        352,
+        608
+      ],
+      "estimated_pi5_p95_ms": 70.34901647631234,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 241.9397843573948,
+          "p95": 393.41748954858826,
+          "mean": 258.75958813115227,
+          "std": 68.15229869008414
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 42.907943617341694,
+          "p95": 65.06840811384144,
+          "mean": 37.44489074630478,
+          "std": 21.273032355048596
+        },
+        "mean_processed_visible_frames": 2.54465,
+        "mean_dropped_visible_frames": 2.58505,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 238.36943240099265,
+          "p95": 496.26014030295636,
+          "mean": 270.9089570639215,
+          "std": 105.35293057501356
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 42.907943617341694,
+          "p95": 65.06840811384144,
+          "mean": 37.44489074630478,
+          "std": 21.273032355048596
+        },
+        "mean_processed_visible_frames": 2.72515,
+        "mean_dropped_visible_frames": 2.76895,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo26s-coco",
+      "format": "ncnn-int8",
+      "input_hw": [
+        384,
+        640
+      ],
+      "estimated_pi5_p95_ms": 80.51591843868015,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 263.60133012524005,
+          "p95": 446.43785786659805,
+          "mean": 280.40214094865104,
+          "std": 80.56251925341977
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 24.206926978750793,
+          "p95": 74.56833341624869,
+          "mean": 32.34434931311733,
+          "std": 24.65431108595763
+        },
+        "mean_processed_visible_frames": 2.55715,
+        "mean_dropped_visible_frames": 3.2862,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 254.67737002835668,
+          "p95": 528.4518822918636,
+          "mean": 290.69417993173016,
+          "std": 113.60160649413378
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 24.206926978750793,
+          "p95": 74.56833341624869,
+          "mean": 32.34434931311733,
+          "std": 24.65431108595763
+        },
+        "mean_processed_visible_frames": 2.6902,
+        "mean_dropped_visible_frames": 3.44685,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo26s-coco",
+      "format": "ncnn-int8",
+      "input_hw": [
+        448,
+        800
+      ],
+      "estimated_pi5_p95_ms": 119.39165010713589,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 384.12190900127723,
+          "p95": 721.0231404486128,
+          "mean": 413.1837642158434,
+          "std": 137.45839600479482
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 74.61830347196481,
+          "p95": 113.80809589811822,
+          "mean": 63.65908138047738,
+          "std": 59.117909750928526
+        },
+        "mean_processed_visible_frames": 2.55355,
+        "mean_dropped_visible_frames": 6.3671,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 381.40457744656044,
+          "p95": 755.5908112100985,
+          "mean": 422.23839957543726,
+          "std": 162.36729965991987
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 74.61830347196481,
+          "p95": 113.80809589811822,
+          "mean": 63.65908138047738,
+          "std": 59.117909750928526
+        },
+        "mean_processed_visible_frames": 2.63085,
+        "mean_dropped_visible_frames": 6.56525,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    },
+    {
+      "model_id": "yolo26s-coco",
+      "format": "ncnn-int8",
+      "input_hw": [
+        640,
+        640
+      ],
+      "estimated_pi5_p95_ms": 136.5467686485027,
+      "calibration_id": "cal-v0-published",
+      "distribution": "empirical paired end-to-end bootstrap",
+      "independent": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 414.6451474666013,
+          "p95": 758.6599604883922,
+          "mean": 466.96764348815327,
+          "std": 126.734597253069
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 84.23736919145591,
+          "p95": 117.05110660643722,
+          "mean": 83.27806570663225,
+          "std": 21.767186976493242
+        },
+        "mean_processed_visible_frames": 2.54085,
+        "mean_dropped_visible_frames": 7.4701,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.0,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      },
+      "correlated": {
+        "label": "simulated",
+        "reaction_ms": {
+          "p50": 412.72654985513964,
+          "p95": 799.3956726481587,
+          "mean": 474.9257736506525,
+          "std": 153.04411029805783
+        },
+        "sensor_ms": {
+          "p50": 50.09523706857772,
+          "p95": 65.0001135068568,
+          "mean": 50.000954740824945,
+          "std": 9.61941073661324
+        },
+        "first_wait_ms": {
+          "p50": 84.23736919145591,
+          "p95": 117.05110660643722,
+          "mean": 83.27806570663225,
+          "std": 21.767186976493242
+        },
+        "mean_processed_visible_frames": 2.6015,
+        "mean_dropped_visible_frames": 7.6477,
+        "camera_fps": 30.0,
+        "recall": 0.8,
+        "k": 2,
+        "n": 3,
+        "correlation": 0.6,
+        "trials": 20000,
+        "seed": 42,
+        "frame_policy": "latest",
+        "sensor_periods": [
+          1.0,
+          2.0
+        ],
+        "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+        "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+        "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames"
+      }
+    }
+  ]
+}

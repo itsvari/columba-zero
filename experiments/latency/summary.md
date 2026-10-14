@@ -158,3 +158,55 @@ Calibration xcng factor 1.527111; Mac factor 3.792167. Published Pi5 YOLO11n FP3
 | xcng0 | yolo26n-coco | 448×800 | ncnn-int8 | 33.09 | 34.87 | 37.93 | 57.92 |
 | xcng0 | yolo26n-coco | 640×640 | ncnn-int8 | 36.81 | 39.08 | 42.03 | 64.19 |
 
+
+## Round 2: s-models and YOLO26n head comparison
+
+Camera 640×480. All host timings are **measured**; Pi p95 is **estimated** using unchanged cal-v0-published factors, xcng ×1.527110713 and shared Mac ×3.792166804. Four threads, 20 warm-up, 200 timed iterations. Int8 has latency-only 32-image COCO128 KL calibration. One-class s was not DONE when round 2 began, so these s rows are COCO80 probes.
+
+| Host | Model | Input H×W | Format | Inference p50 | Inference p95 | End-to-end p95 | Estimated Pi p95 | 70 ms target | 100 ms hard |
+|---|---|---|---|---:|---:|---:|---:|---|---|
+| vexcalibur | yolo11s-coco | 352×608 | ncnn-fp16 | 21.68 | 22.99 | 23.70 | 89.86 | FAIL | PASS |
+| vexcalibur | yolo11s-coco | 384×640 | ncnn-fp16 | 24.15 | 25.13 | 25.88 | 98.15 | FAIL | PASS |
+| vexcalibur | yolo11s-coco | 448×800 | ncnn-fp16 | 34.98 | 35.47 | 36.47 | 138.31 | FAIL | FAIL |
+| vexcalibur | yolo11s-coco | 640×640 | ncnn-fp16 | 39.25 | 40.14 | 41.18 | 156.14 | FAIL | FAIL |
+| vexcalibur | yolo11s-coco | 352×608 | ncnn-int8 | 18.36 | 19.22 | 19.88 | 75.41 | FAIL | PASS |
+| vexcalibur | yolo11s-coco | 384×640 | ncnn-int8 | 20.48 | 22.01 | 22.79 | 86.43 | FAIL | PASS |
+| vexcalibur | yolo11s-coco | 448×800 | ncnn-int8 | 29.50 | 31.24 | 32.28 | 122.42 | FAIL | FAIL |
+| vexcalibur | yolo11s-coco | 640×640 | ncnn-int8 | 32.81 | 33.40 | 34.39 | 130.42 | FAIL | FAIL |
+| vexcalibur | yolo26n-coco-one2many | 384×640 | ncnn-fp16 | 10.16 | 13.80 | 14.67 | 55.61 | PASS | PASS |
+| vexcalibur | yolo26n-coco-one2one | 384×640 | ncnn-fp16 | 10.32 | 14.55 | 15.45 | 58.58 | PASS | PASS |
+| vexcalibur | yolo26s-coco | 352×608 | ncnn-fp16 | 21.83 | 22.27 | 22.97 | 87.10 | FAIL | PASS |
+| vexcalibur | yolo26s-coco | 384×640 | ncnn-fp16 | 24.53 | 25.30 | 26.02 | 98.67 | FAIL | PASS |
+| vexcalibur | yolo26s-coco | 448×800 | ncnn-fp16 | 35.04 | 35.75 | 36.76 | 139.39 | FAIL | FAIL |
+| vexcalibur | yolo26s-coco | 640×640 | ncnn-fp16 | 40.13 | 41.28 | 42.29 | 160.36 | FAIL | FAIL |
+| vexcalibur | yolo26s-coco | 352×608 | ncnn-int8 | 18.57 | 18.94 | 19.64 | 74.48 | FAIL | PASS |
+| vexcalibur | yolo26s-coco | 384×640 | ncnn-int8 | 20.44 | 20.86 | 21.62 | 81.99 | FAIL | PASS |
+| vexcalibur | yolo26s-coco | 448×800 | ncnn-int8 | 29.87 | 30.40 | 31.37 | 118.96 | FAIL | FAIL |
+| vexcalibur | yolo26s-coco | 640×640 | ncnn-int8 | 34.66 | 36.20 | 37.27 | 141.35 | FAIL | FAIL |
+| xcng0 | yolo11s-coco | 352×608 | ncnn-fp16 | 42.22 | 45.49 | 47.25 | 72.15 | FAIL | PASS |
+| xcng0 | yolo11s-coco | 384×640 | ncnn-fp16 | 47.12 | 51.63 | 53.58 | 81.83 | FAIL | PASS |
+| xcng0 | yolo11s-coco | 448×800 | ncnn-fp16 | 69.10 | 73.50 | 76.21 | 116.39 | FAIL | FAIL |
+| xcng0 | yolo11s-coco | 640×640 | ncnn-fp16 | 79.09 | 83.51 | 86.06 | 131.42 | FAIL | FAIL |
+| xcng0 | yolo11s-coco | 352×608 | ncnn-int8 | 40.45 | 42.38 | 44.13 | 67.40 | PASS | PASS |
+| xcng0 | yolo11s-coco | 384×640 | ncnn-int8 | 46.83 | 48.99 | 50.89 | 77.72 | FAIL | PASS |
+| xcng0 | yolo11s-coco | 448×800 | ncnn-int8 | 68.87 | 71.61 | 74.22 | 113.34 | FAIL | FAIL |
+| xcng0 | yolo11s-coco | 640×640 | ncnn-int8 | 78.55 | 82.19 | 84.65 | 129.28 | FAIL | FAIL |
+| xcng0 | yolo26n-coco-one2many | 384×640 | ncnn-fp16 | 20.25 | 23.56 | 25.49 | 38.92 | PASS | PASS |
+| xcng0 | yolo26n-coco-one2one | 384×640 | ncnn-fp16 | 19.52 | 21.98 | 23.77 | 36.30 | PASS | PASS |
+| xcng0 | yolo26s-coco | 352×608 | ncnn-fp16 | 41.53 | 45.66 | 47.45 | 72.46 | FAIL | PASS |
+| xcng0 | yolo26s-coco | 384×640 | ncnn-fp16 | 48.55 | 52.75 | 54.71 | 83.54 | FAIL | PASS |
+| xcng0 | yolo26s-coco | 448×800 | ncnn-fp16 | 72.06 | 76.98 | 79.72 | 121.74 | FAIL | FAIL |
+| xcng0 | yolo26s-coco | 640×640 | ncnn-fp16 | 83.52 | 88.59 | 91.12 | 139.15 | FAIL | FAIL |
+| xcng0 | yolo26s-coco | 352×608 | ncnn-int8 | 42.40 | 44.31 | 46.07 | 70.35 | FAIL | PASS |
+| xcng0 | yolo26s-coco | 384×640 | ncnn-int8 | 48.76 | 50.72 | 52.72 | 80.52 | FAIL | PASS |
+| xcng0 | yolo26s-coco | 448×800 | ncnn-int8 | 72.47 | 75.54 | 78.18 | 119.39 | FAIL | FAIL |
+| xcng0 | yolo26s-coco | 640×640 | ncnn-int8 | 83.35 | 86.85 | 89.42 | 136.55 | FAIL | FAIL |
+
+### YOLO26n observed postprocessing difference
+
+Matched fresh 384×640 FP16 measurements, same photograph and camera size. The one-to-many head uses IoU .7 NMS; the swapped one-to-one head uses class-pair top-k without NMS. The comparison measures the pipeline difference between different head predictions on one photograph. Accuracy and parity evaluation belong to WS7.
+
+| Host | One-to-many post p50 | One-to-one post p50 | Difference, many minus one | One-to-many post p95 | One-to-one post p95 |
+|---|---:|---:|---:|---:|---:|
+| xcng0 | 0.4392 | 0.3136 | 0.1256 | 0.4673 | 0.3429 |
+| vexcalibur | 0.1762 | 0.1486 | 0.0275 | 0.2476 | 0.2377 |

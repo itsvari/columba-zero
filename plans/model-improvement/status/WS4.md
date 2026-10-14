@@ -26,11 +26,11 @@ Nothing.
 
 No execution blocker remains.
 
-- Coordinator: update PLAN section 4 using `experiments/latency/reaction_budget.md`. At recall 0.8, FP16 estimated Pi frame p95 is **29.14–55.99 ms**, simulated independent 2/3 reaction p95 **199.82–317.46 ms**. The rho=.6 sensitivity p95 is **299.36–414.67 ms**. These are assumptions on estimated Pi distributions, not measured Pi reaction times.
-- Coordinator: accept C7 extensions in the next contract version: optional paired end-to-end `samples_ms`, camera dimensions, class count, confidence, model hashes, load averages, software versions, raw CPU feature report, Slurm allocation provenance, timing boundaries and latency-only int8 calibration provenance.
+- Resolved: coordinator updated PLAN section 4 using `experiments/latency/reaction_budget.md`. At recall 0.8, FP16 estimated Pi frame p95 is **29.14–55.99 ms**, simulated independent 2/3 reaction p95 **199.82–317.46 ms**. The rho=.6 sensitivity p95 is **299.36–414.67 ms**. These are assumptions on estimated Pi distributions, not measured Pi reaction times.
+- Resolved: CONTRACTS v1.2, included in v1.6, accepts the C7 extensions: optional paired end-to-end `samples_ms`, camera dimensions, class count, confidence, model hashes, load averages, software versions, raw CPU feature report, Slurm allocation provenance, timing boundaries and latency-only int8 calibration provenance.
 - WS6: the gate supports C8 `(4+nc,N)` YOLO outputs. Other challenger layouts need a model-specific decoder before an end-to-end gate is valid.
-- WS7: int8 here uses 32 COCO128 images with NCNN KL calibration, direct RGB resize and 1/255 normalisation. It is **latency-only calibration**, not deployment calibration or an accuracy/parity claim. FP16 is faster than these int8 models on both measured hosts.
-- Optional YOLO26 one-to-one head-swap benchmarks were not run. `--nms-free` supports class-pair top-k but must only be used on a separately verified one-to-one export.
+- WS7: int8 here uses 32 COCO128 images with NCNN KL calibration, direct RGB resize and 1/255 normalisation. It is **latency-only calibration**, not deployment calibration or an accuracy/parity claim. FP16 is faster than the round-1 nano int8 models on both measured hosts. Round-2 s models have different trade-offs, recorded below.
+- Round 1 omitted the optional YOLO26 one-to-one probe; round 2 below completes it. `--nms-free` supports class-pair top-k but must only be used on a separately verified one-to-one export.
 
 ## Results
 
@@ -66,3 +66,32 @@ One successful bundled job **945162**, `cz-ws4-bench`, normal/xcng0, nice 1000, 
 The queue was checked before every submission; WS4 never had more than one running CPU job. Three failed setup attempts collected no timings: 945127 had an incorrect absolute Slurm log path; 945144 installed the custom library but found x86 NumPy wheels from login-host venv creation; 945153 installed ARM wheels but encountered macOS AppleDouble metadata during model enumeration. Fixed the log path, installed the venv on ARM and enumerated directories only. The successful retry reused the verified library and venv. Logs remain in the WS4 scratch directory.
 
 Kernel evidence needs interpretation: generic bf16 storage routines can be present despite disabled ARM84 bf16 instructions; runtime bf16 storage is off. NCNN feature queries return booleans on Mac but raw HWCAP values on Linux. The recorded raw expression `fp16_query + 2 * dotprod_query` is 3 on Mac and 2098176 on N1; both support fp16 and dot-product. Generated macros and specialised object names establish the A76 build restrictions.
+
+
+## Round 2 — s-models and NMS-free head
+
+- State: done. Fast-forwarded `ws4/latency` to latest main `92d3849`, which contains coordinator commit `98af7a1` and CONTRACTS v1.6.
+- Reusing both custom NCNN builds and `cal-v0-published` factors.
+- Planned COCO YOLO11s/YOLO26s, four sizes, fp16 and latency-only int8, camera 640×480, on Mac and xcng. YOLO26n one-to-one and matched one-to-many at 384×640 FP16 will run in the same bundle for postprocessing comparison.
+- Optional one-class s checkpoint was not DONE at the start; skipped as authorised. Its training job is still running.
+- Initial queue check: two cz- GPU jobs running, no cz- CPU jobs running, within project caps.
+
+
+### Round-2 results
+
+- **Measured** 36 additional C7s, 18 on shared Mac M2 Pro `vexcalibur` and 18 on Neoverse-N1 `xcng0`, camera 640×480. COCO80 YOLO11s/YOLO26s, four sizes, fp16 and latency-only int8; YOLO26n standard one-to-many and swapped one-to-one at 384×640 FP16.
+- One **bundled** job `945604`, `cz-ws4-bench-s`, normal/xcng0, nice 1000, requested 32 CPUs and 16 GB, limit 2 h 45 min. Completed exit 0 in **4 min 2 s measured wall time**. Reused existing NCNN and ARM venv. `srun --cpu-bind=cores` checked that allocated affinity included 0–3, then every benchmark used literal `taskset -c 0-3`; all 18 C7s record `0,1,2,3`. Node-local staging had EXIT cleanup. No WS4 processes or CPU jobs remain running.
+- Every submission was preceded by `squeue -u $USER`; two cz- GPU jobs and no cz- CPU job were running before this single submission. No retries were needed.
+- Calibration factors are unchanged: xcng **1.527110713**, shared Mac **3.792166804**. These remain **estimated** Pi times, not Pi measurements. COCO80 exports include a larger output head than the planned 1/11-class deploy models.
+- **Estimated Pi frame p95**, s models: 352×608 and 384×640 pass the 100 ms hard gate; 448×800 and 640×640 fail in both precisions. Only YOLO11s 352×608 int8 meets the 70 ms target, **67.40 ms**. YOLO26s 352×608 int8 is **70.35 ms**, just above target. FP16 352×608 is **72.15/72.46 ms** for YOLO11s/YOLO26s. FP16 384×640 is **81.83/83.54 ms**.
+- **Simulated**, recall .8, 30 FPS, sensor uniform 1–2 periods, latest-frame, k2/n3, 20k trials/seed42: all s cases at 352×608 and 384×640 pass independent-hit reaction p95 <=500 ms. At assumed rho=.6, 352×608 stays below 500 ms but with little margin for some cases; all 384×640 cases exceed 500 ms, **528.45–535.15 ms**. Larger inputs fail the independent-hit reaction gate as well. These are sensitivity estimates, not measured temporal recall.
+- **Measured observed postprocessing p50 difference**, many minus one, YOLO26n 384×640 FP16: **0.125622 ms on xcng0**, **0.027521 ms on shared Mac**. ARM post p50 is **0.439249 ms with NMS vs 0.313627 ms with one-to-one top-k**. This is a comparison of different head predictions on one photograph, not an isolated NMS microbenchmark or a universal saving. Export verification found swapped cv2/cv3 weights exactly equal to the original one-to-one weights, maximum absolute difference 0.
+- Int8 uses the same 32-image COCO128 RGB/direct-resize/1/255 KL calibration method as round 1. It is latency-only and still needs WS7's deployment calibration, accuracy and parity checks.
+
+Artifacts: appended `experiments/latency/summary.md` and `reaction_budget.md`; `reaction_round2_results.json`, `round2_head_comparison.json`, `round2_head_export_verification.json`, `round2_manifest.json`, `round2_job.sbatch`, and 36 new C7 files directly under `experiments/latency/`. Logs, checkpoints, exports and runnable bundle remain in `outputs/ws4/round2/` and cluster `~/columba/scratch/ws4/round2/`.
+
+### Round-2 completion and coordinator actions
+
+All requested measurements and reports are complete. Optional one-class s was not DONE at the start and was skipped as authorised. No implementation or ownership blockers remain. WS5 should use the ARM table for latency selection; 384×640 is within the frame hard gate but needs stronger measured temporal recall or a different processing/confirmation budget to fit the correlated-miss reaction scenario. PLAN is coordinator-owned; the new s rows are ready to incorporate if desired. The earlier C7 extension and nano PLAN requests are resolved.
+
+Section-0 checks on rebased main plus this work: 192 unit tests pass, Ruff lint and formatting pass for `app tests tools cluster training`, strict mypy passes on 66 files. C7 matrix membership, all 200-sample p95 values, host-specific calibration scaling, model hashes across hosts, head decoder flags and ARM affinity were verified against the real records.
