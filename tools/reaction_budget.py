@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import argparse
 import math
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
+import numpy
 from numpy.typing import NDArray
+
+if __package__ is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.json_data import JsonValue
 from tools.bench_ncnn import calibration_factor, number, read_report, summary
@@ -72,7 +76,7 @@ def processing_samples(
     if not 0 < median_ms <= p95_ms:
         raise ValueError("require 0 < p50 <= p95")
     sigma = math.log(p95_ms / median_ms) / NORMAL_P95_Z
-    draws = np.random.default_rng(seed).lognormal(math.log(median_ms), sigma, DEFAULT_TRIALS)
+    draws = numpy.random.default_rng(seed).lognormal(math.log(median_ms), sigma, DEFAULT_TRIALS)
     return [float(value) * factor for value in draws], "estimated lognormal fitted to C7 p50/p95"
 
 
@@ -85,8 +89,8 @@ def simulate_reaction(
     settings.validate()
     if not values_ms or any(not math.isfinite(value) or value <= 0 for value in values_ms):
         raise ValueError("processing times must be finite and positive")
-    processing_ms = np.asarray(values_ms, dtype=np.float64)
-    random = np.random.default_rng(settings.seed)
+    processing_ms = numpy.asarray(values_ms, dtype=numpy.float64)
+    random = numpy.random.default_rng(settings.seed)
     camera_period_ms = MILLISECONDS_PER_SECOND / settings.camera_fps
     sensor_ms = random.uniform(
         settings.sensor_min_periods * camera_period_ms,
@@ -95,27 +99,27 @@ def simulate_reaction(
     )
     # pre-roll places an appearance inside the ongoing loop, rather than at a cold start.
     initial_index = -BURN_IN_FRAMES if settings.frame_policy == "latest" else 0
-    captured_index = np.full(settings.trials, initial_index, dtype=np.int64)
+    captured_index = numpy.full(settings.trials, initial_index, dtype=numpy.int64)
     started_ms = sensor_ms + captured_index * camera_period_ms
     if settings.frame_policy == "latest":
         started_ms += random.uniform(0, camera_period_ms, settings.trials)
     previous_hit = random.random(settings.trials) < settings.recall
     previous_index = captured_index.copy()
-    history = np.zeros((settings.trials, settings.n), dtype=np.bool_)
-    visible_frames = np.zeros(settings.trials, dtype=np.int64)
-    result_ms = np.full(settings.trials, np.inf)
-    first_wait_ms = np.zeros(settings.trials)
-    dropped_frames = np.zeros(settings.trials, dtype=np.int64)
+    history = numpy.zeros((settings.trials, settings.n), dtype=numpy.bool_)
+    visible_frames = numpy.zeros(settings.trials, dtype=numpy.int64)
+    result_ms = numpy.full(settings.trials, numpy.inf)
+    first_wait_ms = numpy.zeros(settings.trials)
+    dropped_frames = numpy.zeros(settings.trials, dtype=numpy.int64)
     for _ in range(MAXIMUM_PROCESSED_FRAMES + BURN_IN_FRAMES):
-        active = np.isinf(result_ms)
-        if not np.any(active):
+        active = numpy.isinf(result_ms)
+        if not numpy.any(active):
             break
         finished_ms = started_ms + random.choice(processing_ms, settings.trials)
         visible = active & (captured_index >= 0)
         first = visible & (visible_frames == 0)
         first_wait_ms[first] = started_ms[first] - sensor_ms[first]
-        gap = np.maximum(1, captured_index - previous_index)
-        persistence = np.power(settings.correlation, gap)
+        gap = numpy.maximum(1, captured_index - previous_index)
+        persistence = numpy.power(settings.correlation, gap)
         hit_probability = settings.recall + (previous_hit - settings.recall) * persistence
         hit = random.random(settings.trials) < hit_probability
         history[visible, :-1] = history[visible, 1:]
@@ -127,13 +131,13 @@ def simulate_reaction(
         previous_index[visible] = captured_index[visible]
         next_index = captured_index + 1
         if settings.frame_policy == "latest":
-            newest = np.floor((finished_ms - sensor_ms) / camera_period_ms).astype(np.int64)
-            next_index = np.maximum(next_index, newest)
+            newest = numpy.floor((finished_ms - sensor_ms) / camera_period_ms).astype(numpy.int64)
+            next_index = numpy.maximum(next_index, newest)
             dropped_frames[visible] += (next_index - captured_index - 1)[visible]
-        started_ms = np.maximum(finished_ms, sensor_ms + next_index * camera_period_ms)
+        started_ms = numpy.maximum(finished_ms, sensor_ms + next_index * camera_period_ms)
         captured_index = next_index
-    finite: NDArray[np.bool_] = np.isfinite(result_ms)
-    if not np.all(finite):
+    finite: NDArray[numpy.bool_] = numpy.isfinite(result_ms)
+    if not numpy.all(finite):
         raise ValueError(
             "confirmation did not finish within 10000 processed frames; increase recall"
         )

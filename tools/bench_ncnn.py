@@ -14,20 +14,24 @@ import os
 import platform
 import re
 import statistics
+import sys
 import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeAlias, cast
 
-import numpy as np
+import numpy
 import yaml
 from numpy.typing import NDArray
 
+if __package__ is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from app.json_data import JsonValue
 
-FloatValues: TypeAlias = NDArray[np.float32]
-Frame: TypeAlias = NDArray[np.uint8]
+InferenceValues: TypeAlias = NDArray[numpy.float32]
+Frame: TypeAlias = NDArray[numpy.uint8]
 NCNN_VERSION = "1.0.20260526"
 NCNN_COMMIT = "e54f7b1f88434e1d844ea0551b880a1cfb079ce1"
 DEFAULT_ITERATIONS = 200
@@ -64,8 +68,8 @@ def summary(values_ms: Sequence[float]) -> dict[str, JsonValue]:
     if not values_ms or any(not math.isfinite(value) or value < 0 for value in values_ms):
         raise ValueError("timings must be a nonempty sequence of finite nonnegative values")
     return {
-        "p50": float(np.percentile(values_ms, 50)),
-        "p95": float(np.percentile(values_ms, 95)),
+        "p50": float(numpy.percentile(values_ms, 50)),
+        "p95": float(numpy.percentile(values_ms, 95)),
         "mean": statistics.mean(values_ms),
         "std": statistics.pstdev(values_ms),
     }
@@ -174,7 +178,7 @@ def write_report(report: dict[str, JsonValue], directory: Path) -> Path:
     return path
 
 
-def letterbox(frame: Frame, input_hw: tuple[int, int]) -> FloatValues:
+def letterbox(frame: Frame, input_hw: tuple[int, int]) -> InferenceValues:
     import cv2
 
     height_px, width_px = input_hw
@@ -193,44 +197,53 @@ def letterbox(frame: Frame, input_hw: tuple[int, int]) -> FloatValues:
         value=(PAD_VALUE,) * COLOUR_CHANNELS,
     )
     return (
-        np.ascontiguousarray(padded[:, :, ::-1].transpose(2, 0, 1), dtype=np.float32)
+        numpy.ascontiguousarray(padded[:, :, ::-1].transpose(2, 0, 1), dtype=numpy.float32)
         / PIXEL_MAXIMUM
     )
 
 
 def decode(
-    prediction: FloatValues, confidence: float = DEFAULT_CONFIDENCE, nms_free: bool = False
-) -> FloatValues:
+    prediction: InferenceValues, confidence: float = DEFAULT_CONFIDENCE, nms_free: bool = False
+) -> InferenceValues:
     if prediction.ndim != 2 or prediction.shape[0] <= BOX_COORDINATES:
         raise ValueError("expected C8 (4+nc, N) cxcywh pixels and sigmoid scores")
     candidates = prediction[:, prediction[BOX_COORDINATES:].max(axis=0) >= confidence].T
     if not len(candidates):
-        return np.empty((0, 6), dtype=np.float32)
+        return numpy.empty((0, 6), dtype=numpy.float32)
     classes = candidates[:, BOX_COORDINATES:].argmax(axis=1)
-    scores = candidates[np.arange(len(candidates)), classes + BOX_COORDINATES]
+    scores = candidates[numpy.arange(len(candidates)), classes + BOX_COORDINATES]
     order = scores.argsort()[::-1][:MAXIMUM_NMS_CANDIDATES]
     centres = candidates[:, :2]
     sizes = candidates[:, 2:BOX_COORDINATES]
-    boxes = np.concatenate((centres - sizes / 2, centres + sizes / 2), axis=1)
+    boxes = numpy.concatenate((centres - sizes / 2, centres + sizes / 2), axis=1)
+    if nms_free:
+        class_count = prediction.shape[0] - BOX_COORDINATES
+        flattened_scores = candidates[:, BOX_COORDINATES:].reshape(-1)
+        ranked = flattened_scores.argsort()[::-1][:MAXIMUM_DETECTIONS]
+        ranked = ranked[flattened_scores[ranked] >= confidence]
+        anchors = ranked // class_count
+        return numpy.asarray(
+            numpy.column_stack((boxes[anchors], flattened_scores[ranked], ranked % class_count)),
+            dtype=numpy.float32,
+        )
     kept: list[int] = []
     while len(order) and len(kept) < MAXIMUM_DETECTIONS:
         current = int(order[0])
         kept.append(current)
         others = order[1:]
-        if nms_free:
-            order = others
-            continue
-        intersection_hw = np.maximum(
+        intersection_hw = numpy.maximum(
             0,
-            np.minimum(boxes[current, 2:], boxes[others, 2:])
-            - np.maximum(boxes[current, :2], boxes[others, :2]),
+            numpy.minimum(boxes[current, 2:], boxes[others, 2:])
+            - numpy.maximum(boxes[current, :2], boxes[others, :2]),
         )
         intersections = intersection_hw.prod(axis=1)
         areas = sizes.prod(axis=1)
         unions = areas[current] + areas[others] - intersections
-        overlaps = intersections / np.maximum(unions, np.finfo(np.float32).eps)
+        overlaps = intersections / numpy.maximum(unions, numpy.finfo(numpy.float32).eps)
         order = others[(overlaps <= NMS_IOU) | (classes[others] != classes[current])]
-    return np.asarray(np.column_stack((boxes[kept], scores[kept], classes[kept])), dtype=np.float32)
+    return numpy.asarray(
+        numpy.column_stack((boxes[kept], scores[kept], classes[kept])), dtype=numpy.float32
+    )
 
 
 class Engine:
@@ -278,7 +291,9 @@ class Engine:
         if status != 0:
             raise ValueError(f"NCNN load failed with status {status}")
 
-    def infer(self, image: FloatValues, output: FloatValues) -> tuple[FloatValues, float]:
+    def infer(
+        self, image: InferenceValues, output: InferenceValues
+    ) -> tuple[InferenceValues, float]:
         rows, columns = ctypes.c_int(), ctypes.c_int()
         elapsed_ms = ctypes.c_double()
         status = self.library.cz_infer(
@@ -324,7 +339,9 @@ def benchmark(
     evidence = (prefix / "build-evidence.txt").read_text()
     if f"profile={host_profile}" not in evidence or f"commit={NCNN_COMMIT}" not in evidence:
         raise ValueError("NCNN build evidence does not match host profile and pinned commit")
-    metadata: dict[str, JsonValue] = yaml.safe_load((model / "metadata.yaml").read_text())
+    metadata: JsonValue = yaml.safe_load((model / "metadata.yaml").read_text())
+    if not isinstance(metadata, dict):
+        raise ValueError("metadata.yaml must contain a mapping")
     exported_hw = metadata.get("imgsz")
     if exported_hw != list(input_hw):
         raise ValueError(f"export shape {exported_hw} differs from requested {input_hw}")
@@ -335,14 +352,16 @@ def benchmark(
     if frame_path and frame is None:
         raise ValueError(f"cannot read {frame_path}")
     if frame is None:
-        frame = np.random.default_rng(0).integers(0, 256, (*camera_hw, COLOUR_CHANNELS), np.uint8)
+        frame = numpy.random.default_rng(0).integers(
+            0, 256, (*camera_hw, COLOUR_CHANNELS), numpy.uint8
+        )
     else:
         frame = cast(Frame, cv2.resize(frame, (camera_hw[1], camera_hw[0])))
     cv2.setNumThreads(1)
     prediction_capacity = (BOX_COORDINATES + len(names)) * sum(
         (input_hw[0] // stride) * (input_hw[1] // stride) for stride in DETECTION_STRIDES
     )
-    output = np.empty(prediction_capacity, dtype=np.float32)
+    output = numpy.empty(prediction_capacity, dtype=numpy.float32)
     engine = Engine(prefix, model, precision)
     preprocess_ms: list[float] = []
     inference_ms: list[float] = []
@@ -358,13 +377,13 @@ def benchmark(
             inferred_s = time.perf_counter()
             detections = decode(prediction, confidence, nms_free)
             scale = min(input_hw[0] / camera_hw[0], input_hw[1] / camera_hw[1])
-            padding_xy = np.asarray(
+            padding_xy = numpy.asarray(
                 [
                     (input_hw[1] - round(camera_hw[1] * scale)) // 2,
                     (input_hw[0] - round(camera_hw[0] * scale)) // 2,
                 ]
                 * 2,
-                dtype=np.float32,
+                dtype=numpy.float32,
             )
             detections[:, :BOX_COORDINATES] = (detections[:, :BOX_COORDINATES] - padding_xy) / scale
             detections[:, (0, 2)] = detections[:, (0, 2)].clip(0, camera_hw[1])
@@ -419,7 +438,13 @@ def benchmark(
         else "seed-0 synthetic uint8 camera-shaped noise",
         "load_average_before": list(load_before),
         "load_average_after": list(os.getloadavg()),
-        "cpu_fp16_dotprod_mask": cpu_features,
+        "cpu_feature_report_raw": cpu_features,
+        "cpu_feature_report_encoding": "fp16 query + 2 * dotprod query; platform-specific values",
+        "software_versions": {
+            "python": platform.python_version(),
+            "numpy": numpy.__version__,
+            "opencv": cv2.__version__,
+        },
         "measurement_notes": (
             "Mac M2 Pro a76compat build, shared machine; relative noisy measurements"
             if host_profile == "mac-a76compat"

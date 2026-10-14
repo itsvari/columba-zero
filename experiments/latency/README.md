@@ -35,9 +35,15 @@ PREFIX/
 ```
 
 Use `-DCMAKE_PREFIX_PATH=PREFIX` then `find_package(ncnn CONFIG REQUIRED)`
-and `target_link_libraries(target PRIVATE ncnn)`. `build-evidence.txt`
+and `target_link_libraries(target PRIVATE ncnn)`. On Mac, the consuming CMake
+configure also needs the libomp discovery flags used by the build script:
+`-DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp"`,
+`-DOpenMP_CXX_LIB_NAMES=omp`, and
+`-DOpenMP_omp_LIBRARY="$(brew --prefix libomp)/lib/libomp.dylib"`.
+`build-evidence.txt`
 records generated feature macros, actual compiled kernel objects, CPU-query
-symbols and the source pin. Hardware feature reports alone cannot prove which
+symbols and the source pin. The script rejects any unexpected generated ARM
+feature setting. Hardware feature reports alone cannot prove which
 kernels are enabled, because the Mac reports features this build disables.
 
 `tools/bench_ncnn/bridge.cpp` is a small C++17 RAII bridge. Python calls it
@@ -89,7 +95,7 @@ accuracy/parity claim. No checkpoint, image or model binary is committed.
 
 C7 extensions requested from the coordinator: paired `samples_ms` end-to-end
 measurements, camera dimensions, class count, confidence, hashes, load averages,
-CPU feature mask, timing boundaries and int8 calibration provenance. Percentiles
+raw CPU feature report, timing boundaries and int8 calibration provenance. Percentiles
 use NumPy linear interpolation; std is population standard deviation. Samples
 are collected after warm-up and stage percentiles are not added together.
 
@@ -112,6 +118,15 @@ so a versioned official source is necessary. Published NCNN version, thread
 count and thermal conditions are unknown. Scaling end-to-end distributions,
 other precisions and other sizes with this one factor remains an estimate.
 Mac uses its own host-matched factor and cannot use the xcng factor directly.
+The measured xcng factor is 1.527110713, using 61.573793715 ms mean inference;
+the Mac factor is 3.792166804, using 24.795850200 ms mean inference.
+The compiled specialised ARM objects are asimdhp and asimddp variants, with no
+FML, ARM84 bf16/i8mm or SVE variants. Generic bf16 storage routines may still
+appear in symbol reports; `use_bf16_storage` is off. The raw feature report is
+`fp16_query + 2 * dotprod_query`: Mac returns 3, Linux N1 returns 2098176 because
+NCNN returns HWCAP bit values rather than booleans on Linux. Both hosts support
+fp16 and dot-product; generated macros and compiled objects prove the build
+restrictions.
 
 The simulation starts at the first visible frame's capture timestamp, without
 an extra pre-capture uniform wait. Sensor delay defaults to uniform 1–2 camera

@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
 
-import numpy as np
+import numpy
 
 from app.json_data import JsonValue
 from tools.bench_ncnn import (
+    NCNN_COMMIT,
     apply_calibration,
+    benchmark,
     calibration_factor,
     decode,
     letterbox,
@@ -21,11 +25,37 @@ from tools.reaction_budget import ReactionSettings, processing_samples, simulate
 
 
 class BenchmarkTests(unittest.TestCase):
+    def test_documented_script_entry_points_work_outside_the_repository(self) -> None:
+        repository = Path(__file__).resolve().parents[1]
+        for script in ("bench_ncnn.py", "reaction_budget.py"):
+            with tempfile.TemporaryDirectory() as directory:
+                result = subprocess.run(
+                    [sys.executable, str(repository / "tools" / script), "--help"],
+                    cwd=directory,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                self.assertIn("usage:", result.stdout)
+
+    def test_benchmark_rejects_short_runs_and_invalid_export_metadata_without_ncnn(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            location = Path(directory)
+            with self.assertRaisesRegex(ValueError, ">=200"):
+                benchmark(location, location, (352, 608), "xcng", "model", iterations=199)
+            (location / "build-evidence.txt").write_text(f"profile=xcng commit={NCNN_COMMIT}")
+            (location / "metadata.yaml").write_text("[]")
+            with self.assertRaisesRegex(ValueError, "mapping"):
+                benchmark(location, location, (352, 608), "xcng", "model")
+            (location / "metadata.yaml").write_text("imgsz: [640, 640]\nnames: [pigeon]\n")
+            with self.assertRaisesRegex(ValueError, "export shape"):
+                benchmark(location, location, (352, 608), "xcng", "model")
+
     def test_percentiles_use_linear_interpolation_and_population_std(self) -> None:
         result = summary([10.0, 20.0, 30.0, 40.0])
         self.assertEqual(result["p50"], 25)
         self.assertEqual(result["p95"], 38.5)
-        self.assertAlmostEqual(float(str(result["std"])), np.sqrt(125))
+        self.assertAlmostEqual(float(str(result["std"])), numpy.sqrt(125))
         for values in ([], [-1.0], [float("nan")]):
             with self.assertRaises(ValueError):
                 summary(values)
@@ -96,7 +126,7 @@ class BenchmarkTests(unittest.TestCase):
         self.assertIn("lognormal", description)
 
     def test_letterbox_rgb_normalisation_and_rectangular_shape(self) -> None:
-        frame = np.zeros((32, 64, 3), dtype=np.uint8)
+        frame = numpy.zeros((32, 64, 3), dtype=numpy.uint8)
         frame[:, :, 2] = 255
         image = letterbox(frame, (64, 64))
         self.assertEqual(image.shape, (3, 64, 64))
@@ -104,8 +134,15 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(image[2, 32, 32], 0)
         self.assertAlmostEqual(float(image[0, 0, 0]), 114 / 255)
 
+    def test_one_to_one_topk_can_select_multiple_classes_for_one_anchor(self) -> None:
+        prediction = numpy.asarray([[50], [50], [20], [20], [0.9], [0.8]], dtype=numpy.float32)
+        detections = decode(prediction, nms_free=True)
+        self.assertEqual(len(detections), 2)
+        self.assertEqual(list(detections[:, -1]), [0, 1])
+        self.assertEqual(len(decode(prediction)), 1)
+
     def test_decode_nms_is_class_aware_and_scores_are_already_sigmoid(self) -> None:
-        prediction = np.asarray(
+        prediction = numpy.asarray(
             [
                 [50, 50, 50],
                 [50, 50, 50],
@@ -114,7 +151,7 @@ class BenchmarkTests(unittest.TestCase):
                 [0.9, 0.8, 0.1],
                 [0.1, 0.1, 0.9],
             ],
-            dtype=np.float32,
+            dtype=numpy.float32,
         )
         self.assertEqual(len(decode(prediction)), 2)
         self.assertEqual(len(decode(prediction, nms_free=True)), 3)

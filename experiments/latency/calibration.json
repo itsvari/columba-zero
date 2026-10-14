@@ -1,0 +1,30 @@
+{
+  "id": "cal-v0-published",
+  "label": "estimated",
+  "factor": 1.5271107126389931,
+  "host_factors": {
+    "xcng-n1": 1.5271107126389931,
+    "mac-a76compat": 3.792166803782352
+  },
+  "method": "published Pi5 mean inference / matched-host mean inference",
+  "source": "https://github.com/ultralytics/ultralytics/blob/v8.3.200/docs/en/guides/raspberry-pi.md",
+  "date": "2026-10-14",
+  "published": {
+    "model": "YOLO11n COCO80",
+    "input_hw": [
+      640,
+      640
+    ],
+    "format": "NCNN FP32",
+    "inference_mean_ms": 94.03,
+    "ultralytics_version": "8.3.152",
+    "excludes": "pre/post-processing"
+  },
+  "reference_inference_mean_ms": {
+    "xcng-n1": 61.573793715,
+    "mac-a76compat": 24.7958502
+  },
+  "reference_host": "xcng0",
+  "ncnn_version": "1.0.20260526",
+  "limitations": "Single-model, single-size inference-mean calibration. Scaling the whole pipeline and fp16/int8 is an estimate; no precision-specific Pi calibration exists. Mac factor is separately anchored and noisy on a shared machine. Published NCNN version, clock, thermal state and thread count are unspecified. Reference includes Mat copy; published Ultralytics backend also constructs Mat. WS10 must replace this record with paired Pi measurements."
+}

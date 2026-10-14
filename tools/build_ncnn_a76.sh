@@ -62,7 +62,14 @@ cmake --install "$prefix/bridge-build"
     echo 'Compiled ARM kernel objects:'
     ar -t "$prefix/lib/libncnn.a" | sed -nE '/arm.*(asimd|fp16|bf16|i8mm|sve|sme)/p'
     echo 'Compiled kernel symbols:'
-    nm -g "$prefix/lib/libncnn.a" 2>/dev/null | sed -nE '/asimdhp|asimddp|fp16fml|bf16|i8mm|sve|sme/p' | head -100 || true
+    nm -g "$prefix/lib/libncnn.a" 2>/dev/null | sed -nE '/asimdhp|asimddp|fp16fml|bf16|i8mm|sve|sme/p' | sed -n '1,100p' || true
 } > "$prefix/build-evidence.txt"
 [[ -f "$prefix/lib/cmake/ncnn/ncnnConfig.cmake" ]]
+awk '
+    $1 == "#define" && $2 ~ /^NCNN_ARM/ {
+        expected = ($2 == "NCNN_ARM82" || $2 == "NCNN_ARM82DOT") ? 1 : 0
+        if ($3 != expected) { print "Unexpected ARM feature: " $2 "=" $3; failed = 1 }
+    }
+    END { exit failed }
+' "$prefix/build/src/platform.h"
 echo "Installed $prefix; evidence: $prefix/build-evidence.txt"

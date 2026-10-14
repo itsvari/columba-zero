@@ -1,0 +1,167 @@
+profile=mac-a76compat
+tag=20260526 commit=e54f7b1f88434e1d844ea0551b880a1cfb079ce1 pip=1.0.20260526
+NCNN_ARM82:BOOL=ON
+NCNN_ARM82DOT:BOOL=ON
+NCNN_ARM82FP16FML:BOOL=OFF
+NCNN_ARM84BF16:UNINITIALIZED=OFF
+NCNN_ARM84I8MM:UNINITIALIZED=OFF
+NCNN_ARM86SVE:UNINITIALIZED=OFF
+NCNN_ARM86SVE2:UNINITIALIZED=OFF
+NCNN_ARM86SVEBF16:UNINITIALIZED=OFF
+NCNN_ARM86SVEF32MM:UNINITIALIZED=OFF
+NCNN_ARM86SVEI8MM:UNINITIALIZED=OFF
+NCNN_OPENMP:BOOL=ON
+NCNN_VULKAN:BOOL=OFF
+#define NCNN_ARM82 1
+#define NCNN_ARM82DOT 1
+#define NCNN_ARM82FP16FML 0
+#define NCNN_ARM84BF16 0
+#define NCNN_ARM84I8MM 0
+#define NCNN_ARM86SVE 0
+#define NCNN_ARM86SVE2 0
+#define NCNN_ARM86SVEBF16 0
+#define NCNN_ARM86SVEI8MM 0
+#define NCNN_ARM86SVEF32MM 0
+Compiled ARM kernel objects:
+batchnorm_arm_asimdhp.cpp.o
+convolution_arm_asimdhp.cpp.o
+convolution_arm_asimddp.cpp.o
+deconvolution_arm_asimdhp.cpp.o
+eltwise_arm_asimdhp.cpp.o
+elu_arm_asimdhp.cpp.o
+innerproduct_arm_asimdhp.cpp.o
+pooling_arm_asimdhp.cpp.o
+prelu_arm_asimdhp.cpp.o
+relu_arm_asimdhp.cpp.o
+sigmoid_arm_asimdhp.cpp.o
+softmax_arm_asimdhp.cpp.o
+tanh_arm_asimdhp.cpp.o
+rnn_arm_asimdhp.cpp.o
+rnn_arm_asimddp.cpp.o
+lstm_arm_asimdhp.cpp.o
+lstm_arm_asimddp.cpp.o
+binaryop_arm_asimdhp.cpp.o
+unaryop_arm_asimdhp.cpp.o
+convolutiondepthwise_arm_asimdhp.cpp.o
+interp_arm_asimdhp.cpp.o
+deconvolutiondepthwise_arm_asimdhp.cpp.o
+instancenorm_arm_asimdhp.cpp.o
+clip_arm_asimdhp.cpp.o
+quantize_arm_asimdhp.cpp.o
+dequantize_arm_asimdhp.cpp.o
+hardsigmoid_arm_asimdhp.cpp.o
+selu_arm_asimdhp.cpp.o
+hardswish_arm_asimdhp.cpp.o
+mish_arm_asimdhp.cpp.o
+swish_arm_asimdhp.cpp.o
+gemm_arm_asimdhp.cpp.o
+gemm_arm_asimddp.cpp.o
+groupnorm_arm_asimdhp.cpp.o
+layernorm_arm_asimdhp.cpp.o
+gru_arm_asimdhp.cpp.o
+gru_arm_asimddp.cpp.o
+gelu_arm_asimdhp.cpp.o
+convolution1d_arm_asimdhp.cpp.o
+erf_arm_asimdhp.cpp.o
+rmsnorm_arm_asimdhp.cpp.o
+Compiled kernel symbols:
+00000000000043a8 T _ncnn_layer_get_support_bf16_storage
+000000000000441c T _ncnn_layer_set_support_bf16_storage
+00000000000002a4 T _ncnn_option_get_use_bf16_packed
+00000000000002ac T _ncnn_option_get_use_bf16_storage
+0000000000000368 T _ncnn_option_set_use_bf16_packed
+0000000000000378 T _ncnn_option_set_use_bf16_storage
+0000000000000ab4 T __ZN4ncnn19cpu_support_arm_sveEv
+0000000000000a7c T __ZN4ncnn20cpu_support_arm_bf16Ev
+0000000000000a98 T __ZN4ncnn20cpu_support_arm_i8mmEv
+0000000000000acc T __ZN4ncnn20cpu_support_arm_sve2Ev
+0000000000000a44 T __ZN4ncnn23cpu_support_arm_asimddpEv
+0000000000000a10 T __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000000ae4 T __ZN4ncnn23cpu_support_arm_svebf16Ev
+0000000000000afc T __ZN4ncnn23cpu_support_arm_svei8mmEv
+0000000000000b14 T __ZN4ncnn24cpu_support_arm_svef32mmEv
+0000000000000c34 T __ZN4ncnn27cpu_support_x86_avx512_bf16Ev
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000000634 T __ZNK4ncnn13BatchNorm_arm21forward_inplace_bf16sERNS_3MatERKNS_6OptionE
+batchnorm_arm_asimdhp.cpp.o:
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000001cdc T __ZNK4ncnn10Concat_arm19forward_bf16s_fp16sERKNSt3__16vectorINS_3MatENS1_9allocatorIS3_EEEERS6_RKNS_6OptionE
+00000000000126a8 T __ZN4ncnn15Convolution_arm21create_pipeline_bf16sERKNS_6OptionE
+                 U __ZN4ncnn23cpu_support_arm_asimddpEv
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+000000000000b7d0 T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi1ELi1ELi1ELi1ELi2ELi2EEEvRKNS_3MatERS1_iiii
+000000000000efb8 T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi3ELi3ELi1ELi1ELi1ELi1EEEvRKNS_3MatERS1_iiii
+000000000000efe8 T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi3ELi3ELi1ELi1ELi2ELi2EEEvRKNS_3MatERS1_iiii
+000000000000f01c T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi5ELi5ELi1ELi1ELi1ELi1EEEvRKNS_3MatERS1_iiii
+000000000000f04c T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi5ELi5ELi1ELi1ELi2ELi2EEEvRKNS_3MatERS1_iiii
+000000000000f080 T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi7ELi7ELi1ELi1ELi2ELi2EEEvRKNS_3MatERS1_iiii
+0000000000021f7c T __ZNK4ncnn15Convolution_arm13forward_bf16sERKNS_3MatERS1_RKNS_6OptionE
+convolution_arm_asimdhp.cpp.o:
+convolution_arm_asimddp.cpp.o:
+0000000000005bf8 T __ZN4ncnn31convolution_packed_int8_asimddpERKNS_3MatERS0_S2_iiiiiiRKNS_6OptionE
+000000000000a27c T __ZN4ncnn36convolution_im2col_gemm_int8_asimddpERKNS_3MatERS0_S2_iiiiiiiRKNS_6OptionE
+0000000000000000 T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi1ELi1ELi1ELi1ELi2ELi2EEEvRKNS_3MatERS1_iiii
+00000000000037e8 T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi3ELi3ELi1ELi1ELi1ELi1EEEvRKNS_3MatERS1_iiii
+0000000000003818 T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi3ELi3ELi1ELi1ELi2ELi2EEEvRKNS_3MatERS1_iiii
+000000000000384c T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi5ELi5ELi1ELi1ELi1ELi1EEEvRKNS_3MatERS1_iiii
+000000000000387c T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi5ELi5ELi1ELi1ELi2ELi2EEEvRKNS_3MatERS1_iiii
+00000000000038b0 T __ZN4ncnn42convolution_im2col_input_tile_int8_asimddpILi7ELi7ELi1ELi1ELi2ELi2EEEvRKNS_3MatERS1_iiii
+00000000000038e4 T __ZN4ncnn48convolution_transform_kernel_packed_int8_asimddpERKNS_3MatERS0_iiii
+0000000000008310 T __ZN4ncnn53convolution_im2col_gemm_transform_kernel_int8_asimddpERKNS_3MatERS0_iiiiRKNS_6OptionE
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000003004 T __ZN4ncnn17Deconvolution_arm21create_pipeline_bf16sERKNS_6OptionE
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000003720 T __ZNK4ncnn17Deconvolution_arm13forward_bf16sERKNS_3MatERS1_RKNS_6OptionE
+deconvolution_arm_asimdhp.cpp.o:
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+00000000000007cc T __ZNK4ncnn11Eltwise_arm13forward_bf16sERKNSt3__16vectorINS_3MatENS1_9allocatorIS3_EEEERS6_RKNS_6OptionE
+eltwise_arm_asimdhp.cpp.o:
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000000244 T __ZNK4ncnn7ELU_arm21forward_inplace_bf16sERNS_3MatERKNS_6OptionE
+elu_arm_asimdhp.cpp.o:
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000000844 T __ZNK4ncnn11Flatten_arm19forward_bf16s_fp16sERKNS_3MatERS1_RKNS_6OptionE
+00000000000012b0 T __ZN4ncnn16InnerProduct_arm21create_pipeline_bf16sERKNS_6OptionE
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000001ed8 T __ZNK4ncnn16InnerProduct_arm13forward_bf16sERKNS_3MatERS1_RKNS_6OptionE
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+innerproduct_arm_asimdhp.cpp.o:
+00000000000006cc T __ZN4ncnn31innerproduct_fp16s_neon_asimdhpERKNS_3MatERS0_S2_S2_iS2_RKNS_6OptionE
+0000000000001280 T __ZN4ncnn36innerproduct_gemm_fp16s_neon_asimdhpERKNS_3MatERS0_S2_S2_iS2_RKNS_6OptionE
+0000000000000000 T __ZN4ncnn37innerproduct_pack4_fp16s_neon_asimdhpERKNS_3MatERS0_S2_S2_iS2_RKNS_6OptionE
+0000000000002d00 T __ZN4ncnn48innerproduct_transform_kernel_fp16s_neon_asimdhpERKNS_3MatERS0_iiRKNS_6OptionE
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+000000000000088c T __ZNK4ncnn11Pooling_arm13forward_bf16sERKNS_3MatERS1_RKNS_6OptionE
+pooling_arm_asimdhp.cpp.o:
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000000648 T __ZNK4ncnn9PReLU_arm21forward_inplace_bf16sERNS_3MatERKNS_6OptionE
+prelu_arm_asimdhp.cpp.o:
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+00000000000003ac T __ZNK4ncnn8ReLU_arm21forward_inplace_bf16sERNS_3MatERKNS_6OptionE
+relu_arm_asimdhp.cpp.o:
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000000be8 T __ZNK4ncnn11Reshape_arm19forward_bf16s_fp16sERKNSt3__16vectorINS_3MatENS1_9allocatorIS3_EEEERS6_RKNS_6OptionE
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+000000000000023c T __ZNK4ncnn11Sigmoid_arm21forward_inplace_bf16sERNS_3MatERKNS_6OptionE
+sigmoid_arm_asimdhp.cpp.o:
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000001950 T __ZNK4ncnn9Slice_arm19forward_bf16s_fp16sERKNSt3__16vectorINS_3MatENS1_9allocatorIS3_EEEERS6_RKNS_6OptionE
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000000f40 T __ZNK4ncnn11Softmax_arm21forward_inplace_bf16sERNS_3MatERKNS_6OptionE
+softmax_arm_asimdhp.cpp.o:
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+000000000000023c T __ZNK4ncnn8TanH_arm21forward_inplace_bf16sERNS_3MatERKNS_6OptionE
+tanh_arm_asimdhp.cpp.o:
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000002de0 T __ZN4ncnn7RNN_arm21create_pipeline_bf16sERKNS_6OptionE
+0000000000004bc4 T __ZNK4ncnn7RNN_arm13forward_bf16sERKNS_3MatERS1_RKNS_6OptionE
+0000000000007e94 T __ZNK4ncnn7RNN_arm13forward_bf16sERKNSt3__16vectorINS_3MatENS1_9allocatorIS3_EEEERS6_RKNS_6OptionE
+rnn_arm_asimdhp.cpp.o:
+rnn_arm_asimddp.cpp.o:
+0000000000000adc T __ZN4ncnn16rnn_int8_asimddpERKNS_3MatES2_RS0_iiS2_S2_S2_S3_RKNS_6OptionE
+0000000000000000 T __ZN4ncnn33rnn_transform_weight_int8_asimddpERKNS_3MatES2_S2_S2_S2_RS0_S3_S3_iiiRKNS_6OptionE
+                 U __ZN4ncnn23cpu_support_arm_asimdhpEv
+0000000000003914 T __ZN4ncnn8LSTM_arm21create_pipeline_bf16sERKNS_6OptionE
+0000000000006500 T __ZNK4ncnn8LSTM_arm13forward_bf16sERKNS_3MatERS1_RKNS_6OptionE
