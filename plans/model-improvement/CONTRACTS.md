@@ -1,9 +1,11 @@
 # Shared contracts
 
-Version: **v1.2**. Changes go through the coordinator and bump the version.
+Version: **v1.3**. Changes go through the coordinator and bump the version.
 
 Changelog:
 
+- v1.3 (2026-10-14, coordinator): C5 gains WS3's recipe fields
+  `seed_gpu_constraints`, `test_dataset`, `allow_missing_evaluation`.
 - v1.2 (2026-10-14, coordinator): C7 accepts WS4's optional extensions.
 - v1.1 (2026-10-14, coordinator): C4 gains exact evaluator semantics from WS1
   (AP method, matching, ties, threshold sentinel, small recall, undefined rates,
@@ -255,6 +257,15 @@ train:                        # passed through to YOLO.train()
   cache: ram
 deploy_sizes: [[352, 608], [384, 640], [448, 800]]
 notes: ""
+```
+
+Optional fields (v1.3, validated by `cluster/recipe.py`; see
+`training/recipes/schema.md`):
+
+```yaml
+seed_gpu_constraints: {0: t4, 1: titanrtx, 2: titanv}  # per-seed override of gpu_constraint
+test_dataset: columba-test-v2       # default
+allow_missing_evaluation: false     # true only for smoke-* recipes
 ```
 
 `run_job.py` sets `batch` from the GPU's memory class; `seed`, `project`,
