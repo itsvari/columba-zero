@@ -1,6 +1,6 @@
 # WS2 — Data
 
-- State: in progress (phase 1 done and merged; phase 2 in progress)  <!-- not started | in progress | blocked | done -->
+- State: done (phase 1 merged; phase 2 done, awaiting merge)  <!-- not started | in progress | blocked | done -->
 - Branch: `ws2/data`
 - Agent: Claude Opus 5.5 via T3 delegate
 - Last updated: 2026-10-14
@@ -155,7 +155,10 @@ their own `test` splits, YOLO format):
 
 ### Disk
 
-`~/columba-data/` is 1.5 GB (measured), well under the 40 GB phase-1 limit.
+`~/columba-data/` after phase 2: 14 GB (measured). Species datasets hard-link their images
+to the single-taxonomy copies (identical bytes). The local copies of the large train archives
+were deleted after `sha256sum -c` passed on the cluster; the sidecars stay, and
+`build_dataset archive` rebuilds byte-identical archives (archives are deterministic).
 
 ## CLI for other workstreams
 
@@ -167,23 +170,124 @@ python -m tools.build_dataset validate|archive <dataset dir>
 python -m tools.build_dataset freeze|verify-freeze <dataset dir> data_sources/<name>.sha256
 python -m tools.contact_sheet <dataset dir | provenance.jsonl> --output-dir DIR [--split S] [--ids FILE]
 python -m tools.dataset_audit <dataset>/data.yaml      # also: python tools/dataset_audit.py
+python -m tools.auto_label detect|relabel|sample|summarize ...   # pseudo labels and review gate
+python -m tools.style_augment demo <dataset dir> --output-dir DIR   # before/after sheet
 ```
 
 `$COLUMBA_DATA_ROOT` overrides `~/columba-data`.
 
-## Phase 2 published (details in the final phase 2 results below as they land)
+## Phase 2 results
 
-| Dataset | Published | Archive SHA-256 | Cluster |
+All numbers **measured** on the Mac (M2 Pro) on 2026-10-14 unless stated. Every archive
+passed `sha256sum -c` on the cluster (`~/columba/data/`, 16 GB in total).
+
+### Published datasets
+
+| Dataset | Archive SHA-256 | Cluster path |
+|---|---|---|
+| `columba-train-v2` | `90e8d09e7ad455c521ac04bcf72f7c0237e79fbf904fa3d03529e76ca1d00e9b` | `~/columba/data/columba-train-v2.tar.zst` |
+| `columba-train-v2s` | `d0604b39476ac7b8df3ea2957a39c5ab20be86b667ec23d71aa3321b025b3230` | `~/columba/data/columba-train-v2s.tar.zst` |
+| `columba-test-v2-styles` (frozen, `data_sources/columba-test-v2-styles.sha256`) | `a05b6055960dcea45dabea9ee051f44cccf0e321f7d557f708095480edb4ccab` | `~/columba/data/columba-test-v2-styles.tar.zst` |
+| `columba-train-v2-species` | `399ddf99360d59783f2390dd22b88d3fcdb3bb47b848e598d1c8fafb6e5ef2ce` | `~/columba/data/columba-train-v2-species.tar.zst` |
+| `columba-train-v2s-species` | `a8e3f5e532307a578870d156fa8fbca3bfce43a9a3b7603922da9dfb10c94ae4` | `~/columba/data/columba-train-v2s-species.tar.zst` |
+
+Each has a `.sha256` sidecar. All five pass `tools/dataset_audit.py` (C1 validation, licences
+complete, no train/val image within phash 10 of a test image; closest is 14).
+
+### columba-train-v2 (`single`) and columba-train-v2-species
+
+Same images, groups and split (checked); only the labels differ.
+
+| Split | Images | Pigeon images | Other-bird images | Empty images | Pigeon boxes (small at 384×640) | Backgrounds (`single`) |
+|---|---|---|---|---|---|---|
+| train | 7,958 | 2,936 (36.9%) | 3,116 (39.2%) | 1,906 (24.0%) | 5,687 (1,283 = 22.6%) | 5,022 |
+| val | 1,089 | 490 (45.0%) | 218 (20.0%) | 381 (35.0%) | 1,143 (285 = 24.9%) | 599 |
+
+Val follows the test-v2 kind mix (target 45/20/35, `DATASET.json` `composition` and `split`).
+Pigeon groups go to val with fraction 0.15; NEA is train-only (stretched 416×416 images).
+
+Species boxes (`columba-train-v2-species`), train / val: pigeon 5,687 / 1,143; spotted_dove
+276 / 19; zebra_dove 277 / 19; pink_necked_green_pigeon 256 / 18; javan_myna 286 / 20;
+house_crow 286 / 20; asian_glossy_starling 225 / 16; eurasian_tree_sparrow 244 / 17;
+yellow_vented_bulbul 274 / 19; asian_koel 257 / 18; other_bird 1,010 / 58. Backgrounds
+1,906 / 381. **No class folded** (`min_train_instances` 150; smallest is asian_glossy_starling, 225).
+
+Train images by source: inat-species 2,381; inat-pigeon 2,076; coco-negatives-train 1,906;
+roboflow-yolo1199 697; inat-other 382; coco-birds-train 357; roboflow-nea 149; coco-birds 10.
+Licences: CC-BY-4.0 5,280; CC-BY-2.0 1,696; CC-BY-SA-2.0 955; CC0 561; CC-BY-SA-4.0 525;
+PDM 30. `label_origin`: pseudo_reviewed 5,398, source 3,649.
+
+### columba-train-v2s and columba-train-v2s-species
+
+v2 plus one camera-style copy per train image (style drawn per image, weights noir_night 0.4,
+noir_day 0.3, wide 0.3, seed 0, long side ≤ 1280 px). Val is v2's val, unchanged (no style val
+subset). Copies share their original's group and `classes_present`; `derived_from` names the
+original; a copy on a background canvas records it in `style_params.canvas`, its attribution
+lists both, and a CC0/PDM original on a CC-BY canvas becomes CC-BY.
+
+| Split | Originals | noir_night | noir_day | wide | Total | Pigeon boxes |
+|---|---|---|---|---|---|---|
+| train | 7,958 | 3,164 | 2,276 | 2,467 | 15,865 | 11,341 |
+| val | 1,089 | 0 | 0 | 0 | 1,089 | 1,143 |
+
+51 copies were dropped because their 64-bit phash landed within 12 of a test image (all were
+coincidental: 256-bit distance ≥ 88, mostly dark noir_night images); 2 pigeon boxes left
+the frame in `wide` copies. Species boxes in v2s-species are v2-species train counts ×≈2.
+
+### columba-test-v2-styles (new frozen test set; test-v2 unchanged)
+
+Every test-v2 image in each style: 957 images, 1,059 pigeon boxes, 594 backgrounds. Per style
+the composition equals test-v2 (319 images, 39.2% empty, 22.9% other birds); small pigeon
+boxes: noir_night and noir_day 60.1%, wide 69.7% (zoom-out). `wide` canvases are bird-free
+test-v2 street scenes (never ShareAlike). Freeze file: `data_sources/columba-test-v2-styles.sha256`.
+
+### Sources and reviews
+
+| Source | Fetched | Used after review/policy | Label review (box error rate, measured) |
 |---|---|---|---|
-| `columba-test-v2-styles` | 2026-10-14 | `a05b6055960dcea45dabea9ee051f44cccf0e321f7d557f708095480edb4ccab` | `~/columba/data/columba-test-v2-styles.tar.zst` |
-| `columba-train-v2` | 2026-10-14 | `90e8d09e7ad455c521ac04bcf72f7c0237e79fbf904fa3d03529e76ca1d00e9b` | `~/columba/data/columba-train-v2.tar.zst` |
-| `columba-train-v2s` | 2026-10-14 | `d0604b39476ac7b8df3ea2957a39c5ab20be86b667ec23d71aa3321b025b3230` | `~/columba/data/columba-train-v2s.tar.zst` |
+| inat-pigeon (Columba livia; SG 47, MY 119, ID 31, TH 240, rest of Asia 2,563) | 3,000 | 2,537 auto-labelled kept | 200 images, 493 boxes: 18 wrong, 2 missed → **4.0%** (pass) |
+| inat-species (9 C2 species × 450; SG first, then MY/ID/TH/Asia) | 4,050 | 2,660 | 216 images, 216 boxes: 4 wrong, 0 missed → **1.9%** (pass) |
+| inat-other (Aves minus C2 taxa, Singapore) | 600 | 423 | 200 images, 200 boxes: 4 wrong, 2 missed → **3.0%** (pass) |
+| coco-birds-train (train2017 `bird`, licence-filtered) | 858 | 16 feral pigeon, 368 other_bird, 474 dropped | every image reviewed (human COCO boxes; verdict per image) |
+| coco-birds (val2017, v1 source) | 38 | 2 pigeon, 27 other_bird, 9 dropped | every image reviewed |
+| roboflow-nea | 450 | 154 | every image reviewed: 260 fox-only mosaics and 36 unusable pigeon images dropped |
+| coco-negatives-train (train2017 street scenes, no `bird`/`kite`) | 2,300 | 2,298 | YOLO11x bird check on all (2 flagged, dropped) + 94-image visual sample (0 birds) |
+
+Error rate = (wrong + missed) / (boxes + missed). Review files: `data_sources/review/*.review.jsonl`,
+summaries `*.summary.json`, per-image verdicts `*.images.jsonl`. Reviewer: Claude Opus 5.5
+(image-capable agent) on contact sheets; samples are seeded random draws of kept images.
+Auto-label policy (YOLO11x COCO `bird`, imgsz 1024, MPS): keep boxes ≥ 0.25; drop the image if
+no box, if an unmatched detection 0.15–0.25 exists, or (non-pigeon taxa) if more than one bird.
+Labelling speed: 900 images in 133 s, peak RSS 2.4 GB (measured, Mac, shared with other workers).
+Licences of all fetched iNaturalist photos: CC-BY-4.0, CC0 or CC-BY-SA-4.0 only.
+
+### Dedupe change in phase 2
+
+With ~14k images, 64-bit phash ≤ 10 linked unrelated iNaturalist close-ups (a bird on sky or
+blurred foliage) and chained 848 images, including test images, into one group. v2 builds
+now confirm each 64-bit link with a mirror-aware 256-bit phash ≤ 32 (true copies measured
+≤ 30, false links ≥ 42; checked on a contact sheet). Test exclusion stays 64-bit ≤ 12 (the
+conservative direction). test-v2 and v1clean were built before this and are unchanged (their
+grouping is stricter, not looser).
+
+### Contact sheets (phase 2)
+
+- Style before/after: `~/columba-data/contact_sheets/columba-test-v2-styles/before-after-000.jpg`,
+  `~/columba-data/contact_sheets/columba-train-v2s/before-after-000.jpg`; small copies committed in
+  `data_sources/contact_sheets/test-v2-styles-before-after.jpg`, `train-v2s-before-after.jpg`
+- Auto-label reviews: `~/columba-data/contact_sheets/review/auto-inat-{pigeon,species,other}/`
+  (committed example `data_sources/contact_sheets/review-inat-pigeon-000.jpg`)
+- COCO train birds: `~/columba-data/contact_sheets/review/coco-birds-train/` and
+  `coco-train-pigeons/`; NEA: `review/nea/`; negatives: `review/coco-neg-train/`;
+  dedupe calibration: `review/calib/`
 
 ## In progress
 
-Phase 2 (started 2026-10-14): iNaturalist and COCO train2017 fetches, auto-labelling, style copies, `columba-train-v2`, `-v2s`, `columba-test-v2-styles`, species variants.
+Nothing.
 
 ## Blockers and requests
+
+Phase 1 items 1–7 below were resolved in CONTRACTS.md v1.4 (PDM now allowed and used in v2).
 
 For the coordinator (C1 clarifications; no blocker):
 
@@ -208,7 +312,23 @@ For the coordinator (C1 clarifications; no blocker):
 7. COCO licence ids 7 ("No known copyright restrictions") and 8 ("US Government Work") are
    excluded because they are not in the allowed list; only 1 candidate image was affected.
 
-## Phase 2 plan
+### Phase 2 decisions for the coordinator
+
+1. **Background share in `single` train sets is 63%** (24.0% empty scenes + 39.2% other-bird
+   images, which are unboxed in `single`). The empty share is inside the 20–30% target; the
+   other-bird images are the species images the 5.4 gate wants as unlabelled negatives. If WS5
+   sees recall suffer, subsample `inat-species` in a v3 rather than changing v2.
+2. **Rock pigeon images are mostly not from Singapore**: only 47 licence-allowed research-grade
+   observations exist there; 2,563 of 3,000 come from wider Asia.
+3. **Val species counts are small** (16–20 boxes per C2 species), so per-species val AP is noisy.
+4. Non-pigeon iNaturalist images with more than one bird were dropped (species could differ),
+   so species classes have no flock examples; pigeon flocks were kept.
+5. COCO `other_bird` boxes are not split by species even where a bird might be a C2 species.
+
+## Phase 2 plan (as executed; leftovers)
+
+Done as listed below. Not done: a style val subset (not needed; val stays original),
+arm-lane labelling (the Mac was enough).
 
 - `tools/auto_label.py`: YOLO11x COCO `bird` boxes on iNaturalist (Singapore first, more
   photos per taxon, other places if Singapore runs short), species from the taxon,
