@@ -607,7 +607,7 @@ class PhaseTwoBuildTests(DatasetFixture):
         dataset = self.root / "tiny-train"
 
         def label(record: dict[str, Any]) -> str:
-            return (dataset / "labels" / record["split"] / f"{record['id']}.txt").read_text()
+            return (dataset / "labels" / str(record["split"]) / f"{record['id']}.txt").read_text()
 
         self.assertEqual(label(records["n0"]), "")
         self.assertEqual(label(records["c1"]), "")
