@@ -1,0 +1,436 @@
+{
+  "label": "measured",
+  "date": "2026-10-14",
+  "dataset": "local smoke: 8 COCO8 photos, 2 Ultralytics assets, 2 historical images, 1 blank control",
+  "deferred_datasets": [
+    "columba-test-v2",
+    "old 63-image test split"
+  ],
+  "tolerances": {
+    "minimum_iou": 0.8,
+    "maximum_confidence_delta": 0.05,
+    "degenerate_boxes": "same class, coordinates within one float32 ULP"
+  },
+  "ncnn": {
+    "tag": "20260526",
+    "source_commit": "e54f7b1f88434e1d844ea0551b880a1cfb079ce1",
+    "vulkan": false,
+    "precision": "fp32 activations and arithmetic"
+  },
+  "opencv": {
+    "tag": "5.0.0",
+    "source_commit": "40738fb16ceddb5fb3fea747585f7ce6abb0605b"
+  },
+  "hosts": {
+    "mac": {
+      "host": "vexcalibur",
+      "architecture": "arm64",
+      "shared_machine_noise": true,
+      "threads": 4,
+      "pinned_cores": null,
+      "parity": [
+        {
+          "report": "parity-baseline-640x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo11",
+          "input_hw": [
+            640,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 13,
+          "degenerate_matches": 1,
+          "minimum_matched_iou": 0.9999988061542747,
+          "maximum_confidence_delta": 9.834766387939453e-07,
+          "maximum_coordinate_delta_px": 0.00030517578125
+        },
+        {
+          "report": "parity-baseline-ultralytics-ncnn.json",
+          "reference_backend": "Ultralytics NCNN",
+          "decode": "yolo11",
+          "input_hw": [
+            640,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 13,
+          "degenerate_matches": 1,
+          "minimum_matched_iou": 0.9999972674758582,
+          "maximum_confidence_delta": 1.341104507446289e-06,
+          "maximum_coordinate_delta_px": 0.000213623046875
+        },
+        {
+          "report": "parity-baseline-unsuffixed-package.json",
+          "reference_backend": "Ultralytics NCNN",
+          "decode": "yolo11",
+          "input_hw": [
+            640,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 13,
+          "degenerate_matches": 1,
+          "minimum_matched_iou": 0.9999972674758582,
+          "maximum_confidence_delta": 1.341104507446289e-06,
+          "maximum_coordinate_delta_px": 0.000213623046875
+        },
+        {
+          "report": "parity-yolo11n-384x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo11",
+          "input_hw": [
+            384,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 31,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999900779580784,
+          "maximum_confidence_delta": 2.0265579223632812e-06,
+          "maximum_coordinate_delta_px": 0.0040435791015625
+        },
+        {
+          "report": "parity-yolo11n-640x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo11",
+          "input_hw": [
+            640,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 31,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999971583925586,
+          "maximum_confidence_delta": 5.9604644775390625e-06,
+          "maximum_coordinate_delta_px": 0.000274658203125
+        },
+        {
+          "report": "parity-yolo26n-384x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo11",
+          "input_hw": [
+            384,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 28,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999955433407053,
+          "maximum_confidence_delta": 1.4007091522216797e-06,
+          "maximum_coordinate_delta_px": 0.000732421875
+        },
+        {
+          "report": "parity-yolo26n-640x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo11",
+          "input_hw": [
+            640,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 32,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999969169295074,
+          "maximum_confidence_delta": 5.4836273193359375e-06,
+          "maximum_coordinate_delta_px": 0.00091552734375
+        },
+        {
+          "report": "parity-yolo26n-one2one-384x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo26",
+          "input_hw": [
+            384,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 26,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999955729749448,
+          "maximum_confidence_delta": 1.6987323760986328e-06,
+          "maximum_coordinate_delta_px": 0.0003662109375
+        },
+        {
+          "report": "parity-yolo26n-one2one-640x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo26",
+          "input_hw": [
+            640,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 31,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999960206412383,
+          "maximum_confidence_delta": 6.0498714447021484e-06,
+          "maximum_coordinate_delta_px": 0.00079345703125
+        }
+      ],
+      "overhead": {
+        "label": "measured",
+        "host": "vexcalibur",
+        "architecture": "arm64",
+        "shared_machine_noise": true,
+        "threads": 4,
+        "pinned_cores": null,
+        "model": "/Users/vari/.t3/worktrees/columba-zero/t3-66fdf7ce/outputs/ws8/weights/baseline_ncnn_model",
+        "input_hw": [
+          640,
+          640
+        ],
+        "frame_hw": [
+          480,
+          640
+        ],
+        "warmup": 20,
+        "iterations": 100,
+        "native_ncnn_tag": "20260526",
+        "method": "isolated alternating workers; full call minus instrumented extract; IPC excluded",
+        "milliseconds": {
+          "native": {
+            "total": {
+              "p50": 28.629979,
+              "p95": 42.7961277,
+              "mean": 30.439854529999995,
+              "std": 8.827652029099958
+            },
+            "extract": {
+              "p50": 28.03175,
+              "p95": 42.0278066,
+              "mean": 30.035050809999998,
+              "std": 8.796281129497087
+            },
+            "overhead": {
+              "p50": 0.33268799999999743,
+              "p95": 0.8436862500000026,
+              "mean": 0.40480371999999987,
+              "std": 0.27663996276832753
+            }
+          },
+          "ultralytics": {
+            "total": {
+              "p50": 29.6491045,
+              "p95": 45.91472535,
+              "mean": 31.554865440000004,
+              "std": 7.010221421035107
+            },
+            "extract": {
+              "p50": 27.545645999999998,
+              "p95": 43.991182699999996,
+              "mean": 29.787447470000004,
+              "std": 6.632717704267896
+            },
+            "overhead": {
+              "p50": 1.5532500000000002,
+              "p95": 2.9956809500000046,
+              "mean": 1.7674179700000006,
+              "std": 0.7078995935819214
+            }
+          }
+        }
+      }
+    },
+    "linux_aarch64": {
+      "host": "xcng1",
+      "architecture": "aarch64",
+      "shared_machine_noise": false,
+      "threads": 4,
+      "pinned_cores": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "parity": [
+        {
+          "report": "parity-baseline-640x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo11",
+          "input_hw": [
+            640,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 13,
+          "degenerate_matches": 1,
+          "minimum_matched_iou": 0.9999972674739914,
+          "maximum_confidence_delta": 1.4901161193847656e-06,
+          "maximum_coordinate_delta_px": 0.000244140625
+        },
+        {
+          "report": "parity-yolo11n-384x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo11",
+          "input_hw": [
+            384,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 31,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999907062522599,
+          "maximum_confidence_delta": 7.718801498413086e-06,
+          "maximum_coordinate_delta_px": 0.00392913818359375
+        },
+        {
+          "report": "parity-yolo11n-640x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo11",
+          "input_hw": [
+            640,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 31,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999947581772435,
+          "maximum_confidence_delta": 2.8312206268310547e-06,
+          "maximum_coordinate_delta_px": 0.000457763671875
+        },
+        {
+          "report": "parity-yolo26n-384x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo11",
+          "input_hw": [
+            384,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 28,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999914344936828,
+          "maximum_confidence_delta": 1.7285346984863281e-06,
+          "maximum_coordinate_delta_px": 0.0008544921875
+        },
+        {
+          "report": "parity-yolo26n-640x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo11",
+          "input_hw": [
+            640,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 32,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999957706764078,
+          "maximum_confidence_delta": 2.086162567138672e-06,
+          "maximum_coordinate_delta_px": 0.0015869140625
+        },
+        {
+          "report": "parity-yolo26n-one2one-384x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo26",
+          "input_hw": [
+            384,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 26,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.999993999830646,
+          "maximum_confidence_delta": 1.9669532775878906e-06,
+          "maximum_coordinate_delta_px": 0.0006561279296875
+        },
+        {
+          "report": "parity-yolo26n-one2one-640x640.json",
+          "reference_backend": "Ultralytics PyTorch",
+          "decode": "yolo26",
+          "input_hw": [
+            640,
+            640
+          ],
+          "images": 13,
+          "failures": 0,
+          "matched_boxes": 31,
+          "degenerate_matches": 0,
+          "minimum_matched_iou": 0.9999976616823791,
+          "maximum_confidence_delta": 3.0994415283203125e-06,
+          "maximum_coordinate_delta_px": 0.0006103515625
+        }
+      ],
+      "overhead": {
+        "label": "measured",
+        "host": "xcng1",
+        "architecture": "aarch64",
+        "shared_machine_noise": false,
+        "threads": 4,
+        "pinned_cores": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "model": "/home/a/ashelow/columba/scratch/ws8/artifacts/weights/baseline_ncnn_model",
+        "input_hw": [
+          640,
+          640
+        ],
+        "frame_hw": [
+          480,
+          640
+        ],
+        "warmup": 20,
+        "iterations": 100,
+        "native_ncnn_tag": "20260526",
+        "method": "isolated alternating workers; full call minus instrumented extract; IPC excluded",
+        "milliseconds": {
+          "native": {
+            "total": {
+              "p50": 82.821696,
+              "p95": 124.7741545,
+              "mean": 90.38587142999997,
+              "std": 15.835772232135598
+            },
+            "extract": {
+              "p50": 81.871751,
+              "p95": 123.6435833,
+              "mean": 89.34315016000002,
+              "std": 15.7776384185944
+            },
+            "overhead": {
+              "p50": 0.9872660000000053,
+              "p95": 1.376738100000011,
+              "mean": 1.0427212700000006,
+              "std": 0.1659458077267306
+            }
+          },
+          "ultralytics": {
+            "total": {
+              "p50": 91.1691645,
+              "p95": 133.87170415,
+              "mean": 97.60847618000001,
+              "std": 17.955665805501727
+            },
+            "extract": {
+              "p50": 86.648099,
+              "p95": 128.6341063,
+              "mean": 92.77861478000001,
+              "std": 17.809775374258113
+            },
+            "overhead": {
+              "p50": 4.770187499999999,
+              "p95": 5.855432,
+              "mean": 4.8298613999999995,
+              "std": 0.5750136285052035
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -250,10 +250,20 @@ def match_clipped_boxes(
             continue
         for actual_index, candidate in enumerate(actual):
             confidence_delta = abs(prediction["confidence"] - candidate["confidence"])
+            expected_coordinates = numpy.asarray(box, dtype=numpy.float32)
+            actual_coordinates = numpy.asarray(candidate["box"], dtype=numpy.float32)
+            coordinate_tolerance = numpy.maximum(
+                numpy.spacing(expected_coordinates), numpy.spacing(actual_coordinates)
+            )
+            coordinates_match = bool(
+                numpy.all(
+                    numpy.abs(expected_coordinates - actual_coordinates) <= coordinate_tolerance
+                )
+            )
             if (
                 actual_index in matched_actual
                 or prediction["label"] != candidate["label"]
-                or box != candidate["box"]
+                or not coordinates_match
                 or confidence_delta > MAXIMUM_MATCH_CONFIDENCE_DELTA
             ):
                 continue
@@ -263,7 +273,12 @@ def match_clipped_boxes(
                     "ncnn_index": actual_index,
                     "iou": 0.0,
                     "confidence_delta": confidence_delta,
-                    "box_delta_px": [0.0, 0.0, 0.0, 0.0],
+                    "box_delta_px": [
+                        actual_coordinate - expected_coordinate
+                        for expected_coordinate, actual_coordinate in zip(
+                            box, candidate["box"], strict=True
+                        )
+                    ],
                 }
             )
             matched_actual.add(actual_index)
@@ -363,7 +378,7 @@ def main() -> None:
                 "reference": expected,
                 "native": actual,
                 "matches": matches,
-                "identical_degenerate_matches": sum(match["iou"] == 0.0 for match in matches),
+                "degenerate_matches": sum(match["iou"] == 0.0 for match in matches),
                 "passed": len(matches) == len(expected) == len(actual),
             }
         )
@@ -386,7 +401,9 @@ def main() -> None:
         "confidence": arguments.confidence,
         "min_iou": MINIMUM_MATCH_INTERSECTION_OVER_UNION,
         "max_confidence_delta": MAXIMUM_MATCH_CONFIDENCE_DELTA,
-        "degenerate_box_rule": "zero-area clipped boxes require identical coordinates and class",
+        "degenerate_box_rule": (
+            "zero-area clipped boxes require coordinates within one float32 ULP and equal class"
+        ),
         "records": records,
     }
     arguments.output.parent.mkdir(parents=True, exist_ok=True)

@@ -147,8 +147,9 @@ def measure(
         for backend, worker in workers.items():
             worker.start()
             connections[backend][1].close()
-            if connections[backend][0].recv() != "ready":
-                raise RuntimeError(f"{backend} worker could not start")
+            ready = connections[backend][0].recv()
+            if ready != "ready":
+                raise RuntimeError(str(ready))
         for iteration in range(warmup + iterations):
             order = backends if iteration % 2 else tuple(reversed(backends))
             for backend in order:

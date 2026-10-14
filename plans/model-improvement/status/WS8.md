@@ -23,11 +23,13 @@
 
 ## In progress
 
-Linux aarch64 build, parity and overhead are running in Slurm job `945168`,
+Linux aarch64 build, parity and overhead are running in Slurm job `945271`,
 `cz-ws8-build`, `normal`, `xcng1`, eight allocated CPUs, 16 GB, two-hour limit,
-`--nice=1000`. No other WS8 CPU job was submitted. Cluster scratch is
-`~/columba/scratch/ws8/`; datasets are staged under `/tmp/cz-945168/` and cleaned
-at job exit.
+`--nice=1000`. The first job, `945168`, installed dependencies but stopped when
+`cp -a` tried to preserve unsupported permission metadata on `/tmp`. The retry
+uses `cp -R --no-preserve=all` and reuses the environment. Only one WS8 CPU job
+runs at a time. Cluster scratch is `~/columba/scratch/ws8/`; datasets are staged
+under `/tmp/cz-$SLURM_JOB_ID/` and cleaned at job exit.
 
 ## Blockers and requests
 

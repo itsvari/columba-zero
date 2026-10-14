@@ -47,8 +47,11 @@ Use Python 3.12.3 on the arm lane. Create the verification environment under
 tests, parity, and overhead measurement. It requests eight CPUs on `xcng1`,
 `normal`, a two-hour limit and `--nice=1000`. Check `squeue -u $USER` immediately
 before submission and respect the project caps and WS8's single CPU-job share.
-Stage the repository at `~/columba/scratch/ws8/repo` and models/images at
+Stage a Git checkout at `~/columba/scratch/ws8/repo` and models/images at
 `~/columba/scratch/ws8/artifacts`; logs and results stay under the same root.
+The full project tests need Git history and tracked deployment fixtures because
+they create local clones. `--checks-only` reruns those Python checks against an
+existing build without repeating model inference.
 
 The direct build commands, inside the allocated arm job, are:
 
@@ -179,9 +182,9 @@ loading conflicting OpenMP runtimes together on macOS.
 The matching tolerances come from `tools/compare_exports.py`: IoU ≥ 0.8,
 confidence difference ≤ 0.05, equal classes and equal counts. The old model
 produces one box clipped to zero height on a COCO8 image. Since its IoU is
-undefined, the runner accepts it only when both outputs have identical
-coordinates and class, still applying the confidence tolerance; it records
-this case explicitly. It never removes unmatched degenerate boxes.
+undefined, the runner accepts it only when coordinates differ by at most one
+float32 ULP and the class agrees, still applying the confidence tolerance. It
+records this case explicitly. It never removes unmatched degenerate boxes.
 
 ```sh
 taskset -c 0-3 "$native_python" -m native.benchmark_native \

@@ -11,17 +11,34 @@ set -euo pipefail
 workspace="$HOME/columba/scratch/ws8"
 cd "$workspace/repo"
 mkdir -p "$workspace/results"
+verification_python="$workspace/venv/bin/python"
+export PATH="$workspace/venv/bin:$PATH"
+export YOLO_CONFIG_DIR="$workspace/settings"
+export PYTHONPATH="$PWD/native/build/linux-aarch64:$PWD"
+
+verify_python() {
+    if [[ "${1:-}" != --static-only ]]; then
+        "$verification_python" -m unittest discover -s tests -v > "$workspace/results/unittest.log" 2>&1
+    fi
+    "$verification_python" -m ruff check app tests tools cluster training native
+    "$verification_python" -m ruff format --check app tests tools cluster training native
+    "$verification_python" -m mypy --exclude '^native/build/' app tests tools cluster training native
+    date -u > "$workspace/results/DONE"
+}
+
+if [[ "${1:-}" == --checks-only || "${1:-}" == --static-only ]]; then
+    verify_python "${1:-}"
+    exit 0
+fi
+
 node_data="/tmp/cz-$SLURM_JOB_ID"
 mkdir -p "$node_data"
 python -m venv "$workspace/venv"
-verification_python="$workspace/venv/bin/python"
 export PIP_CACHE_DIR="$workspace/pip-cache"
 "$verification_python" -m pip install \
     ultralytics==8.4.175 ncnn==1.0.20260526 nanobind==3.1.0 \
     opencv-python==5.0.0.93 torch==2.14.1 torchvision==0.29.1 \
     numpy==2.5.2 PyYAML==6.0.3 cmake ruff mypy types-PyYAML types-requests types-psutil
-export PATH="$workspace/venv/bin:$PATH"
-export YOLO_CONFIG_DIR="$workspace/settings"
 "$verification_python" - <<'PY'
 import json
 import os
@@ -46,7 +63,7 @@ if path.parent == Path('/tmp') and path.name.startswith('cz-'):
 PY
 }
 trap cleanup EXIT
-cp -a "$workspace/artifacts/parity-images" "$node_data/parity-images"
+cp -R --no-preserve=all "$workspace/artifacts/parity-images" "$node_data/parity-images"
 ln -s "$workspace/artifacts/weights" "$node_data/weights"
 BUILD_THREADS=8 bash native/build_dependencies.sh linux-aarch64
 cmake -S native -B native/build/linux-aarch64 -DCMAKE_BUILD_TYPE=Release \
@@ -64,8 +81,4 @@ export MKL_NUM_THREADS=4
 export OMP_WAIT_POLICY=PASSIVE
 uname -a > "$workspace/results/host.txt"
 taskset -c 0-3 bash native/run_verification.sh "$node_data" "$workspace/results"
-"$verification_python" -m unittest discover -s tests -v > "$workspace/results/unittest.log" 2>&1
-"$verification_python" -m ruff check app tests tools cluster training native
-"$verification_python" -m ruff format --check app tests tools cluster training native
-"$verification_python" -m mypy --exclude '^native/build/' app tests tools cluster training native
-date -u > "$workspace/results/DONE"
+verify_python

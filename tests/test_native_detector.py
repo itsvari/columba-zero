@@ -154,6 +154,12 @@ class NativeDetectorTests(unittest.TestCase):
             "box": [0.0, 0.0, 637.0, 0.0],
         }
         self.assertEqual(len(match_clipped_boxes([expected], [expected])), 1)
+        one_ulp = float(numpy.nextafter(numpy.float32(637.0), numpy.float32(numpy.inf)))
+        rounded: ExportPrediction = {**expected, "box": [0.0, 0.0, one_ulp, 0.0]}
+        self.assertEqual(len(match_clipped_boxes([expected], [rounded])), 1)
+        two_ulps = float(numpy.nextafter(numpy.float32(one_ulp), numpy.float32(numpy.inf)))
+        outside_tolerance: ExportPrediction = {**expected, "box": [0.0, 0.0, two_ulps, 0.0]}
+        self.assertEqual(match_clipped_boxes([expected], [outside_tolerance]), [])
         shifted: ExportPrediction = {**expected, "box": [0.0, 0.0, 638.0, 0.0]}
         self.assertEqual(match_clipped_boxes([expected], [shifted]), [])
 
