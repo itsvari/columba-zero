@@ -1,9 +1,12 @@
 # Shared contracts
 
-Version: **v1.6**. Changes go through the coordinator and bump the version.
+Version: **v1.7**. Changes go through the coordinator and bump the version.
 
 Changelog:
 
+- v1.7 (2026-10-15, coordinator): C5 GPU selection covers all GPU types (user
+  lifted the nv-only restriction); `null` means the live policy in
+  `cluster/gpu_policy.yaml`; `batch_override` recorded.
 - v1.6 (2026-10-14, coordinator): C4 subset evaluation and calibration-provenance
   wording from WS1.
 - v1.5 (2026-10-14, coordinator): C9 records WS9's implemented runtime fields;
@@ -292,11 +295,21 @@ deploy_sizes: [[352, 608], [384, 640], [448, 800]]
 notes: ""
 ```
 
+GPU selection (v1.7): `gpu_constraint` and `seed_gpu_constraints` values may
+be `null`, `t4`, `titanrtx`, `titanv`, `a100-40`, `a100-80`, `h100-47`,
+`h100-96`, `h200`, or the families `a100` / `h100` (resolved to a concrete
+typed GRES). `null`, including a per-seed `null`, means the live preference
+policy in `cluster/gpu_policy.yaml` (light vs heavy jobs), never an untyped
+request. `lane: nv` is the GPU lane on both x86_64 and aarch64 (`xgpj0`); the
+runner picks the venv from the node's architecture and records `architecture`
+and the venv in `run.json`.
+
 Optional fields (v1.3, validated by `cluster/recipe.py`; see
 `training/recipes/schema.md`):
 
 ```yaml
 seed_gpu_constraints: {0: t4, 1: titanrtx, 2: titanv}  # per-seed override of gpu_constraint
+batch_override: null                # v1.7: positive int replaces the runner's batch (nbs stays 64)
 test_dataset: columba-test-v2       # default
 allow_missing_evaluation: false     # true only for smoke-* recipes
 ```
