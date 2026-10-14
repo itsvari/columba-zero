@@ -432,5 +432,38 @@
         }
       }
     }
+  },
+  "integration": {
+    "rebased_onto_main": "d57919a",
+    "ws9_commit": "b902e04",
+    "class_id_keywords": true,
+    "secondary_species": true,
+    "pigeon_only_triggers": true,
+    "last_stage_ms": [
+      "preprocess",
+      "inference",
+      "postprocess"
+    ],
+    "mac_tests": 201,
+    "linux_aarch64_tests": 201,
+    "without_extension_skips": 5,
+    "runtime_tests": 59,
+    "native_tests": 15,
+    "ruff": "pass",
+    "mypy": "pass"
+  },
+  "ws4_prefix_builds": {
+    "mac": {
+      "prefix": "/Users/vari/.t3/worktrees/columba-zero/t3-206c9967/native/build/ncnn-mac-a76compat",
+      "cpp_tests": "pass",
+      "python_tests": "pass"
+    },
+    "linux_aarch64": {
+      "prefix": "/home/a/ashelow/columba/scratch/ws4/ncnn-xcng",
+      "host": "xcng1",
+      "job_id": 945441,
+      "cpp_tests": "pass",
+      "python_tests": "pass"
+    }
   }
 }
