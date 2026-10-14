@@ -21,6 +21,7 @@ from tools.build_dataset import (
     build_test,
     build_test_styles,
     build_train,
+    composite_license,
     freeze,
     image_kind,
     split_by_kind,
@@ -675,3 +676,5 @@ class PhaseTwoBuildTests(DatasetFixture):
         self.assertEqual(summary["composition"]["wide"]["empty_images"], 1)
         wide_s1 = next(r for r in records if r["id"] == "s1-wide")
         self.assertEqual(wide_s1["style_params"]["canvas"], "s0")  # bird-free, non-SA canvas
+        self.assertEqual(composite_license("CC0-1.0", "CC-BY-2.0"), "CC-BY-2.0")
+        self.assertEqual(composite_license("CC-BY-SA-4.0", "CC-BY-2.0"), "CC-BY-SA-4.0")

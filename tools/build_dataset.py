@@ -763,6 +763,14 @@ def render_style_copy(job: Record) -> Record:
     }
 
 
+def composite_license(image: str, background: str) -> str:
+    """Licence of an image pasted onto a background. Canvases are never ShareAlike, so an SA
+    image keeps its licence; a public-domain image takes the background's attribution licence."""
+    if image in ("CC0-1.0", "PDM"):
+        return background
+    return image
+
+
 def canvas_pool(
     entries: Sequence[tuple[Record, str, list[Record], list[str]]], split: str
 ) -> list[Record]:
@@ -819,13 +827,13 @@ def make_style_entries(
     copies = []
     for (job, item, split, present, canvas), result in zip(jobs, results, strict=True):
         attribution = item["attribution"]
+        licence = item["license"]
         if canvas is not None:
             attribution += f"; background: {canvas['attribution']}"
+            licence = composite_license(licence, canvas["license"])
         copy = {
-            **{
-                key: item[key]
-                for key in ("source", "source_id", "group", "license", "label_origin")
-            },
+            **{key: item[key] for key in ("source", "source_id", "group", "label_origin")},
+            "license": licence,
             "id": f"{item['id']}-{job['style']}",
             "path": job["output"],
             "attribution": attribution,
