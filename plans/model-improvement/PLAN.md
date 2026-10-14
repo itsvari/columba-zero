@@ -117,6 +117,22 @@ Hardware:
 - Mac: Apple Silicon (ARM64), with more CPU features than the Pi, so NCNN picks
   different kernels unless it is built with them disabled (WS4).
 
+Environment notes (coordinator, 14 Oct 2026):
+
+- The original training images (Roboflow NEA `nea-pn0bc/pigeon-foxes-detector`
+  v1, `yolo-bl12d/pigeons-detection-l7u3l` v1, COCO val2017 birds; see
+  `pigeon_detection_training.ipynb`) and the 63-image old test split are **not
+  on the Mac**. WS2 re-downloads them. The Roboflow API key is in
+  `~/.config/columba/roboflow.env` (`ROBOFLOW_API_KEY=...`). Read it from there;
+  never print it, log it, or commit it.
+- Shared Mac venv: `/Users/vari/Developer/columba-zero/.venv` (Python 3.14,
+  pinned packages plus the `eval`, `data`, `native` groups). Don't change
+  pinned versions in it.
+- The cluster jump host only accepts passwords. The coordinator keeps an SSH
+  ControlMaster open for `columba-cluster`; `ssh -o BatchMode=yes
+  columba-cluster` reuses it. If BatchMode fails, record a blocker and stop
+  cluster work. Never ask for a password.
+
 SoC cluster (`ssh columba-cluster`, see section 6):
 
 | Item | Fact |
@@ -509,6 +525,9 @@ Time box: stop after the latency gate if no challenger survives, or after one
    metadata block.
 2. `tools/quantize_ncnn.py`: int8 via NCNN's calibration tools, using ≈ 200
    validation images (never test), run on the arm lane.
+   For YOLO26 models, also export the one-to-one head (C8 head swap,
+   `decode: yolo26`) and compare it with the standard NMS export on accuracy
+   and end-to-end latency.
 3. For each round-2 finalist: export fp16 and int8 at the deploy sizes. Check
    accuracy on `xcng` (same CPU flags as the Pi), comparing each export against
    its PyTorch model with `compare_exports.py`. Score it with WS1. Measure
@@ -534,7 +553,9 @@ measured, estimated and simulated numbers.
    letterboxes to `input_hw`, runs NCNN, decodes, and returns an `N×6` float32
    array (`x1, y1, x2, y2, score, class_id`) in original-frame pixels.
    - Decoders: `yolo11` (needs duplicate-box removal, NMS IoU 0.7, per class
-     unless `agnostic`) and `yolo26` (end-to-end output, no NMS).
+     unless `agnostic`) and `yolo26` (same tensor layout from the YOLO26
+     one-to-one head, top-`max_det` by score, no NMS). See C8: standard
+     Ultralytics YOLO26 NCNN exports are *not* end-to-end and use `yolo11`.
    - Pass the frame without copying (NumPy buffer); release the Python lock
      (GIL) during inference.
 2. Build on macOS ARM64 and Linux aarch64 (arm lane), against the WS4 NCNN
