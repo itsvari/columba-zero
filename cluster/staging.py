@@ -77,3 +77,32 @@ def stage_weights(name: str, weights_root: Path, destination: Path) -> Path:
     staged = destination / name
     shutil.copy2(cached, staged)
     return staged.resolve()
+
+
+def align_test_taxonomy(dataset: Path, taxonomy: str, classes: Path) -> bool:
+    """Give a staged single-taxonomy test set the recipe's taxonomy names.
+
+    Only the node-local staged ``data.yaml`` changes. Valid only when the test set
+    is `single` ([pigeon]) and the target taxonomy keeps pigeon at index 0, so the
+    label files (pigeon boxes only) mean the same thing; other birds stay unboxed.
+    Pigeon metrics and the manifest-based false-alarm rates are therefore
+    comparable with single-taxonomy models. Returns whether names changed.
+    """
+    import yaml
+
+    configuration = yaml.safe_load((dataset / "data.yaml").read_text(encoding="utf-8"))
+    taxonomies = yaml.safe_load(classes.read_text(encoding="utf-8"))["taxonomies"]
+    if taxonomy not in taxonomies:
+        raise ValueError(f"unknown taxonomy: {taxonomy}")
+    target = list(taxonomies[taxonomy]["names"])
+    current = configuration.get("names")
+    if isinstance(current, dict):
+        current = [current[index] for index in sorted(current)]
+    if current == target:
+        return False
+    if current != ["pigeon"] or target[0] != "pigeon":
+        raise ValueError("only a single-taxonomy test set can be aligned to pigeon-first names")
+    configuration["names"] = target
+    configuration["nc"] = len(target)
+    (dataset / "data.yaml").write_text(yaml.safe_dump(configuration), encoding="utf-8")
+    return True
