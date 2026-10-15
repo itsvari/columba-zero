@@ -15,7 +15,7 @@
   parity comparator, C7 timing, reaction simulation and three-seed selection.
 - Additional-candidate CLI, styles scoring, immutable species test-taxonomy
   views using coordinator main 469c867, and provisional manifest preparation.
-- Interim checks: 294 tests pass, seven extension-only skips. Ruff lint,
+- Interim checks: 298 tests pass, seven extension-only skips. Ruff lint,
   formatting and strict mypy pass. Final checks will be repeated after packaging.
 
 ## In progress
@@ -29,6 +29,12 @@ Final selection waits for distilled and species candidates. Packaging is a
 provisional dry run only. WS5 jobs are read-only. No WS7 GPU job remains active.
 
 ARM matrix job 950463 is running on xcng0, allocated/pinned cores 0-3.
+Supplement job 950885 is running on xcng1, with four allocated cores. It adds
+native styles scores and ACTIVE C7s without restarting the matrix. There are
+35/54 completed base cases at this update. The first full three-seed arm has
+no admissible configuration: FP16 passes the explicit accuracy-drop gate but
+fails strict parity; FP32 exceeds the simulated reaction budget; int8 loses
+substantial recall. Confuser FAR also rejects seeds in every configuration.
 The coordinator addition does not restart it. Mac CPU references are computed
 with four threads. First reference passes all 1,408 ARM CPU val/test image
 comparisons, maximum associated box delta below 0.001 px. Complete references
@@ -68,3 +74,9 @@ end-to-end p95 23.764 ms; **estimated** Pi p95 36.291 ms, factor 1.527110713.
 Native ACTIVE/PASSIVE predictions are bit-identical on 319 test images in
 each precision. Scratch evidence: `outputs/ws7/wait-policy/`,
 `outputs/ws7/cpu-{gpu,mac}-parity-*.json`, `outputs/ws7/results/`.
+
+Candidate addition, species pigeon-only scoring, evidence replay and the
+provisional packaging commands are documented in
+`experiments/reports/WS7-methods.md`. The selector writes precision deltas
+and matched head comparisons on every rerun. All 18 CPU reference sets,
+including styles, are complete. The local reference process has exited.
