@@ -156,8 +156,9 @@ commit fd026c4):
   block is identical to `yolo26n-v2s-800-round2-plain` except `dis: 6.0`.
   `batch_override: 64` matches plain-800's batch 64 × accumulate 1; without
   it the runner would pick 40 × 2 = effective 80 on h100-47.
-- **Memory (estimated):** ≈ 20.5 GB, scaled from the measured 13.1 GB at
-  640.
+- **Memory:** estimated ≈ 20.5 GB; **measured 20.3 GB** peak on s0 (xgpi13,
+  h100-47, batch 64), at **151 s/epoch** (measured). Teacher staged as
+  expected.
 - **Placement:** the heavy policy's a100-80 slot was taken by distill-640
   s2, so the submission was split. Seed 1 → h100-96 (951220); seeds 0 and 2
   → h100-47 (951222, throttle 1 because 950745 holds the other h100-47
