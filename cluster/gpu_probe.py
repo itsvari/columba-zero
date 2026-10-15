@@ -13,7 +13,12 @@ from pathlib import Path
 
 from app.json_data import JsonValue
 from cluster.artifacts import atomic_json
-from cluster.device_faults import clear_bad_node, expected_gpu_count, node_resources
+from cluster.device_faults import (
+    DEVICE_FAILURE_EXIT_STATUS,
+    clear_bad_node,
+    expected_gpu_count,
+    node_resources,
+)
 
 
 def probe(clear_on_success: bool = False) -> dict[str, JsonValue]:
@@ -75,7 +80,7 @@ def main() -> None:
     arguments = parser.parse_args()
     report = probe(arguments.clear_on_success)
     if report["status"] != "probe_complete":
-        raise SystemExit(6)
+        raise SystemExit(DEVICE_FAILURE_EXIT_STATUS)
 
 
 if __name__ == "__main__":

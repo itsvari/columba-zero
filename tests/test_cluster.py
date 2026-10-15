@@ -44,6 +44,7 @@ from cluster.device_faults import (
     DeviceVisibilityError,
     active_bad_nodes,
     check_visibility,
+    clear_bad_node,
     combined_exclusions,
     fault_evidence,
     handle_fault,
@@ -1568,6 +1569,19 @@ class OrchestrationTests(unittest.TestCase):
 
 
 class DeviceFaultTests(unittest.TestCase):
+    def test_visibility_precedes_work_and_hardware_smoke_keeps_bootstrap_settings(self) -> None:
+        script = (REPOSITORY / "cluster/templates/nv.sbatch").read_text()
+        first = script.index("python -m cluster.device_faults check --nvidia-only")
+        environment = script.index("bash cluster/bootstrap.sh --gpu\n")
+        cuda = script.index('"$environment/bin/python" -m cluster.device_faults check')
+        hardware = script.index("bash cluster/bootstrap.sh --gpu-smoke")
+        training = script.index('"$environment/bin/python" -m cluster.run_job')
+        self.assertLess(first, environment)
+        self.assertLess(environment, cuda)
+        self.assertLess(cuda, hardware)
+        self.assertLess(hardware, training)
+        self.assertNotIn('"$environment/bin/python" -m cluster.hardware --smoke', script)
+
     def test_visibility_requires_smi_success_expected_count_and_cuda(self) -> None:
         torch = Mock()
         torch.cuda.is_available.return_value = True
@@ -1695,7 +1709,10 @@ class DeviceFaultTests(unittest.TestCase):
             self.assertIn("--dependency=afterany:800_0", command)
             with (
                 patch.dict(os.environ, {"SLURM_JOB_ID": "802"}),
-                patch("cluster.device_faults.owned_job", return_value=fields),
+                patch(
+                    "cluster.device_faults.owned_job",
+                    side_effect=[fields, {**fields, "ArrayTaskThrottle": "1"}],
+                ),
                 patch(
                     "cluster.device_faults.subprocess.run",
                     return_value=subprocess.CompletedProcess([], 0, "", ""),
@@ -1765,6 +1782,58 @@ class DeviceFaultTests(unittest.TestCase):
                 slurm_restart_count=1,
             )
             self.assertIsNone(fault_evidence(root, run, report))
+            report.update(error="FileNotFoundError: dataset/No devices were found/file.jpg")
+            self.assertIsNone(fault_evidence(root, run, report))
+
+    def test_new_restart_shell_failure_does_not_preserve_stale_device_failure(self) -> None:
+        from cluster.job_failure import record_failure
+
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            run = home / "columba/runs/device/seed0"
+            run.mkdir(parents=True)
+            (run / "run.json").write_text(
+                '{"job_id":"880", "status":"device_fault", "slurm_restart_count":0,'
+                '"array_job_id":"880", "array_task_id":"0"}'
+            )
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch.dict(
+                    os.environ,
+                    {
+                        "SLURM_JOB_ID": "880",
+                        "SLURM_RESTART_COUNT": "1",
+                        "SLURM_ARRAY_JOB_ID": "880",
+                        "SLURM_ARRAY_TASK_ID": "0",
+                    },
+                ),
+            ):
+                record_failure(run, {}, 1)
+            report = json.loads((run / "run.json").read_text())
+            self.assertEqual(report["status"], "failed")
+            self.assertEqual(report["slurm_restart_count"], 1)
+
+    def test_appended_old_device_output_does_not_classify_a_new_code_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "logs").mkdir()
+            path = root / "logs/cz-array-example-881_0.log"
+            path.write_text(
+                "CZ_DEVICE_ATTEMPT 881_0:0\nNo devices were found\n"
+                "CZ_DEVICE_ATTEMPT 881_0:1\nboot failed: missing package\n"
+            )
+            report: dict[str, JsonValue] = {
+                "job_id": "881",
+                "array_job_id": "881",
+                "array_task_id": "0",
+                "host": "xgpd4",
+                "slurm_restart_count": 1,
+                "error": "job shell or bootstrap failed",
+                "exit_status": 1,
+            }
+            self.assertIsNone(fault_evidence(root, root / "runs/device/seed0", report))
+            path.write_text(path.read_text() + "no CUDA-capable device\n")
+            self.assertIsNotNone(fault_evidence(root, root / "runs/device/seed0", report))
 
     def test_transition_device_recovery_with_and_without_checkpoint(self) -> None:
         for checkpoint in (False, True):
@@ -1951,6 +2020,125 @@ class DeviceFaultTests(unittest.TestCase):
                 with self.assertRaises(subprocess.CalledProcessError):
                     retarget_array(root, "850", "h100-47")
             self.assertIn("ArrayTaskThrottle=2", scheduler.call_args_list[-1].args[0])
+
+    def test_submit_commands_merge_the_actual_dynamic_ledger(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            root = home / "columba"
+            checkout = root / "checkouts/source"
+            (checkout / "cluster/templates").mkdir(parents=True)
+            (checkout / "cluster/templates/nv.sbatch").write_text(
+                (REPOSITORY / "cluster/templates/nv.sbatch").read_text()
+            )
+            (checkout / "cluster/excluded_nodes.txt").write_text("xgpd2\nxgpe2\nxgpe6\n")
+            source = checkout / "recipe.yaml"
+            values = sample_recipe()
+            values.update(id="smoke-dynamic", seeds=[0])
+            source.write_text(yaml.safe_dump(values))
+            reserve_retry(
+                root, root / "runs/bad/seed0", "xgpf6", "860", "860", 0, "No devices were found"
+            )
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch("cluster.arrays.queue", return_value=()),
+                patch("cluster.arrays.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
+                patch(
+                    "cluster.arrays.subprocess.run",
+                    side_effect=[
+                        subprocess.CompletedProcess([], 0, "1 project", ""),
+                        subprocess.CompletedProcess([], 0, "861", ""),
+                    ],
+                ) as scheduler,
+            ):
+                submit_arrays(root, checkout, [task_for(source, 0)])
+            self.assertIn(
+                "xgpf6",
+                next(
+                    value for value in scheduler.call_args.args[0] if value.startswith("--exclude=")
+                ),
+            )
+            request: Submission = {
+                "name": "cz-legacy",
+                "lane": "nv",
+                "constraint": None,
+                "script": "echo test",
+                "run_path": str(root / "runs/legacy/seed0"),
+            }
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch("cluster.slurm.queue", return_value=()),
+                patch("cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
+                patch(
+                    "cluster.slurm.subprocess.run",
+                    return_value=subprocess.CompletedProcess([], 0, "862", ""),
+                ) as scheduler,
+            ):
+                submit_pending([request], Budget())
+            self.assertIn(
+                "xgpf6",
+                next(
+                    value for value in scheduler.call_args.args[0] if value.startswith("--exclude=")
+                ),
+            )
+            self.assertNotIn("--nodelist=xgpf6", scheduler.call_args.args[0])
+            clear_bad_node(root, "xgpf6")
+            self.assertNotIn("xgpf6", active_bad_nodes(root))
+            self.assertIn("xgpd2", combined_exclusions(root))
+
+    def test_transition_waits_for_device_repair_and_requeued_task(self) -> None:
+        for active_task in (False, True):
+            with self.subTest(active_task=active_task), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                source = root / "source.yaml"
+                values = sample_recipe()
+                values.update(id="device", seeds=[0])
+                source.write_text(yaml.safe_dump(values))
+                run = root / "runs/device/seed0"
+                reserve_retry(root, run, "xgpd4", "870_0", "870", 0, "No devices were found")
+                ledger = json.loads((run / "device_faults.json").read_text())
+                ledger["events"][0].update(status="repair_pending", repair_job_id="871")
+                (run / "device_faults.json").write_text(json.dumps(ledger))
+                target = root / "transitions/test"
+                target.mkdir(parents=True)
+                queue_text = (
+                    "870_0|cz-array-test|RUNNING|gpu-long|gres/gpu:nv:1|1"
+                    if active_task
+                    else "871|cz-device-repair-test|PENDING|normal|N/A|1"
+                )
+                rules = replace(
+                    load_rules(REPOSITORY / "training/rounds/round2.yaml"), inputs=(source,)
+                )
+                with (
+                    patch.dict(os.environ, {"SLURM_JOB_ID": "872"}),
+                    patch("cluster.transitions.queue", return_value=parse_queue(queue_text)),
+                    patch("cluster.transitions.submit_arrays", return_value=[]),
+                    patch(
+                        "cluster.transitions.arm_transition", return_value={"job_id": "873"}
+                    ) as arm,
+                ):
+                    self.assertTrue(
+                        recover_interrupted_inputs(
+                            root, root, rules, {"rules": str(source)}, target
+                        )
+                    )
+                self.assertEqual(arm.call_args.args[3], ["872", "870_0" if active_task else "871"])
+                self.assertEqual(
+                    json.loads((run / "device_faults.json").read_text())["retry_count"], 1
+                )
+
+    def test_all_gpu_probe_refuses_an_impossible_type_quota(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            request = probe_submission("xgpi11", home / "columba", REPOSITORY)
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch("cluster.slurm.node_resources", return_value=("h100-47", 4)),
+                patch("cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
+                patch("cluster.slurm.subprocess.run") as scheduler,
+            ):
+                with self.assertRaisesRegex(ValueError, "per-type QoS cap"):
+                    submit_pending([request], Budget())
+            scheduler.assert_not_called()
 
     def test_heavy_array_uses_free_short_partition_then_long_when_available(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

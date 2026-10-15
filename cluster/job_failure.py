@@ -20,12 +20,20 @@ def record_failure(run_path: Path, metadata: dict[str, JsonValue], exit_status: 
     report_path = run_path / "run.json"
     previous = read_json(report_path) if report_path.is_file() else {}
     job_id = os.environ["SLURM_JOB_ID"]
-    if previous.get("job_id") == job_id and previous.get("status") in {"failed", "device_fault"}:
+    restart_count = int(os.environ.get("SLURM_RESTART_COUNT", "0"))
+    if (
+        previous.get("job_id") == job_id
+        and previous.get("slurm_restart_count", 0) == restart_count
+        and previous.get("status") in {"failed", "device_fault"}
+    ):
         return
     report: dict[str, JsonValue] = {
         **previous,
         **metadata,
         "job_id": job_id,
+        "array_job_id": os.environ.get("SLURM_ARRAY_JOB_ID"),
+        "array_task_id": os.environ.get("SLURM_ARRAY_TASK_ID"),
+        "slurm_restart_count": restart_count,
         "epochs_done": previous.get("epochs_done", metadata.get("epochs_done", 0)),
         "host": platform.node(),
         "status": "failed",

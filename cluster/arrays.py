@@ -31,6 +31,8 @@ from cluster.slurm import ACTIVE_STATES, GPU_RUNNING_LIMIT, Budget, Job, job_nam
 REPOSITORY = Path(__file__).resolve().parents[1]
 MAX_ARRAY_SIZE = 1001
 STORAGE_LIMIT_KIB = 80 * 1024 * 1024
+MINUTES_PER_HOUR = 60
+HOURS_PER_DAY = 24
 
 
 @dataclass(frozen=True)
@@ -470,7 +472,12 @@ def retarget_array(
         original = fields.get("TimeLimit", request.time_limit)
         days, clock = original.split("-", 1) if "-" in original else ("0", original)
         components = [int(value) for value in clock.split(":")]
-        original_minutes = int(days) * 24 * 60 + components[0] * 60 + components[1]
+        original_minutes = (
+            int(days) * HOURS_PER_DAY * MINUTES_PER_HOUR
+            + components[0] * MINUTES_PER_HOUR
+            + components[1]
+        )
+        updated = False
         try:
             subprocess.run(
                 [
@@ -488,9 +495,11 @@ def retarget_array(
                 capture_output=True,
                 text=True,
             )
+            updated = True
         finally:
+            restored = selected if updated else min(current, selected)
             subprocess.run(
-                ["scontrol", "update", f"JobId={parent}", f"ArrayTaskThrottle={selected}"],
+                ["scontrol", "update", f"JobId={parent}", f"ArrayTaskThrottle={restored}"],
                 check=True,
                 capture_output=True,
                 text=True,

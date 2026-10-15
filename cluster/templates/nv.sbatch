@@ -34,7 +34,7 @@ bash cluster/bootstrap.sh --gpu
 environment="$(bash cluster/bootstrap.sh --gpu --print-env)"
 "$environment/bin/python" -m cluster.device_faults check
 python -m cluster.requeue start --run-path "$COLUMBA_RUN_PATH"
-"$environment/bin/python" -m cluster.hardware --smoke
+bash cluster/bootstrap.sh --gpu-smoke
 run_arguments=(--recipe "$COLUMBA_RECIPE" --seed "$COLUMBA_SEED")
 if [[ -n "${COLUMBA_STOP_AFTER_EPOCH:-}" ]]; then
     run_arguments+=(--stop-after-epoch "$COLUMBA_STOP_AFTER_EPOCH")

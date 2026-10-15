@@ -653,3 +653,169 @@ main bd4ff06. Implementing device-visibility retry, expiring dynamic exclusions,
 transition recovery without checkpoints, and throttle-preserving array retargets.
 Running round-2 jobs, 947422 and the separate node-scanning agent's probes remain
 untouched. Verification will simulate a fault in one brief allocation.
+
+## Round 5 complete — device visibility recovery
+
+Branch ws3/cluster, GPT-6.1 via T3 delegate, 15 October 2026. Fast-forwarded to
+main bd4ff06 before work. Existing round-2 jobs, transition 947422 and the node
+scanner's probes were neither cancelled nor modified. No package pins changed.
+
+### Detection, quarantine and retry
+
+New training wrappers check nvidia-smi UUID visibility before environment prep,
+then CUDA availability, allocated device count and CUDA initialisation in the
+selected CUDA venv. The physical count must cover the allocation; Torch must
+see exactly SLURM_GPUS_ON_NODE. GPU work, hardware forward/backward and dataset
+staging follow these checks. Hardware smoke still runs inside bootstrap's
+scratch Ultralytics settings, avoiding a home-directory settings leak.
+
+`~/columba/state/bad_nodes.json` is a version-1 mapping under `nodes`, keyed by
+node. Entries contain node, first_seen, time, expires_at, job, error, count and
+simulated. Times are UTC ISO strings. `cluster/device_policy.json` configures
+24-hour quarantine and three device retries per run. Expired entries stop
+excluding nodes automatically but remain visible for diagnosis. A new genuine
+fault renews expiry and count. Simulated records never exclude production
+placements or contaminate genuine-node counts. Static exclusions win over
+expiry and clear-on-success.
+
+Per-run `device_faults.json` records retry_count and events keyed by exact
+array task plus restart count. Each event includes node/error/time, expected
+restart, repair job, outcome and original array throttle. The fourth detected
+fault writes HOLD after three retries. Device restarts bypass checkpoint
+progress checks and consume neither the ten checkpoint-requeue allowance nor
+the transition's two normal checkpoint recoveries. Early run.json records
+exit 6, epochs_done, hardware error and device_fault_retries. The regular shell
+failure handler preserves this evidence.
+
+Dynamic exclusions join static/explicit exclusions in legacy submit, pending
+retargets, arrays and transition-generated arrays. The status command shows
+active/expired entries, expiry times, per-run device retries and repair IDs.
+Fetch also transfers state JSON. CUDA OOM and ordinary data/code exceptions
+remain genuine failures. A prior device event does not classify a later code
+failure as a device fault. Failure reports retain the current restart identity,
+and attempt markers prevent old appended log output from triggering a retry.
+
+### Measured Slurm verification
+
+- Simulation array **949633_0** requested one T4, one CPU and a one-minute limit.
+  Its first allocation on **xgpf0** deliberately reported No devices were found.
+  This was a simulated fault on healthy hardware, not a health finding.
+- Slurm rejected the running task update with:
+  `949633_[0]: Job is no longer pending execution`.
+- A finite repair job **949634** ran on xcng0, afterany:949633_0, with one CPU,
+  two GB, one minute and --nice=1000. It completed in under one reported second.
+  It ran requeuehold, changed the held task's ExcNodeList, cleared ReqNodeList,
+  restored ArrayTaskThrottle and released the same task. This is the working
+  equivalent when a running-state exclusion update is rejected.
+- 949633_0 restarted on **xgpf11**, with restart count 1, unchanged throttle 1,
+  and `ExcNodeList=xgpd2,xgpe2,xgpe6,xgpf0`. It completed 0:0 in two reported
+  seconds on its final allocation. Its checkpoint ledger contains only the
+  recorded scheduler restart, with checkpoint retry count zero and no last.pt.
+  Its device ledger has retry_count=1. Thus a fault before any epoch does not
+  trip the no-progress guard. No actual broken node was used for this test.
+- Initial setup job **949626_0** failed on xcng0 in one second because the test
+  submission generated an invalid shell export. It never reached device code.
+  Corrected the test and committed the reusable, syntax-checked
+  cluster/templates/device-test.sbatch fixture before the successful T4 test.
+  No additional dummy test was submitted to xcng0; 949634 did real repair work.
+- Real all-GPU probe **949660** on **xgpj0** completed 0:0 in under one reported
+  second, using system Python with a one-minute limit and no venv bootstrap.
+  Configured/allocated/visible counts were all 1. nvidia-smi reported A100 80GB
+  PCIe, driver 580.178.04, compute 8.0 and 81920 MiB. clear-on-success passed.
+  This probe intentionally makes no Torch/forward-backward claim.
+- All test allocations requested --nice=1000, recorded in SubmitLine. No WS3
+  job remains queued. Removed only xgpf0's own completed simulated quarantine;
+  per-run history and the captured global-ledger evidence remain available.
+
+The helper is bounded useful work, not a persistent orchestrator. It checks
+ownership and CPU/submission budgets before submission. It keeps Slurm task
+identity so existing dependencies follow the restarted task. A transition
+that races a queued repair defers to the repair and then the requeued task.
+Transitions also recover recognised early device failures from owned cz- logs
+or a matching device event, without a checkpoint. Replacement arrays exclude
+bad nodes and re-arm the transition. An exhausted or unsuccessful repair HOLDs
+with its reason; genuine failures do not enter device recovery.
+
+### Probes, retargeting and placement
+
+`gpu-probe` now requests every configured GPU on the selected node. Its limit
+is 00:01:00, with no bootstrap or autorequeue. It runs the requested name/driver/
+compute/memory query, validates the count against node GRES and the allocation,
+and clears a dynamic entry only on complete success. Static entries remain.
+Nodes whose full GPU count exceeds the per-type QoS cap are refused instead of
+being parked indefinitely. In particular four-GPU H100-47 nodes need a QoS
+exception or administrator assistance for an all-node probe under the two-GPU
+per-user cap; H100-96/H200 nodes can have the same constraint.
+
+New commands:
+
+```sh
+python -m cluster.sweep gpu-probe --probe-node xgpj0 --clear-on-success
+python -m cluster.sweep retarget-array --job ARRAY_ID --constraint h100-47 --throttle 2
+python -m cluster.sweep status
+```
+
+retarget-array accepts owned PENDING roots/tasks only, uses a typed GRES,
+checks total/type throttle limits and reapplies the throttle after changing
+GRES/partition. An explicit throttle increase is not applied if the request
+update fails. Pending task IDs can be used when another task in the parent
+array is running. No retarget command was exercised against production jobs.
+
+Heavy arrays and array retargets now prefer gpu-long when that GPU type has
+free units, otherwise gpu with a three-hour limit and normal checkpoint
+self-requeue. Multi-partition requests fit the minimum partition limit.
+Preference order, 4/2/1/1 shares and H100-96 limits are unchanged. xgpj0 remains
+available. **The static exclusion file was not edited:** xgpd2, xgpe2 and xgpe6
+remain. The coordinator can move xgpd2 to dynamic handling after this lands;
+all-GPU probes and runtime guards now handle its flaky-device case.
+
+### 947422 hand-off — not re-armed
+
+Re-arming onto new code is safe and useful for future failures. Its pinned
+round2-distill rules are byte-identical to the checked-in rules:
+SHA-256 c795378651d0fa15869431b95567fa801eae1d877f5c9ce5be1b0dbbc0573b7c.
+The rule still distils top_k=1, three seeds. The original plain selection is
+upstream **4ddea01170a47126**. Current unsatisfied dependencies are **947419**
+and **949457**, matching the coordinator's manual repair. Completed source and
+teacher runs still undergo C6 validation.
+
+An explicit arm now includes the source checkout in transition identity, so
+using new code cannot silently return an old submission pinned to old code.
+The coordinator can run:
+
+```sh
+python -m cluster.sweep arm-transition --rules training/rounds/round2-distill.yaml \
+  --after 947419 949457 --upstream 4ddea01170a47126
+```
+
+Verify the replacement is pending with those dependencies and the new pinned
+checkout, then retire old pending 947422. Do not leave both armed. WS3 has not
+run this command, held 947422 or changed its dependencies. Current production
+jobs 947419_2/3 and 949457_0 remain running, with 947419_4 pending at verification.
+The coordinator's transition remains pending. No node-scanner job was touched.
+
+### Checks, evidence and requests
+
+Final section-0 checks: 283 unittest cases, seven dependency/hardware skips;
+all executed cases pass. All 89 cluster cases pass without skips and without
+network. Ruff check/format pass on app/tests/tools/cluster/training/native
+(88 Python files); strict mypy passes on 85 files. git diff --check passes.
+Tests cover visibility/count/CUDA init, OOM/data rejection, atomic expiry/counts,
+independent retry/progress budgets, running-update fallback and held repair,
+actual ledger exclusions in both submit paths, transition recovery with/without
+checkpoints, repair deferral, exhaustion HOLD, all-node probe success/failure/
+QoS refusal, retarget throttle restoration and free-partition placement.
+
+Evidence: outputs/ws3/evidence-round5.json, status-round5.jsonl,
+unit-round5.log, unit-round5-device.log, ruff-round5.log, mypy-round5.log,
+device-live-final-submission-round5.json and probe-submission-round5.json.
+Cluster proof: ~/columba/runs/smoke-device-r5-final/seed0/proof.json and
+its device_faults.json/requeue.json, plus gpu-probes/xgpj0/run.json. Live
+simulation used cc693ac; real all-GPU probe used 8b8dc19. Final changes are
+published to a new immutable checkout; existing pinned jobs stay unchanged.
+
+Coordinator requests: optionally document device_fault_retries and the adjacent
+state/device_faults ledgers in C6; choose when to move xgpd2 out of the static
+list. Full-node probes above normal QoS typed caps require administrator help.
+No implementation blocker remains. 947422 replacement remains the coordinator's
+explicit action.

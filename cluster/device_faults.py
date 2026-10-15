@@ -23,6 +23,7 @@ from cluster.requeue import requeue_identifier
 REPOSITORY = Path(__file__).resolve().parents[1]
 DEVICE_FAILURE_EXIT_STATUS = 6
 MAX_ERROR_CHARACTERS = 4000
+MAX_FAILURE_LOG_BYTES = 64 * 1024
 NODE_PATTERN = re.compile(r"xgp[d-k][0-9]+|xcng[01]")
 FAULT_PATTERNS = (
     "no devices were found",
@@ -193,6 +194,8 @@ def reserve_retry(
         )
         nodes = cast(dict[str, JsonValue], bad["nodes"])
         previous = cast(dict[str, JsonValue], nodes.get(node, {}))
+        if previous.get("simulated", False) != simulated:
+            previous = {}
         nodes[node] = {
             "node": node,
             "time": instant.isoformat(),
@@ -226,6 +229,7 @@ def reserve_retry(
                 "job_id": job_id,
                 "array_job_id": target.split("_")[0] if "_" in target else None,
                 "array_task_id": target.split("_")[1] if "_" in target else None,
+                "epochs_done": report.get("epochs_done", 0),
                 "host": node,
                 "architecture": platform.machine(),
                 "slurm_restart_count": restart_count,
@@ -304,8 +308,15 @@ def repair(root: Path, run_path: Path, event_id: str) -> None:
     )
     target = cast(str, entry["target"])
     fields = owned_job(target)
+    throttle = fields.get("ArrayTaskThrottle", entry.get("array_throttle"))
     if (run_path / "DONE").exists():
         return
+    update_event(
+        root,
+        run_path,
+        event_id,
+        {"failed_job_state": fields.get("JobState"), "failed_exit_code": fields.get("ExitCode")},
+    )
     subprocess.run(["scontrol", "requeuehold", target], check=True, capture_output=True, text=True)
     fields = owned_job(target)
     subprocess.run(
@@ -314,7 +325,6 @@ def repair(root: Path, run_path: Path, event_id: str) -> None:
         capture_output=True,
         text=True,
     )
-    throttle = fields.get("ArrayTaskThrottle", entry.get("array_throttle"))
     if throttle is not None:
         subprocess.run(
             [
@@ -337,6 +347,7 @@ def repair(root: Path, run_path: Path, event_id: str) -> None:
 
 
 def handle_fault(root: Path, run_path: Path, error: str, simulated: bool = False) -> None:
+    from cluster.gpu_policy import load_policy
     from cluster.slurm import ACTIVE_STATES, Budget, queue
 
     job_id = os.environ["SLURM_JOB_ID"]
@@ -374,7 +385,7 @@ def handle_fault(root: Path, run_path: Path, error: str, simulated: bool = False
     with submission_lock(root):
         jobs = queue()
         if (
-            len(jobs) >= 32
+            len(jobs) >= load_policy().max_submit_jobs
             or sum(job.owned for job in jobs) >= Budget().queued_jobs
             or sum(
                 job.owned
@@ -438,17 +449,22 @@ def fault_evidence(
         if report.get("array_job_id") is not None and report.get("array_task_id") is not None
         else str(report.get("job_id", ""))
     )
+    error = str(report.get("error", ""))
+    if error.startswith(
+        ("ValueError:", "FileNotFoundError:", "KeyError:", "TypeError:", "AssertionError:")
+    ):
+        return None
     if path.exists():
         events = cast(list[dict[str, JsonValue]], read_json(path).get("events", []))
         matching = [
             entry
             for entry in events
             if entry.get("target") == target
+            and str(entry.get("job_id")) == str(report.get("job_id"))
             and entry.get("restart_count") == report.get("slurm_restart_count", 0)
         ]
         if matching:
             return cast(str, matching[-1]["node"]), cast(str, matching[-1]["error"])
-    error = str(report.get("error", ""))
     node = str(report.get("host", "")).split(".")[0]
     if recognised_fault(error) and NODE_PATTERN.fullmatch(node):
         return node, error
@@ -465,8 +481,13 @@ def fault_evidence(
         for log_path in (root / "logs").glob(f"cz-*-{identifier}.log"):
             with log_path.open("rb") as source:
                 source.seek(0, 2)
-                source.seek(max(0, source.tell() - 65536))
+                source.seek(max(0, source.tell() - MAX_FAILURE_LOG_BYTES))
                 text = source.read().decode("utf-8", errors="replace")
+            marker = f"CZ_DEVICE_ATTEMPT {target}:{report.get('slurm_restart_count', 0)}"
+            if marker in text:
+                text = text.rsplit(marker, 1)[1]
+            elif "CZ_DEVICE_ATTEMPT " in text or report.get("slurm_restart_count", 0):
+                continue
             if recognised_fault(text):
                 return node, text[-MAX_ERROR_CHARACTERS:]
     return None
@@ -520,6 +541,12 @@ def main() -> None:
         or "smoke-" not in str(run_path.relative_to(root / "runs"))
     ):
         raise ValueError("simulation is restricted to WS3 smoke allocations")
+    target = requeue_identifier(
+        os.environ["SLURM_JOB_ID"],
+        os.environ.get("SLURM_ARRAY_JOB_ID"),
+        os.environ.get("SLURM_ARRAY_TASK_ID"),
+    )
+    print(f"CZ_DEVICE_ATTEMPT {target}:{os.environ.get('SLURM_RESTART_COUNT', '0')}", flush=True)
     try:
         if arguments.simulate_once:
             if int(os.environ.get("SLURM_RESTART_COUNT", "0")) == 0:

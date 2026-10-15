@@ -564,6 +564,8 @@ def recover_interrupted_inputs(
             )
             device_path = run_path / "device_faults.json"
             if device_path.exists():
+                if (run_path / "HOLD").exists():
+                    raise HoldRequired(f"{relative}: {(run_path / 'HOLD').read_text().strip()}")
                 events = cast(list[dict[str, JsonValue]], read_json(device_path).get("events", []))
                 active = {
                     job.identifier for job in queue() if job.owned and job.state in ACTIVE_STATES
