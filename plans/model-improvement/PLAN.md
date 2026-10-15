@@ -121,7 +121,7 @@ small boxes come from one depot session.
 | Reaction time target | About 0.5 s, p95. |
 | GPU budget | At most **8 GPUs** at a time (the per-user QoS maximum), nv lane only. Raised from 4 on 15 Oct 2026 when the user reported the high-priority project idle; drop back to 4 if the user says it needs GPUs again. |
 | ARM node use | `xcng0-1` may be used for anything where it fits better than the Mac, including latency estimates. Avoid queueing many jobs; prefer local Mac work for quick iteration. |
-| Restricted hardware | ~~A100, H100, H200 and `xgpj0` belong to a higher-priority project. Do not use them.~~ **Lifted 15 Oct 2026 by the user** while that project is idle: all GPU types may be used, within the 8-GPU cap, including `xgpj0` (aarch64 + A100-80; often less contended), which gets its own aarch64 CUDA venv. Revert to nv-only if the user says the high-priority project needs GPUs again. |
+| Restricted hardware | ~~A100, H100, H200 and `xgpj0` belong to a higher-priority project. Do not use them.~~ **Lifted 15 Oct 2026 by the user** while that project is idle: all GPU types may be used, within the 8-GPU cap, including `xgpj0` (aarch64 + A100-80; often less contended), which gets its own aarch64 CUDA venv. Revert to nv-only (and `nice: 1000` in `cluster/gpu_policy.yaml`, see `cluster/README.md`) if the user says the high-priority project needs GPUs again. |
 | Native code | C++ preferred over Rust (section 7, WS8). |
 | No cloud instances | Use the Mac and the SoC cluster only. |
 
