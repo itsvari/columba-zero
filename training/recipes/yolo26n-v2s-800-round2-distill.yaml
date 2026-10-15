@@ -1,0 +1,44 @@
+id: yolo26n-v2s-800-round2-distill
+framework: ultralytics
+base_model: yolo26n.pt
+dataset: columba-train-v2s
+taxonomy: single
+seeds:
+- 0
+- 1
+- 2
+lane: nv
+gpu_constraint: null
+est_gpu_hours: 6.0
+teacher: yolo26x-v2s-960-teacher-b12/seed0
+train:
+  epochs: 300
+  patience: 50
+  imgsz: 800
+  nbs: 64
+  cos_lr: true
+  close_mosaic: 15
+  cache: ram
+  workers: 6
+  save_period: 5
+  plots: false
+  optimizer: MuSGD
+  lr0: 0.01
+  momentum: 0.9
+  warmup_bias_lr: 0.0
+  dis: 6.0
+deploy_sizes:
+- - 352
+  - 608
+- - 384
+  - 640
+- - 448
+  - 800
+notes: 'Coordinator decision 15 Oct evening: distillation at the winning 800 px deploy size,
+  in parallel with the mechanical 640 arm. Copy of generated yolo26n-v2s-640-round2-distill
+  (teacher yolo26x-v2s-960-teacher-b12/seed0, dis 6.0, same schedule) with imgsz 800; every
+  other hyperparameter equals yolo26n-v2s-800-round2-plain. batch_override 64 matches the
+  plain-800 arm (batch 64 x accumulate 1 on H100/A100); without it the runner picks 40 on
+  h100-47 (accumulate 2 = effective 80). Memory: distill-640 at batch 64 peaked at 13.1 GB
+  (measured, H100 NVL), so ~20.5 GB is expected at 800, within 46 GB.'
+batch_override: 64
