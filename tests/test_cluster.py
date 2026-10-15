@@ -1758,7 +1758,7 @@ class DeviceFaultTests(unittest.TestCase):
                     scheduling_request(submission, parse_inventory(GPU_INVENTORY))
             exclusions = combined_exclusions(root)
             self.assertIn("xgpe4", exclusions)
-            self.assertIn("xgpd2", exclusions)
+            self.assertTrue(set(excluded_nodes()) <= set(exclusions))
 
     def test_legacy_fault_log_recognition_and_genuine_failure_after_device_retry(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -2083,7 +2083,7 @@ class DeviceFaultTests(unittest.TestCase):
             self.assertNotIn("--nodelist=xgpf6", scheduler.call_args.args[0])
             clear_bad_node(root, "xgpf6")
             self.assertNotIn("xgpf6", active_bad_nodes(root))
-            self.assertIn("xgpd2", combined_exclusions(root))
+            self.assertTrue(set(excluded_nodes()) <= set(combined_exclusions(root)))
 
     def test_transition_waits_for_device_repair_and_requeued_task(self) -> None:
         for active_task in (False, True):
