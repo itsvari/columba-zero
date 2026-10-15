@@ -74,7 +74,10 @@ Check-in 15 Oct ~16:30.
   - Recipe: `training/recipes/yolo26n-v2s-species-800-r3.yaml` (identical
     to `yolo26n-v2s-800-round2-plain` except species dataset/taxonomy and
     `batch_override: 16`, which keeps the effective batch at 64).
-  - Array **950409**, Titan V, throttle 3; all 3 tasks running.
+  - Array **950409**, Titan V (xgpd4/5/6), throttle 3. All 3 tasks are
+    past epoch 2 at batch 16, ≈ 160 s/epoch (measured), and run.json shows
+    `test_taxonomy_aligned`. The single arm stopped at epochs 106–147, so
+    DONE in ≈ 5–7 h; worst case at 300 epochs ≈ 13 h.
   - Runner change: `cluster.staging.align_test_taxonomy` renames the staged
     `columba-test-v2` names to species, so an 11-class model can be
     evaluated. Pigeon metrics and FARs were checked identical.

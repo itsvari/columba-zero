@@ -128,6 +128,8 @@ comparison arm already has 3 completed seeds.
 - **Array:** **950409**, 3 seeds, nv pool pinned to Titan V
   (`--constraint titanv`), throttle 3. This keeps the heavy slots for
   distillation.
+  All 3 tasks run at ≈ 160 s/epoch, batch 16 (measured), and should be DONE
+  in ≈ 5–7 h.
 - **Effective batch:**
   - The single arm trained at batch 64 × accumulate 1 on H100/A100.
   - On Titan V the runner would pick batch 20 × accumulate 3 (effective
