@@ -419,6 +419,13 @@ def evaluate_aligned_candidate(arguments: argparse.Namespace) -> None:
             for name in ("predictions_val.json", "predictions_test.json"):
                 shutil.copy2(cached / name, reference / name)
                 shutil.copy2(sidecar_path(cached / name), sidecar_path(reference / name))
+            for name in (
+                "predictions_styles.json",
+                "predictions_styles.meta.json",
+                "metrics_styles.json",
+            ):
+                if (cached / name).is_file():
+                    shutil.copy2(cached / name, reference / name)
         for split, dataset in (("val", arguments.dataset), ("test", arguments.test_dataset)):
             output = reference / f"predictions_{split}.json"
             if output.exists():
@@ -439,6 +446,15 @@ def evaluate_aligned_candidate(arguments: argparse.Namespace) -> None:
                 decode,
             )
         score(reference, arguments.dataset, arguments.test_dataset)
+        if (reference / "metrics_styles.json").is_file():
+            styles_threshold = mapping(
+                read_report(reference / "metrics_styles.json")["operating_threshold"], "threshold"
+            )
+            reference_threshold = mapping(
+                read_report(reference / "metrics_val.json")["operating_threshold"], "threshold"
+            )
+            if styles_threshold["value"] != reference_threshold["value"]:
+                raise ValueError("cached PyTorch styles threshold differs from its val threshold")
         for precision in ("fp32", "fp16", "int8"):
             package = source / decode / f"{precision}_ncnn_model"
             if precision == "int8" and not package.exists():
@@ -1332,6 +1348,13 @@ def package_candidate(arguments: argparse.Namespace) -> None:
         "eligible": eligible,
         "failed_gates": [] if eligible else decision["diagnostic_failures"],
         "selection": str(arguments.decision),
+        "operating_threshold": read_report(Path(selected) / "metrics_val.json")[
+            "operating_threshold"
+        ],
+        "decode": descriptor["decode"],
+        "input_hw": descriptor["input_hw"],
+        "quantization": descriptor["precision"],
+        "taxonomy": descriptor["taxonomy"],
         "source": str(destination.relative_to(repository)),
         "runtime_directory": f"models/{model_id}",
         "files": files,
@@ -1343,6 +1366,7 @@ def package_candidate(arguments: argparse.Namespace) -> None:
         item for item in entries if mapping(item, "entry").get("model_id") != model_id
     ] + [entry]
     write_json(manifest_path, manifest)
+    model_settings(destination, cast(list[int], descriptor["input_hw"]), str(descriptor["decode"]))
     verified = prepare_models(repository, model_id)
     decision["package_verification"] = {
         "model_id": model_id,
@@ -1646,6 +1670,7 @@ def parser() -> argparse.ArgumentParser:
     sub.add_argument(
         "--reference-data-root",
         type=Path,
+        default=Path.home() / "columba-data",
         help="optional Mac C1 root for CPU reference precomputation",
     )
     sub.add_argument(
