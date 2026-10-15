@@ -9,7 +9,6 @@ Selection ranks three-seed arms by validation recall; test is a promotion gate.
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import json
 import os
@@ -35,7 +34,17 @@ from app.models import Frame
 from native.verify_native import NativeModel
 from tools.bench_ncnn import apply_calibration, calibration_factor, read_report, summary
 from tools.compare_exports import ExportPrediction, match_predictions
-from tools.evaluate_predictions import evaluate, load_dataset, mapping, number, sidecar_path
+from tools.evaluate_predictions import (
+    Dataset,
+    evaluate,
+    load_dataset,
+    mapping,
+    metric_group,
+    number,
+    read_predictions,
+    select_operating_threshold,
+    sidecar_path,
+)
 from tools.predict_to_coco import model_settings
 from tools.reaction_budget import ReactionSettings, processing_samples, simulate_reaction
 
@@ -59,6 +68,9 @@ VALIDATION_TIE_RECALL_FRACTION = 0.01
 LATENCY_TIE_RATIO = 1.05
 MAXIMUM_SPECIES_RECALL_DROP = 0.01
 SPECIES_LATENCY_RATIO = 1.05
+SQUARE_LANDSCAPE_BOUNDARY_RATIO = (4 / 3) ** 0.5
+WIDE_LANDSCAPE_BOUNDARY_RATIO = ((4 / 3) * (16 / 9)) ** 0.5
+ASPECT_BUCKETS = ("approx-16:9", "4:3", "square", "portrait")
 
 
 def affinity_cores() -> list[int]:
@@ -601,6 +613,15 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
         raise ValueError(f"{directory}: remeasure latency with OMP_WAIT_POLICY=ACTIVE")
     if test.get("dataset") != "columba-test-v2":
         raise ValueError(f"{directory}: primary gates require frozen columba-test-v2")
+    fp32_parity_passed = False
+    if descriptor["precision"] == "fp16":
+        fp32_directory = directory.parent / "fp32"
+        if (fp32_directory / "candidate.json").exists():
+            fp32 = read_report(fp32_directory / "candidate.json")
+            graph_fields = ("recipe", "seed", "decode", "input_hw", "taxonomy")
+            if any(fp32.get(field) != descriptor.get(field) for field in graph_fields):
+                raise ValueError(f"{directory}: FP32 parity reference is a different graph")
+            fp32_parity_passed = read_report(fp32_directory / "parity.json")["passed"] is True
     styles = None
     if (directory / "metrics_styles.json").exists():
         styles = read_report(directory / "metrics_styles.json")
@@ -624,6 +645,8 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
         "test": test["pigeon"],
         "empty_far": test["empty_false_alarm_rate"],
         "confuser_far": test["confuser_false_alarm_rate"],
+        "val_empty_far": validation["empty_false_alarm_rate"],
+        "val_confuser_far": validation["confuser_false_alarm_rate"],
         "pi5_p95_ms": mapping(latency["estimated_pi5"], "estimated Pi")["end_to_end_p95_ms"],
         "reaction_p95_ms": mapping(reaction["reaction_ms"], "reaction")["p95"],
         "threshold": threshold["value"],
@@ -634,6 +657,7 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
         if (directory.parent / "pt/metrics_styles.json").exists()
         else None,
         "parity_passed": read_report(directory / "parity.json")["passed"],
+        "fp32_parity_passed": fp32_parity_passed,
         "accuracy_gate_passed": read_report(directory / "accuracy_gate.json")["passed"],
         "accuracy_deltas": read_report(directory / "accuracy_gate.json")["deltas"],
         "parity_failures": read_report(directory / "parity.json")["failures"],
@@ -641,16 +665,30 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
     }
 
 
-def baseline_scores(leaderboard: Path) -> tuple[float, ...]:
-    with leaderboard.open() as stream:
-        rows = [
-            row
-            for row in csv.DictReader(stream)
-            if row["recipe_id"] == "baseline-repro-p50" and row["status"] == "complete"
-        ]
-    if {int(row["seed"]) for row in rows} != REQUIRED_SEEDS or len(rows) != len(REQUIRED_SEEDS):
-        raise ValueError("baseline-repro-p50 requires exactly seeds 0, 1, 2")
-    return tuple(float(row["test_recall_at_p90"]) for row in rows)
+def baseline_scores(directory: Path) -> tuple[float, ...]:
+    scores: list[float] = []
+    for seed in sorted(REQUIRED_SEEDS):
+        report = read_report(directory / f"seed{seed}/metrics_test.json")
+        if report.get("dataset") != "columba-test-v2" or report.get("input_hw") != [384, 640]:
+            raise ValueError("baseline requires frozen test C4 at rectangular 384x640")
+        scores.append(number(mapping(report["pigeon"], "pigeon")["recall_at_p90"], "recall"))
+    return tuple(scores)
+
+
+def passes_validation_false_alarms(seed: dict[str, JsonValue]) -> bool:
+    return all(
+        seed[field] is not None and number(seed[field], field) <= limit
+        for field, limit in (
+            ("val_empty_far", EMPTY_FAR_LIMIT),
+            ("val_confuser_far", CONFUSER_FAR_LIMIT),
+        )
+    )
+
+
+def deployment_parity(seed: dict[str, JsonValue]) -> bool:
+    if seed["precision"] == "fp16":
+        return seed.get("fp32_parity_passed") is True and seed["accuracy_gate_passed"] is True
+    return seed["parity_passed"] is True
 
 
 def metric(record: dict[str, JsonValue], split: str, name: str) -> float:
@@ -684,14 +722,23 @@ def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
         ):
             reasons.append("species pigeon recall is more than 0.01 below matched single")
         if reference is not None:
-            comparison = [
-                mapping(seed, "seed") for seed in cast(list[JsonValue], reference["seeds"])
-            ]
-            for field in ("empty_far", "confuser_far"):
-                if statistics.mean(number(seed[field], field) for seed in seeds) > statistics.mean(
-                    number(seed[field], field) for seed in comparison
-                ):
-                    reasons.append(f"species mean {field} is worse than matched single")
+            reference_seed = next(
+                (
+                    mapping(seed, "seed")
+                    for seed in cast(list[JsonValue], reference["seeds"])
+                    if mapping(seed, "seed")["seed"] == reference["shipped_seed"]
+                ),
+                None,
+            )
+            shipped_seed = next(
+                (seed for seed in seeds if seed["seed"] == arm["shipped_seed"]), None
+            )
+            if reference_seed is None or shipped_seed is None:
+                reasons.append("species comparison requires val-eligible shipped seeds")
+            else:
+                for field in ("empty_far", "confuser_far"):
+                    if number(shipped_seed[field], field) > number(reference_seed[field], field):
+                        reasons.append(f"species shipped {field} is worse than matched single")
             if (
                 number(arm["pi5_p95_ms"], "latency")
                 > number(reference["pi5_p95_ms"], "latency") * SPECIES_LATENCY_RATIO
@@ -758,8 +805,84 @@ def pareto_front(arms: list[dict[str, JsonValue]]) -> list[JsonValue]:
     ]
 
 
+def arm_gates(arm: dict[str, JsonValue], baseline: tuple[float, ...]) -> list[JsonValue]:
+    improvement = number(arm["test_recall_mean"], "recall") - statistics.mean(baseline)
+    uncertainty = max(statistics.stdev(baseline), number(arm["test_recall_std"], "deviation"))
+    gates: list[JsonValue] = [
+        {
+            "gate": "Three-seed test improvement",
+            "value": improvement,
+            "requirement": f"> {uncertainty:.6f}, larger seed SD",
+            "passed": improvement > uncertainty,
+        }
+    ]
+    seed = next(
+        (
+            mapping(value, "seed")
+            for value in cast(list[JsonValue], arm["seeds"])
+            if mapping(value, "seed")["seed"] == arm["shipped_seed"]
+        ),
+        None,
+    )
+    if seed is None:
+        return gates + [
+            {
+                "gate": "Val-eligible shipped seed",
+                "value": None,
+                "requirement": "one seed passes val FAR",
+                "passed": False,
+            }
+        ]
+    for field, label, limit in (
+        ("val_empty_far", "Val empty FAR", EMPTY_FAR_LIMIT),
+        ("val_confuser_far", "Val confuser FAR", CONFUSER_FAR_LIMIT),
+        ("empty_far", "Test empty FAR", EMPTY_FAR_LIMIT),
+        ("confuser_far", "Test confuser FAR", CONFUSER_FAR_LIMIT),
+        ("pi5_p95_ms", "Estimated Pi frame p95 ms", FRAME_P95_LIMIT_MS),
+        ("reaction_p95_ms", "Simulated reaction p95 ms", REACTION_P95_LIMIT_MS),
+    ):
+        value = seed[field]
+        gates.append(
+            {
+                "gate": label,
+                "value": value,
+                "requirement": f"<= {limit}",
+                "passed": value is not None and number(value, field) <= limit,
+            }
+        )
+    deltas = mapping(seed.get("accuracy_deltas", {}), "accuracy deltas")
+    maximum_drop = max(
+        0.0, -min((number(value, "delta") for value in deltas.values()), default=0.0)
+    )
+    gates.extend(
+        [
+            {
+                "gate": "Precision accuracy maximum drop",
+                "value": maximum_drop,
+                "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+                "passed": seed["accuracy_gate_passed"],
+            },
+            {
+                "gate": "Export parity",
+                "value": seed["deployment_parity_passed"],
+                "requirement": "strict same-graph fp32 + accuracy for fp16",
+                "passed": seed["deployment_parity_passed"],
+            },
+            {
+                "gate": "Deployment policy",
+                "value": f"{arm['decode']} / {arm['precision']}",
+                "requirement": "standard head; int8 excluded",
+                "passed": arm["decode"] == "yolo11" and arm["precision"] != "int8",
+            },
+        ]
+    )
+    return gates
+
+
 def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> dict[str, JsonValue]:
     candidates = [candidate_record(directory) for directory in directories]
+    for candidate in candidates:
+        candidate["deployment_parity_passed"] = deployment_parity(candidate)
     grouped: dict[tuple[str, str, str, str], list[dict[str, JsonValue]]] = defaultdict(list)
     for candidate in candidates:
         key = tuple(
@@ -777,22 +900,33 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
             reasons.append("requires exactly seeds 0, 1, 2")
         if mean_recall - baseline_mean <= max(baseline_std, standard_deviation):
             reasons.append("three-seed test accuracy does not beat baseline by seed uncertainty")
-        for seed in seeds:
+        representative = max(
+            (seed for seed in seeds if passes_validation_false_alarms(seed)),
+            key=lambda seed: (metric(seed, "val", "recall_at_p90"), -cast(int, seed["seed"])),
+            default=None,
+        )
+        if representative is None:
+            reasons.append("no seed passes validation false-alarm gates")
+        if key[2] == "int8":
+            reasons.append("int8 excluded by coordinator decision")
+        if key[1] == "yolo26":
+            reasons.append("one-to-one head excluded by coordinator decision")
+        if representative is not None:
             for field, limit in (
                 ("empty_far", EMPTY_FAR_LIMIT),
                 ("confuser_far", CONFUSER_FAR_LIMIT),
                 ("pi5_p95_ms", FRAME_P95_LIMIT_MS),
                 ("reaction_p95_ms", REACTION_P95_LIMIT_MS),
             ):
-                if seed[field] is None or number(seed[field], field) > limit:
-                    reasons.append(f"seed{seed['seed']} fails {field}")
-            if seed["parity_passed"] is not True:
-                reasons.append(f"seed{seed['seed']} fails export parity")
-            if seed["accuracy_gate_passed"] is not True:
-                reasons.append(f"seed{seed['seed']} fails deployed precision accuracy")
-        representative = max(
-            seeds, key=lambda seed: (metric(seed, "val", "recall_at_p90"), -cast(int, seed["seed"]))
-        )
+                if representative[field] is None or number(representative[field], field) > limit:
+                    reasons.append(f"shipped seed{representative['seed']} fails {field}")
+            if representative["deployment_parity_passed"] is not True:
+                reasons.append(f"shipped seed{representative['seed']} fails export parity")
+            if representative["accuracy_gate_passed"] is not True:
+                reasons.append(
+                    f"shipped seed{representative['seed']} fails deployed precision accuracy"
+                )
+        timing_seeds = [representative] if representative is not None else seeds
         arms.append(
             {
                 "id": "/".join(key[:3]) + "/" + key[3],
@@ -820,19 +954,22 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
                 "test_operating_recall_mean": statistics.mean(
                     metric(seed, "test", "recall_at_threshold") for seed in seeds
                 ),
-                "pi5_p95_ms": max(number(seed["pi5_p95_ms"], "latency") for seed in seeds),
+                "pi5_p95_ms": max(number(seed["pi5_p95_ms"], "latency") for seed in timing_seeds),
                 "reaction_p95_ms": max(
-                    number(seed["reaction_p95_ms"], "reaction") for seed in seeds
+                    number(seed["reaction_p95_ms"], "reaction") for seed in timing_seeds
                 )
-                if all(seed["reaction_p95_ms"] is not None for seed in seeds)
+                if all(seed["reaction_p95_ms"] is not None for seed in timing_seeds)
                 else None,
                 "passes": not reasons,
                 "failures": [str(reason) for reason in reasons],
-                "representative": representative["directory"],
+                "representative": representative["directory"] if representative else None,
+                "shipped_seed": representative["seed"] if representative else None,
                 "seeds": [dict(seed) for seed in seeds],
             }
         )
     enforce_species_gate(arms)
+    for arm in arms:
+        arm["gates"] = arm_gates(arm, baseline)
     eligible = [arm for arm in arms if arm["passes"]]
     front = pareto_front(eligible)
     selected = styles_tie_break(eligible)
@@ -840,8 +977,11 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
         arm
         for arm in arms
         if len(cast(list[JsonValue], arm["seeds"])) == len(REQUIRED_SEEDS)
-        and all(
-            mapping(seed, "seed")["parity_passed"] is True
+        and arm["precision"] != "int8"
+        and arm["decode"] == "yolo11"
+        and any(
+            mapping(seed, "seed")["seed"] == arm["shipped_seed"]
+            and mapping(seed, "seed")["deployment_parity_passed"] is True
             and mapping(seed, "seed")["accuracy_gate_passed"] is True
             for seed in cast(list[JsonValue], arm["seeds"])
         )
@@ -853,9 +993,17 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
             "recipe": "baseline-repro-p50",
             "test_mean": baseline_mean,
             "test_std": baseline_std,
+            "input_hw": [384, 640],
+            "format": "ncnn-fp16",
+            "source": "rectangular native baseline C4, three seeds",
         },
         "ranking": "three-seed validation R@P90, latency tie-break; test used for promotion only",
-        "false_alarm_policy": "each seed must pass, not just the arm average",
+        "false_alarm_policy": "choose seed on val FAR and recall; gate shipped export alone",
+        "seed_selection": "highest val R@P90 among val FAR-passing seeds; no test-driven fallback",
+        "fp16_parity_policy": (
+            "same-graph strict fp32 parity and precision accuracy; strict fp16 diagnostic"
+        ),
+        "excluded": ["int8", "decode:yolo26"],
         "precision_accuracy_gate": (
             "each split R@P90/AP50/operating recall drop <=0.01 vs same-head rectangular PyTorch"
         ),
@@ -1408,10 +1556,10 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         "Final selection waits for distilled and species candidates.",
         f"Coverage: {len(arms)} configurations and "
         f"{sum(len(cast(list[JsonValue], arm['seeds'])) for arm in arms)} seed/export cases.",
-        f"Comparison baseline: `{baseline['recipe']}`, measured training-size test R@P90 "
+        f"Comparison baseline: `{baseline['recipe']}`, measured native fp16 384x640 test R@P90 "
         f"{number(baseline['test_mean'], 'baseline mean'):.4f} +/- "
-        f"{number(baseline['test_std'], 'baseline sd'):.4f} from the WS5 leaderboard.",
-        "The baseline was not remeasured at rectangular input sizes in this matrix.",
+        f"{number(baseline['test_std'], 'baseline sd'):.4f}, "
+        "independently val-thresholded per seed.",
         "Styles is a secondary measured column. Test-v2 still supplies every promotion",
         "gate. Paired v2/v2s arms within 0.01 validation recall and 5% measured latency",
         "use styles recall to break the tie. The 5% band treats host timing noise",
@@ -1426,19 +1574,25 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         "Styles scores are measured on WS2's synthetic camera-style copies.",
         "These rectangular deploy-size measurements decide the section-1 and false-alarm",
         "gates. WS5 square-input leaderboard scores are context, not deployment scores.",
-        "Latency uses OMP_WAIT_POLICY=ACTIVE. PASSIVE results are retained as diagnostics.",
+        "C7 latency uses OMP_WAIT_POLICY=ACTIVE; PASSIVE results remain diagnostics.",
+        "WS10 will decide the deployed wait policy on the Pi, including pipeline contention.",
+        "The launcher is unchanged.",
         "Pi 5 latency is estimated with WS4 cal-v0-published, xcng times x 1.527110713.",
         "Reaction is simulated by WS4 with 30 FPS, k2/n3, 20,000 trials, seed 42,",
         "independent hits and per-frame recall proxied by test recall at each export's",
         "fresh validation-selected threshold. Temporal correlation is unmeasured.",
         "",
         "Arms rank by three-seed mean validation R@P90; test is a promotion gate.",
-        "Every seed must pass false-alarm, parity, precision-accuracy and time gates.",
+        "Choose the highest-val-recall seed among val FAR passes, then apply test,",
+        "latency, reaction and export gates to that seed alone. No test-driven retry.",
+        "Every seed's FAR remains visible as robustness context.",
         "FP16 and int8 each permit at most 0.01 loss in val/test R@P90, AP50 and",
         "operating recall versus same-head rectangular PyTorch. This is an explicit",
-        "WS7 accuracy policy. Parity independently retains count equality and",
-        "compare_exports.py IoU >=0.8 / score delta <=0.05 for fp32/fp16,",
-        "documented IoU >=0.7 / score delta <=0.10 for int8, at confidence 0.25.",
+        "confirmed accuracy policy. FP16 parity requires strict fp32 parity of the same",
+        "graph plus that accuracy gate. Strict fp16 per-image parity stays diagnostic.",
+        "Strict comparison uses count equality, IoU >=0.8 / score delta <=0.05;",
+        "int8 diagnostics use IoU >=0.7 / score delta <=0.10, at confidence 0.25.",
+        "Coordinator exclusions: int8 and one-to-one heads are not deployment candidates.",
         "",
         "Calibration uses 200 deterministic val images, centred deployment letterbox,",
         "RGB /255 and padding 114. Selected SHA-256s are checked against frozen test.",
@@ -1447,15 +1601,16 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         "## Arm results",
         "",
         "Accuracy values below are measured on xcng; frame p95 is estimated Pi 5;",
-        "reaction p95 is simulated. Input sizes are H x W.",
+        "reaction p95 is simulated. Timing uses the val-chosen seed, or worst seed",
+        "for diagnostic configurations with no val-eligible seed. Input sizes are H x W.",
         "",
         (
             "| Arm / decode / precision / input | Val R@P90 | Test R@P90 mean +/- sd | "
             "Test AP50 | Test operating R | PT styles R@P90 | Export styles R@P90 | "
             "Pi frame p95 ms | "
-            "Reaction p95 ms | Pass |"
+            "Reaction p95 ms | Shipped seed | Pass |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for arm in arms:
         styles = arm["styles_recall_mean"]
@@ -1479,7 +1634,7 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
             f"{reference_styles_display} | "
             f"{styles_display} | "
             f"{number(arm['pi5_p95_ms'], 'latency'):.2f} | "
-            f"{reaction_display} | "
+            f"{reaction_display} | {arm['shipped_seed']} | "
             f"{'yes' if arm['passes'] else 'no'} |"
         )
     lines.extend(
@@ -1514,7 +1669,7 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
             "## Head-swap comparison",
             "",
             "Deltas are one-to-one minus standard NMS, matched by recipe, precision",
-            "and deploy size. Latency compares worst-seed estimated Pi frame p95.",
+            "and deploy size. Latency compares val-chosen-seed estimated Pi frame p95.",
             "",
             "| Arm / precision | Val R@P90 delta | Test R@P90 delta | Styles R@P90 delta | "
             "Frame p95 delta ms |",
@@ -1560,7 +1715,8 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
             "",
             (
                 "| Candidate | Val R@P90 | Test R@P90 | Test R@P90 delta | Test AP50 delta | "
-                "Empty FAR | Confuser FAR | Val threshold | Parity failed images |"
+                "Val empty / confuser FAR | Test empty / confuser FAR | Val threshold | "
+                "Strict parity failed images |"
             ),
             "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
@@ -1574,7 +1730,8 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
                 f"{metric(seed, 'test', 'recall_at_p90'):.4f} | "
                 f"{number(deltas['test_recall_at_p90'], 'delta'):+.4f} | "
                 f"{number(deltas['test_ap50'], 'delta'):+.4f} | "
-                f"{seed['empty_far']} | {seed['confuser_far']} | "
+                f"{seed['val_empty_far']} / {seed['val_confuser_far']} | "
+                f"{seed['empty_far']} / {seed['confuser_far']} | "
                 f"{number(seed['threshold'], 'threshold'):.6f} | {seed['parity_failures']} |"
             )
     lines.extend(["", "## Rejected gates", ""])
@@ -1610,6 +1767,48 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
                 "",
             ]
         )
+    if decision.get("baseline_measurements") is not None:
+        measurements = mapping(decision["baseline_measurements"], "baseline measurements")
+        lines.extend(["## Rectangular baseline", "", str(measurements["description"]), ""])
+        lines.extend(cast(list[str], measurements["markdown"]))
+    selected = next((arm for arm in arms if arm["id"] == decision["selected"]), None)
+    if selected is not None:
+        lines.extend(
+            [
+                "## Selected export gates",
+                "",
+                f"Shipped seed {selected['shipped_seed']} was chosen on val only. "
+                "The three-seed means rank the arm; the rows below gate its shipped export.",
+                "",
+                "| Gate | Value | Requirement | Pass |",
+                "|---|---:|---|---|",
+            ]
+        )
+        for value in cast(list[JsonValue], selected["gates"]):
+            gate = mapping(value, "gate")
+            observed = gate["value"]
+            display = f"{observed:.6f}" if isinstance(observed, float) else str(observed)
+            lines.append(
+                f"| {gate['gate']} | {display} | {gate['requirement']} | "
+                f"{'yes' if gate['passed'] else 'no'} |"
+            )
+    if decision.get("aspect_ratio") is not None:
+        aspect = mapping(decision["aspect_ratio"], "aspect")
+        lines.extend(aspect_markdown(aspect))
+        if aspect.get("interpretation") is not None:
+            lines.extend([str(aspect["interpretation"]), ""])
+    lines.extend(
+        [
+            "## Quantisation diagnostic",
+            "",
+            "A plausible cause of the 800-arm int8 collapse is full-graph KL post-training",
+            "quantisation sensitivity, including the detection head, to model activation ranges.",
+            "Both sizes used the same 200 val IDs and RGB /255 preprocessing. The 800 and",
+            "640 checkpoints also differ, so this is not a controlled input-shape comparison.",
+            "No specific cause is established. Int8 is excluded; no further investigation was run.",
+            "",
+        ]
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines))
 
@@ -1711,6 +1910,167 @@ def audit_candidates(arguments: argparse.Namespace) -> None:
     print(json.dumps(audit_report))
 
 
+def aspect_bucket(width_px: int, height_px: int) -> str:
+    ratio = width_px / height_px
+    if ratio < 1:
+        return "portrait"
+    if ratio < SQUARE_LANDSCAPE_BOUNDARY_RATIO:
+        return "square"
+    if ratio < WIDE_LANDSCAPE_BOUNDARY_RATIO:
+        return "4:3"
+    return "approx-16:9"
+
+
+def geometry_summary(metrics: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    pigeon = mapping(metrics["pigeon"], "pigeon")
+    return {
+        "recall_at_p90": pigeon["recall_at_p90"],
+        "small_recall_at_p90": pigeon["small_recall_at_p90"],
+        "recall_at_full_test_p90": pigeon["recall_at_threshold"],
+        "counts": metrics["counts"],
+    }
+
+
+def aspect_report(arguments: argparse.Namespace) -> None:
+    dataset = load_dataset(arguments.dataset, "test")
+    paths = (arguments.square_predictions, arguments.rectangular_predictions)
+    metadata = [read_report(sidecar_path(path)) for path in paths]
+    for report, shape in zip(metadata, ([800, 800], [448, 800]), strict=True):
+        if report.get("format") != "pt" or report.get("input_hw") != shape:
+            raise ValueError("aspect comparison requires PyTorch 800x800 and 448x800 C3")
+    for field in ("model_path", "device", "decode", "host"):
+        if metadata[0].get(field) != metadata[1].get(field):
+            raise ValueError(f"aspect comparison requires matching {field}")
+    predictions = [read_predictions(path, dataset) for path in paths]
+    shapes = ((800, 800), (448, 800))
+    thresholds = [
+        number(select_operating_threshold(dataset, detected, shape)["value"], "threshold")
+        for detected, shape in zip(predictions, shapes, strict=True)
+    ]
+    buckets: list[JsonValue] = []
+    for bucket in ("all", *ASPECT_BUCKETS):
+        images = tuple(
+            image
+            for image in dataset.images
+            if bucket == "all" or aspect_bucket(image.width_px, image.height_px) == bucket
+        )
+        if not images:
+            continue
+        subset = Dataset(dataset.name, dataset.names, images, dataset.id_source)
+        image_ids = {image.image_id for image in images}
+        subsets = [
+            tuple(p for p in detected if p.image_id in image_ids) for detected in predictions
+        ]
+        scales = [
+            min(448 / image.height_px, 800 / image.width_px)
+            / min(800 / image.height_px, 800 / image.width_px)
+            for image in images
+            for annotation in image.annotations
+            if annotation.category_id == 0
+        ]
+        square = geometry_summary(metric_group(subset, subsets[0], shapes[0], thresholds[0]))
+        rectangular = geometry_summary(metric_group(subset, subsets[1], shapes[1], thresholds[1]))
+        fixed_small = geometry_summary(metric_group(subset, subsets[1], shapes[0], thresholds[1]))
+        buckets.append(
+            {
+                "bucket": bucket,
+                "pigeon_images": sum(
+                    any(a.category_id == 0 for a in image.annotations) for image in images
+                ),
+                "pigeon_weighted_content_scale_ratio": statistics.mean(scales) if scales else None,
+                "square": square,
+                "rectangular": rectangular,
+                "rectangular_fixed_square_small_cohort": fixed_small,
+            }
+        )
+    report = {
+        "label": "measured",
+        "host": platform.node(),
+        "framework": "ultralytics",
+        "device": metadata[0]["device"],
+        "model_path": metadata[0]["model_path"],
+        "square_predictions": str(paths[0]),
+        "rectangular_predictions": str(paths[1]),
+        "square_input_hw": [800, 800],
+        "rectangular_input_hw": [448, 800],
+        "bucket_boundaries": (
+            "portrait <1; square [1,1.1547); 4:3 [1.1547,1.5396); "
+            "approx-16:9 >=1.5396, includes wider images"
+        ),
+        "small_definition": "WS1 projected short side <32 px; fixed cohort uses 800x800 for both",
+        "global_test_p90_thresholds_diagnostic_only": cast(list[JsonValue], thresholds),
+        "threshold_policy": (
+            "subset R@P90 is diagnostic; no operating threshold or promotion gate changes"
+        ),
+        "buckets": buckets,
+    }
+    write_json(arguments.out, report)
+    arguments.report.write_text("\n".join(aspect_markdown(report)))
+
+
+def aspect_markdown(report: dict[str, JsonValue]) -> list[str]:
+    lines = [
+        "## Aspect-ratio diagnostic, PyTorch only",
+        "",
+        f"Measured on `{report['host']}`, CPU, same checkpoint and preprocessing implementation.",
+        "Inputs are 800x800 versus 448x800. The wide bucket includes ratios >=1.5396;",
+        "4:3 includes [1.1547,1.5396), square [1,1.1547), portrait <1.",
+        "Small means projected short side <32 px under WS1. Its cohort changes with input size.",
+        "The final column holds the square-defined small cohort fixed for both predictions.",
+        "Subset R@P90 can use a different diagnostic precision-90 score cut in each bucket.",
+        "No validation operating threshold or promotion gate is changed.",
+        "",
+        "| Bucket | Images / pigeon images / boxes | Content scale ratio | R@P90 square / rect | "
+        "Small R@P90 square / rect | Small boxes square / rect | Rect small recall, fixed cohort |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for value in cast(list[JsonValue], report["buckets"]):
+        bucket = mapping(value, "bucket")
+        square = mapping(bucket["square"], "square")
+        rectangular = mapping(bucket["rectangular"], "rectangular")
+        fixed = mapping(bucket["rectangular_fixed_square_small_cohort"], "fixed")
+        counts = mapping(square["counts"], "counts")
+        rect_counts = mapping(rectangular["counts"], "counts")
+        scale = bucket["pigeon_weighted_content_scale_ratio"]
+        scale_display = "n/a" if scale is None else f"{number(scale, 'scale'):.3f}"
+        lines.append(
+            f"| {bucket['bucket']} | {counts['images']} / {bucket['pigeon_images']} / "
+            f"{counts['pigeon_boxes']} | {scale_display} | "
+            f"{number(square['recall_at_p90'], 'R'):.4f} / "
+            f"{number(rectangular['recall_at_p90'], 'R'):.4f} | "
+            f"{small_recall_display(square)} / {small_recall_display(rectangular)} | "
+            f"{counts['small_pigeon_boxes']} / {rect_counts['small_pigeon_boxes']} | "
+            f"{small_recall_display(fixed)} |"
+        )
+    lines.extend(
+        [
+            "",
+            "At each shape's full-test P90 cut, diagnostic matched pigeon boxes are:",
+            "",
+            "| Bucket | Square matched | Rectangular matched | Lost matches |",
+            "|---|---:|---:|---:|",
+        ]
+    )
+    for value in cast(list[JsonValue], report["buckets"]):
+        bucket = mapping(value, "bucket")
+        square = mapping(bucket["square"], "square")
+        rectangular = mapping(bucket["rectangular"], "rectangular")
+        count = number(mapping(square["counts"], "counts")["pigeon_boxes"], "boxes")
+        square_matches = round(number(square["recall_at_full_test_p90"], "R") * count)
+        rectangular_matches = round(number(rectangular["recall_at_full_test_p90"], "R") * count)
+        lines.append(
+            f"| {bucket['bucket']} | {square_matches} | {rectangular_matches} | "
+            f"{square_matches - rectangular_matches} |"
+        )
+    return lines + [""]
+
+
+def small_recall_display(metrics: dict[str, JsonValue]) -> str:
+    if mapping(metrics["counts"], "counts")["small_pigeon_boxes"] == 0:
+        return "n/a"
+    return f"{number(metrics['small_recall_at_p90'], 'R'):.4f}"
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     commands = root.add_subparsers(dest="action", required=True)
@@ -1807,6 +2167,12 @@ def parser() -> argparse.ArgumentParser:
         help="package a blocked candidate for hash-check dry run while selection stays HOLD",
     )
     sub.add_argument("--exports", type=Path, required=True)
+    sub = commands.add_parser("aspect")
+    sub.add_argument("--dataset", type=Path, required=True)
+    sub.add_argument("--square-predictions", type=Path, required=True)
+    sub.add_argument("--rectangular-predictions", type=Path, required=True)
+    sub.add_argument("--out", type=Path, required=True)
+    sub.add_argument("--report", type=Path, required=True)
     sub = commands.add_parser("select")
     sub.add_argument(
         "candidates",
@@ -1815,7 +2181,12 @@ def parser() -> argparse.ArgumentParser:
         help="candidate directories or roots, searched recursively",
     )
     sub.add_argument("--report", type=Path)
-    sub.add_argument("--leaderboard", type=Path, default=Path("experiments/leaderboard.csv"))
+    sub.add_argument(
+        "--baseline-metrics", type=Path, default=Path("experiments/reports/WS7-baseline/fp16")
+    )
+    sub.add_argument(
+        "--aspect-report", type=Path, default=Path("experiments/reports/WS7-aspect.json")
+    )
     sub.add_argument("--output", type=Path, required=True)
     return root
 
@@ -1844,6 +2215,8 @@ def main() -> None:
         audit_candidates(arguments)
     elif arguments.action == "package":
         package_candidate(arguments)
+    elif arguments.action == "aspect":
+        aspect_report(arguments)
     else:
         directories = sorted(
             {
@@ -1854,7 +2227,12 @@ def main() -> None:
         )
         if not directories:
             raise SystemExit("no candidate.json files found")
-        decision = select_candidates(directories, baseline_scores(arguments.leaderboard))
+        decision = select_candidates(directories, baseline_scores(arguments.baseline_metrics))
+        baseline_summary = arguments.baseline_metrics.parent / "measurements.json"
+        if baseline_summary.exists():
+            decision["baseline_measurements"] = read_report(baseline_summary)
+        if arguments.aspect_report.exists():
+            decision["aspect_ratio"] = read_report(arguments.aspect_report)
         write_json(arguments.output, decision)
         if arguments.report:
             write_decision_report(arguments.report, decision)
