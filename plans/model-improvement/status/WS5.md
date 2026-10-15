@@ -55,44 +55,35 @@
 
 ## In progress
 
-Turn 5 (15 Oct): orchestration now runs on the cluster (WS3 arrays and
-transitions). The Mac auto-submitter is stopped.
+Check-in 15 Oct ~16:30.
 
-- **Round-2 rules confirmed** (`approval: confirmed`, `confirmed_by: WS5`):
-  `training/rounds/round2.yaml` and `round2-distill.yaml`.
-  - Latency records are COCO for all four models (the draft bound yolo11n
-    to the one-class v1-2 record).
-  - `tie_order` prefers v2s over v2 for the same model.
-  - Optimizer pinned to MuSGD / lr0 0.01 / momentum 0.9 /
-    warmup_bias_lr 0, which is what `auto` gave in round 1.
-  - cache ram, dis 6.0; teacher tie → yolo11x.
-
-  Details in `experiments/reports/WS5-plan.md`.
-- **Rule checks:**
-  - `prepare-transition` ran (plan
-    `~/columba/transitions/4ddea01170a47126/plan.json`, status "prepared,
-    not armed"). Nothing was armed.
-  - Local dry run: `outputs/ws5/scripts/dryrun_round2.py`, output in
-    `outputs/ws5/dryrun_round2.txt`.
-  - Two WS3 tests assumed the rules files were drafts. They now build their
-    own draft or empty tie order.
-- **Superseded teachers:** `yolo11x-v2s-960-teacher` (945884, epoch 10) and
-  `yolo26x-v2s-960-teacher` (945885, epoch 4) have `run.json`
-  status `cancelled-superseded`, with `superseded_by`. The originals are kept
-  as `run.json.before-cancel-record`. Both are fetched to the leaderboard.
-- **Jobs (15 Oct):**
-
-  | Job | Run | Placement | State |
-  |---|---|---|---|
-  | 946961 | yolo11x-v2s-960-teacher-b16 | H100 NVL xgpi6 | running, ≈ 201 s/epoch |
-  | 946962 | yolo26x-v2s-960-teacher-b12 | h100-47 xgpi12 | running, ≈ 367 s/epoch |
-  | 946641 | yolo11n-v2s-r1 | Titan V | epoch 132 |
-  | 946662 | yolo11s-v2s-r1 | Titan V | epoch 90 |
-  | 946664 | yolo26n-v2s-r1 | Titan V | epoch 116 |
-  | 946665 | yolo26s-v2-r1 | Titan V | epoch 142 |
-  | 947094 | yolo26s-v2s-r1 | h100-47, gpu (3 h, self-requeue) | epoch 92 |
-- **DONE and fetched:** yolo11n-v2, yolo26n-v2, yolo11s-v2. Val R@P90 0.770 /
-  0.773 / 0.758; test R@P90 0.691 / 0.705 / 0.734.
+- **Interim round-2 report:** `experiments/reports/WS5-round2.md`.
+  - 16 of 18 plain runs DONE. Pending: yolo26n-v2-640 s0 (949457_0) and
+    yolo11n-v2s-800 s1 (947419_4).
+  - Every arm beats `baseline-repro-p50` (test R@P90 0.73–0.78 vs
+    0.246 ± 0.035).
+  - The 800-px yolo26n arms lead: test R@P90 0.78, confuser FAR 0.023 /
+    0.032.
+  - Confuser-gate breaches (≥ 4 of 73): yolo26n-v2s-640 s0,
+    yolo26n-v2-640 s2, yolo11n-v2s-640 s0, yolo11n-v2s-800 s0 and s2.
+- **Distillation:** transition 949889 (top_k 1 → yolo26n-v2s-640 with the
+  yolo26x teacher, 3 seeds) waits on the 2 pending seeds. The teachers are
+  DONE: yolo26x val/test R@P90 0.845/0.861, yolo11x 0.822/0.870.
+- **Round 3 (species gate) started early, by coordinator decision.** 6 of 8
+  GPU slots were idle and the single arm had 3 DONE seeds.
+  - Recipe: `training/recipes/yolo26n-v2s-species-800-r3.yaml` (identical
+    to `yolo26n-v2s-800-round2-plain` except species dataset/taxonomy and
+    `batch_override: 16`, which keeps the effective batch at 64).
+  - Array **950409**, Titan V (xgpd4/5/6), throttle 3. All 3 tasks are
+    past epoch 2 at batch 16, ≈ 160 s/epoch (measured), and run.json shows
+    `test_taxonomy_aligned`. The single arm stopped at epochs 106–147, so
+    DONE in ≈ 5–7 h; worst case at 300 epochs ≈ 13 h.
+  - Runner change: `cluster.staging.align_test_taxonomy` renames the staged
+    `columba-test-v2` names to species, so an 11-class model can be
+    evaluated. Pigeon metrics and FARs were checked identical.
+  - Latency side of the gate passes: **+1.9%** estimated Pi p95 at 448×800
+    for nc=11 vs nc=1 (xcng0 job 950426).
+  - The accuracy/FAR decision comes when the seeds finish.
 
 ## Blockers and requests
 
