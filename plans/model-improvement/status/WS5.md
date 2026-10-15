@@ -73,9 +73,17 @@ Check-in 16 Oct (main 88eabb0 merged).
     the final call. The seeds for WS7, chosen on val:
     `yolo26n-v2s-species-800-r3/seed2` and its single reference
     `yolo26n-v2s-800-round2-plain/seed1`.
-  - **Proposed, not started:** a single-taxonomy control at
-    `batch_override: 16` on Titan V (3 seeds, ≈ 17 nv GPU-h). It would
-    separate the batch/GPU confound from the taxonomy effect.
+  - **Control running** (coordinator-approved 16 Oct):
+    `yolo26n-v2s-800-r3-control-b16` (plain-800 + `batch_override: 16`),
+    commit f722a9b.
+    - Arrays **952063** (s0), **952064** (s1), **952065** (s2): Titan V
+      (`Features=titanv`), 3-hour limit over gpu-long,gpu with checkpoint
+      requeue.
+    - ETA (estimated): ≈ 5–6 h of training each (species: 108–136 epochs ×
+      160 s), so ≈ 6–8 h from start including one requeue.
+    - Interpretation rule, fixed before results: within the larger seed sd
+      of species → the gain is attributed to batch, and single-b16 becomes a
+      WS7 candidate. Otherwise the decision rests on WS7's deploy-size FARs.
 - **Distill-640 complete** (`WS5-round2.md`):
   - val R@P90 0.807 ± 0.009 vs plain 0.788 ± 0.010, but test 0.733 ± 0.013
     vs 0.743 ± 0.003.

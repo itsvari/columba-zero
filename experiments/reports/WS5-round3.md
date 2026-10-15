@@ -109,5 +109,21 @@ than the taxonomy. A control run would separate the two:
   otherwise idle Titan Vs.
 
 If single@16 matches species on recall, smaller batches help the single
-model without the species FAR cost. I recommend it but have **not**
-submitted it; it needs coordinator approval.
+model without the species FAR cost.
+
+**Control running (coordinator-approved 16 Oct):**
+`training/recipes/yolo26n-v2s-800-r3-control-b16.yaml`.
+- **Why:** batch size, BatchNorm statistics and GPU type confound the
+  species-vs-single comparison. The control removes them.
+- **Recipe:** identical to `yolo26n-v2s-800-round2-plain` except
+  `batch_override: 16`. It differs from the species arm only in
+  dataset/taxonomy (`columba-train-v2s`, single).
+- **Jobs:** seeds 0/1/2 as arrays 952063 / 952064 / 952065, pinned to Titan
+  V.
+- **Interpretation, fixed before results:**
+  - If the control's 3-seed mean test R@P90 is within the larger seed sd
+    of species, the species recall gain is attributed to batch size. The
+    single b16 arm then becomes a WS7 candidate at deploy size, under the
+    same rules.
+  - Otherwise species keeps its recall advantage, and the decision rests
+    on WS7's deploy-size false-alarm results.
