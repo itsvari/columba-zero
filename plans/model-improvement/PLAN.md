@@ -702,6 +702,13 @@ configuration docs are updated.
    twice ACTIVE's NCNN time on xcng). ACTIVE spins idle threads, which may slow
    the capture, tracking and render threads on 4 cores. Set the winner in the
    launch environment before NCNN loads, and record it (C7 `omp_wait_policy`).
+7. Capture geometry: the selected model runs at 448×800 (16:9). Configure a
+   16:9 full-field-of-view stream (`stream: lores`, e.g. 800×450) instead of
+   the 640×480 default in `app/config.yaml`, and confirm on the Pi that frames
+   reach the detector at that geometry. WS7 found the rectangular accuracy loss
+   on test-v2 comes from portrait images (38 of 39 lost matches), and test-v2
+   has only 9 roughly 16:9 images, so `columba-test-site-v1` is the first real
+   check of deploy-geometry accuracy.
 
 ## 8. Coordinator playbook
 
