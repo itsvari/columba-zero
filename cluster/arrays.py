@@ -86,11 +86,30 @@ def active_arrays(root: Path, jobs: Sequence[Job]) -> tuple[dict[str, JsonValue]
     active = {
         job.identifier.split("_")[0] for job in jobs if job.owned and job.state in ACTIVE_STATES
     }
-    return tuple(
-        record
-        for path in sorted((root / "arrays").glob("*/submission.json"))
-        for record in (read_json(path),)
-        if str(record["array_id"]) in active
+    records: list[dict[str, JsonValue]] = []
+    for path in sorted((root / "arrays").glob("*/submission.json")):
+        record = read_json(path)
+        parent = str(record["array_id"])
+        if parent not in active:
+            continue
+        types = {
+            resource_type_for_job(job)
+            for job in jobs
+            if job.owned and job.identifier.split("_")[0] == parent and job.state in ACTIVE_STATES
+        }
+        if len(types) == 1 and None not in types:
+            record["resource_type"] = next(iter(types))
+        records.append(record)
+    return tuple(records)
+
+
+def remaining_tasks(record: dict[str, JsonValue], jobs: Sequence[Job]) -> int:
+    return sum(
+        job.gpu_count
+        for job in jobs
+        if job.owned
+        and job.identifier.split("_")[0] == str(record["array_id"])
+        and job.state in ACTIVE_STATES
     )
 
 
@@ -300,10 +319,7 @@ def submit_arrays(
         grouped = group_tasks(missing, gpu_inventory(), constraint, required_node, jobs, existing)
         counts = {key: len(members) for key, (_, members) in grouped.items()}
         counts.update(
-            {
-                f"existing:{record['array_id']}": cast(int, record["task_count"])
-                for record in existing
-            }
+            {f"existing:{record['array_id']}": remaining_tasks(record, jobs) for record in existing}
         )
         resources = {key: request.resources.split(":")[1] for key, (request, _) in grouped.items()}
         resources.update(
@@ -403,7 +419,7 @@ def throttle_arrays(
             )
             persist_throttle(record, throttle)
             return [record]
-        counts = {str(item["array_id"]): cast(int, item["task_count"]) for item in records}
+        counts = {str(item["array_id"]): remaining_tasks(item, jobs) for item in records}
         resources = {str(item["array_id"]): cast(str, item["resource_type"]) for item in records}
         allocation = allocate_throttles(
             counts, resources, jobs, {key: key for key in counts}, gpu_limit

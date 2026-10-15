@@ -299,6 +299,22 @@ def exclusion_update(root: Path, target: str, node: str, fields: dict[str, str])
     ]
 
 
+def refill_device_copies(root: Path, run_path: Path, event_id: str, target: str) -> None:
+    from cluster.fanout import refanout_task
+
+    try:
+        copies = refanout_task(root, target)
+        if copies:
+            update_event(
+                root,
+                run_path,
+                event_id,
+                {"fanout_array_ids": [item["array_id"] for item in copies]},
+            )
+    except (ValueError, OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        update_event(root, run_path, event_id, {"fanout_refill_error": str(error)})
+
+
 def repair(root: Path, run_path: Path, event_id: str) -> None:
     ledger = read_json(run_path / "device_faults.json")
     entry = next(
@@ -343,6 +359,7 @@ def repair(root: Path, run_path: Path, event_id: str) -> None:
         event_id,
         {"status": "requeued", "repair_job_id": os.environ.get("SLURM_JOB_ID")},
     )
+    refill_device_copies(root, run_path, event_id, target)
     subprocess.run(["scontrol", "release", target], check=True, capture_output=True, text=True)
 
 
@@ -380,6 +397,7 @@ def handle_fault(root: Path, run_path: Path, error: str, simulated: bool = False
     )
     if result.returncode == 0:
         update_event(root, run_path, cast(str, entry["event_id"]), {"status": "requeued"})
+        refill_device_copies(root, run_path, cast(str, entry["event_id"]), target)
         subprocess.run(["scontrol", "requeue", target], check=True, capture_output=True, text=True)
         return
     with submission_lock(root):

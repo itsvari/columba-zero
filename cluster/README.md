@@ -442,7 +442,8 @@ Running siblings are never cancelled. Claim history and the pending sibling
 IDs are preserved as `fanout_claims` in run.json; status/fetch include claims.
 
 Every expanded copy counts towards project MaxSubmit=24 and account
-MaxSubmit=32, including other account jobs for the latter. At most eight new
+MaxSubmit=32, including other account jobs for the latter. The account also
+has MaxJobs=16; GPU total/type QoS and the project CPU cap govern admission. At most eight new
 runs receive the widest set that fits. Larger batches use one or two copies
 per run. Narrow sets distribute their first choices across available typed
 headroom instead of parking the entire backlog on H100-47. Extra copies are

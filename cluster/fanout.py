@@ -30,6 +30,7 @@ from cluster.slurm import (
 )
 
 SMALL_BACKLOG_RUNS = 8
+SEGMENT_START_DELAY_MINUTES = 1
 LARGE_BACKLOG_WIDTH = 2
 
 
@@ -296,10 +297,10 @@ def submit_runs(
                     if required_node:
                         command.append("--nodelist=" + required_node)
                     if resume:
-                        command.append("--begin=now+1minute")
+                        command.append(f"--begin=now+{SEGMENT_START_DELAY_MINUTES}minute")
                     if task.recipe_id.startswith("smoke-"):
                         script = script.replace("#SBATCH --signal=B:USR1@600\n", "")
-                        command.extend(["--time=00:00:40", "--cpus-per-task=2", "--mem=8G"])
+                        command.extend(["--time=00:01:00", "--cpus-per-task=2", "--mem=8G"])
                     completed = subprocess.run(
                         command, input=script, check=True, capture_output=True, text=True
                     )
@@ -328,9 +329,8 @@ def submit_runs(
         return results
 
 
-def refanout() -> list[dict[str, JsonValue]]:
+def refanout_manifest(manifest_path: Path) -> list[dict[str, JsonValue]]:
     root = Path.home() / "columba"
-    manifest_path = Path(os.environ["COLUMBA_ARRAY_MANIFEST"])
     manifest = read_json(manifest_path)
     if manifest.get("kind") != "fanout":
         return []
@@ -344,3 +344,15 @@ def refanout() -> list[dict[str, JsonValue]]:
         required_node=cast(str | None, manifest.get("required_node")),
         resume=True,
     )
+
+
+def refanout_task(root: Path, target: str) -> list[dict[str, JsonValue]]:
+    for path in (root / "arrays").glob("*/submission.json"):
+        record = read_json(path)
+        if str(record["array_id"]) == target.split("_")[0]:
+            return refanout_manifest(Path(cast(str, record["manifest"])))
+    return []
+
+
+def refanout() -> list[dict[str, JsonValue]]:
+    return refanout_manifest(Path(os.environ["COLUMBA_ARRAY_MANIFEST"]))

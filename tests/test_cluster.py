@@ -1061,7 +1061,7 @@ class OrchestrationTests(unittest.TestCase):
             seeds=(0, 1, 2),
         )
 
-    def test_qos_caps_and_predeclared_slots(self) -> None:
+    def test_qos_caps_are_independent_ceilings(self) -> None:
         policy = load_policy()
         self.assertEqual(policy.type_limits["a100-40"], 4)
         self.assertEqual(policy.type_limits["a100-80"], 2)
@@ -1152,7 +1152,7 @@ class OrchestrationTests(unittest.TestCase):
                 patch("cluster.arrays.subprocess.run") as control,
             ):
                 throttle_arrays(root, 4)
-            self.assertIn("ArrayTaskThrottle=2", control.call_args.args[0])
+            self.assertIn("ArrayTaskThrottle=1", control.call_args.args[0])
             state = cast(list[dict[str, JsonValue]], snapshot(root, {"700_0": "RUNNING"})["arrays"])
             self.assertEqual(state[0]["state"], "RUNNING")
 
@@ -2350,7 +2350,7 @@ class FanoutTests(unittest.TestCase):
             )
             self.assertTrue(
                 all(
-                    "--hold" in command and "--nice=0" in command and "--time=00:00:40" in command
+                    "--hold" in command and "--nice=0" in command and "--time=00:01:00" in command
                     for command in submitted
                 )
             )
@@ -2497,3 +2497,20 @@ class FanoutTests(unittest.TestCase):
             with patch("cluster.run_claim.sibling_jobs", return_value=(("10_0", "RUNNING"),)):
                 self.assertTrue(acquire(root, run, "10_0", "cz-identity", metadata))
             validate_existing_run(run, recipe, recipe_sha256(path))
+
+    def test_device_repair_replenishes_alternative_types_without_checkpoint_budget(self) -> None:
+        from cluster.device_faults import refill_device_copies
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / "runs/smoke-device/seed0"
+            event = reserve_retry(root, run, "xgpd3", "100_0", "100", 0, "No devices were found")
+            with patch(
+                "cluster.fanout.refanout_task", return_value=[{"array_id": "101"}]
+            ) as refill:
+                refill_device_copies(root, run, str(event["event_id"]), "100_0")
+            refill.assert_called_once_with(root, "100_0")
+            ledger = json.loads((run / "device_faults.json").read_text())
+            self.assertEqual(ledger["retry_count"], 1)
+            self.assertEqual(ledger["events"][0]["fanout_array_ids"], ["101"])
+            self.assertFalse((run / "requeue.json").exists())
