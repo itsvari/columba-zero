@@ -55,9 +55,11 @@ class Job:
 
     @property
     def gpu_count(self) -> int:
-        counts = re.findall(r"(?:^|,)(?:gres/)?gpu(?::[^,:()]+)?:([0-9]+)", self.resources)
+        counts = re.findall(r"(?:^|,)(?:gres/)?gpu(?::([^,:=()]+))?[:=]([0-9]+)", self.resources)
         if counts:
-            return sum(int(count) for count in counts) * self.node_count
+            generic = sum(int(count) for resource_type, count in counts if not resource_type)
+            typed = sum(int(count) for resource_type, count in counts if resource_type)
+            return max(generic, typed) * self.node_count
         # unknown GPU requests fail closed instead of assuming a single device.
         return GPU_RUNNING_LIMIT if "gpu" in self.resources or "gpu" in self.partition else 0
 
@@ -185,7 +187,7 @@ def request_arguments(request: GpuRequest, submission: Submission) -> tuple[str,
 
 
 def resource_type_for_job(job: Job) -> str | None:
-    matched = re.search(r"(?:gres/)?gpu:([^:,]+):[0-9]+", job.resources)
+    matched = re.search(r"(?:gres/)?gpu:([^:,=]+)[:=][0-9]+", job.resources)
     return matched.group(1) if matched else None
 
 
@@ -401,7 +403,7 @@ def submit_pending(
         command = [
             "sbatch",
             "--parsable",
-            "--nice=1000",
+            f"--nice={load_policy().nice}",
             f"--job-name={submission['name']}",
             f"--output={Path.home()}/columba/logs/%x-%j.log",
             "--export=NONE",

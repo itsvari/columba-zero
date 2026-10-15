@@ -19,7 +19,7 @@ from typing import cast
 import yaml
 
 from app.json_data import JsonValue
-from cluster.arrays import REPOSITORY, submit_arrays, task_for
+from cluster.arrays import REPOSITORY, task_for
 from cluster.artifacts import (
     REQUIRED_ARTIFACTS,
     atomic_json,
@@ -28,9 +28,11 @@ from cluster.artifacts import (
     update_leaderboard,
 )
 from cluster.device_faults import fault_evidence, reserve_retry, update_event
+from cluster.fanout import submit_runs as submit_arrays
+from cluster.gpu_policy import load_policy
 from cluster.locking import submission_lock
 from cluster.recipe import Recipe, load_recipe, validate_recipe
-from cluster.slurm import ACTIVE_STATES, Budget, queue
+from cluster.slurm import ACTIVE_STATES, Budget, job_name, queue
 
 METRIC_EPSILON = 1e-12
 MAX_RECOVERY_ATTEMPTS = 2
@@ -490,7 +492,7 @@ plan={shlex.quote(str(directory / "plan.json"))}
     command = [
         "sbatch",
         "--parsable",
-        "--nice=1000",
+        f"--nice={load_policy().nice}",
         "--export=NONE",
         f"--job-name=cz-transition-{rules.identifier}-{identity}",
         f"--output={root}/logs/%x-%j.log",
@@ -554,6 +556,16 @@ def recover_interrupted_inputs(
             relative = f"{recipe.identifier}/seed{seed}"
             run_path = root / "runs" / relative
             if (run_path / "DONE").exists():
+                continue
+            active_copies = {
+                job.identifier
+                for job in queue()
+                if job.owned
+                and job.state in ACTIVE_STATES
+                and job.name == job_name(recipe.identifier, seed)
+            }
+            if active_copies:
+                waiting.update(active_copies)
                 continue
             report = read_json(run_path / "run.json") if (run_path / "run.json").exists() else {}
             job_id = (
@@ -664,7 +676,7 @@ def recover_interrupted_inputs(
         atomic_json(
             directory / "run.json",
             {
-                "status": "recovering" if pending else "waiting_for_device_repair",
+                "status": "recovering" if pending else "waiting_for_active_runs",
                 "round": rules.identifier,
                 "recovered_runs": [item[2] for item in pending],
                 "arrays": cast(list[JsonValue], arrays),
@@ -732,6 +744,7 @@ def execute_transition(plan_path: Path) -> None:
     if (directory / "DONE").exists() or (directory / "HOLD").exists():
         return
     round_identifier = directory.name
+    checkout = REPOSITORY
     try:
         plan = read_json(plan_path)
         checkout = Path(cast(str, plan["checkout"]))

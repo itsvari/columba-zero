@@ -118,6 +118,15 @@ def main() -> None:
         arguments.action,
     )
     if requeue:
+        if os.environ.get("COLUMBA_FANOUT") == "true":
+            from cluster.fanout import refanout
+
+            try:
+                refanout()
+            except (ValueError, OSError, RuntimeError, subprocess.CalledProcessError) as error:
+                report_path = arguments.run_path / "run.json"
+                report = read_json(report_path)
+                atomic_json(report_path, {**report, "fanout_refill_error": str(error)})
         subprocess.run(["scontrol", "requeue", target], check=True)
 
 

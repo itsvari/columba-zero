@@ -1,8 +1,8 @@
 heavy_image_size_px: 800
 heavy_est_gpu_hours: 4.0
 allow_short_partition: true
-light_preferences: [t4, titanv, titanrtx, h100-47]
-heavy_preferences: [h100-47, h100-96, xgpj0, a100-80, t4, titanv, titanrtx]
+light_preferences: [nv, a100-40, h100-47]
+heavy_preferences: [h100-47, h100-96, a100-40, a100-80, h200]
 max_submit_jobs: 32
 type_limits:
   nv: 8
@@ -12,8 +12,4 @@ type_limits:
   h100-96: 1
   h200-141: 1
   h200-71: 1
-array_gpu_slots:
-  nv: 4
-  h100-47: 2
-  h100-96: 1
-  a100-80: 1
+nice: 0

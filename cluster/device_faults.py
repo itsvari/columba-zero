@@ -408,7 +408,7 @@ def handle_fault(root: Path, run_path: Path, error: str, simulated: bool = False
             [
                 "sbatch",
                 "--parsable",
-                "--nice=1000",
+                f"--nice={load_policy().nice}",
                 "--export=NONE",
                 "--partition=normal",
                 "--nodelist=xcng0",

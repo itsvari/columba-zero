@@ -155,6 +155,10 @@ def snapshot(root: Path, job_states: dict[str, str]) -> dict[str, JsonValue]:
         "transitions": transitions,
         "bad_nodes": bad_nodes,
         "device_runs": device_runs,
+        "claims": [
+            {"kind": "run_claim", **mapping(path)}
+            for path in sorted((root / "claims").glob("*.json"))
+        ],
     }
 
 

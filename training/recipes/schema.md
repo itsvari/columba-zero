@@ -149,3 +149,13 @@ Production drafts require WS5 confirmation and a separate explicit
 missing evidence writes HOLD. Interrupted source runs with last.pt may receive
 two mechanical recovery attempts after TIMEOUT/PREEMPTED/NODE_FAIL; genuine
 failures require review. Rules never select on test data.
+
+
+GPU scheduling uses the type sets in cluster/gpu_policy.yaml. At the full
+approved eight-GPU allowance, submit-arrays fans each unpinned recipe/seed
+across preferred typed requests with one exact shared name and an atomic
+start claim. Explicit constraints still select one type. No C5 field changes.
+C6 extension request: optional run.json fanout_claims records claim events and
+cancelled pending sibling IDs; optional fanout_refill_error records a segment
+refill failure while the original task keeps its checkpoint self-requeue.
+See cluster/README.md for sizing, partition limits and high-priority reversion.

@@ -2,7 +2,7 @@
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:nv:1
 #SBATCH --constraint=t4
-#SBATCH --nice=1000
+#SBATCH --nice=0
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
 #SBATCH --time=00:01:00

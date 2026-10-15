@@ -14,9 +14,10 @@ from pathlib import Path
 from typing import cast
 
 from app.json_data import JsonValue
+from cluster.array_budget import allocate_throttles, claimed_gpus
 from cluster.artifacts import atomic_json, read_json
 from cluster.device_faults import combined_exclusions, owned_job
-from cluster.gpu_policy import load_policy
+from cluster.gpu_policy import available_request, load_policy
 from cluster.gpu_selection import (
     PARTITION_TIME_LIMIT_MINUTES,
     GpuOffer,
@@ -26,7 +27,15 @@ from cluster.gpu_selection import (
 )
 from cluster.locking import submission_lock
 from cluster.recipe import load_recipe, recipe_sha256
-from cluster.slurm import ACTIVE_STATES, GPU_RUNNING_LIMIT, Budget, Job, job_name, queue
+from cluster.slurm import (
+    ACTIVE_STATES,
+    GPU_RUNNING_LIMIT,
+    Budget,
+    Job,
+    job_name,
+    queue,
+    resource_type_for_job,
+)
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 MAX_ARRAY_SIZE = 1001
@@ -172,14 +181,16 @@ def group_tasks(
     offers: Sequence[GpuOffer],
     constraint: str | None = None,
     required_node: str | None = None,
+    jobs: Sequence[Job] = (),
+    records: Sequence[dict[str, JsonValue]] = (),
 ) -> dict[str, tuple[GpuRequest, tuple[ArrayTask, ...]]]:
     policy = load_policy()
     offers = tuple(
         offer for offer in offers if offer.node not in combined_exclusions(Path.home() / "columba")
     )
     grouped: dict[str, tuple[GpuRequest, list[ArrayTask]]] = {}
-    heavy_types = [key for key in policy.array_gpu_slots if key != "nv"]
-    heavy_index = 0
+    _, typed_claims = claimed_gpus(records, jobs)
+    selected_counts: dict[str, int] = {}
     for task in tasks:
         recipe = load_recipe(Path(task.recipe_path))
         choice = (
@@ -188,45 +199,37 @@ def group_tasks(
             else constraint or recipe.constraint_for_seed(task.seed)
         )
         if choice is None and required_node is None:
-            heavy = (
-                policy.preferences(
-                    recipe.base_model,
-                    cast(int, recipe.train["imgsz"]),
-                    recipe.teacher is not None or "teacher" in recipe.identifier,
-                    recipe.estimated_gpu_hours,
+            preferences = policy.preferences(
+                recipe.base_model,
+                cast(int, recipe.train["imgsz"]),
+                recipe.teacher is not None or "teacher" in recipe.identifier,
+                recipe.estimated_gpu_hours,
+            )
+            eligible = tuple(
+                offer
+                for offer in offers
+                if typed_claims.get(offer.resource_type, 0)
+                + selected_counts.get(offer.resource_type, 0)
+                < policy.type_limits[offer.resource_type]
+            )
+            selected = available_request(
+                eligible, preferences, allow_short_partition=policy.allow_short_partition
+            )
+            if selected is None:
+                # the backlog stays in Slurm when every preferred device is occupied.
+                candidates = eligible or offers
+                selected = available_request(
+                    tuple(replace(offer, free_units=1) for offer in candidates),
+                    preferences,
+                    allow_short_partition=policy.allow_short_partition,
                 )
-                == policy.heavy_preferences
-            )
-            resource_type = (
-                heavy_types[heavy_index % len(heavy_types)] if heavy and heavy_types else "nv"
-            )
-            heavy_index += heavy
-            choice = (
-                next(
-                    feature
-                    for offer in offers
-                    if offer.resource_type == "nv"
-                    for feature in sorted(offer.features)
-                    if feature in {"t4", "titanv", "titanrtx"}
-                )
-                if resource_type == "nv"
-                else "h200"
-                if resource_type == "h200-141"
-                else resource_type
-            )
-            request = request_for(choice, offers)
+            if selected is None:
+                raise ValueError("no preferred GPU type in approved inventory")
+            request, _ = selected
+            resource_type = request.resources.split(":")[1]
+            selected_counts[resource_type] = selected_counts.get(resource_type, 0) + 1
             if resource_type == "nv":
                 request = replace(request, constraint="t4|titanv|titanrtx")
-            if resource_type == "a100-80" and policy.allow_short_partition:
-                partitions = tuple(
-                    partition
-                    for partition in ("gpu-long", "gpu")
-                    if any(
-                        offer.resource_type == resource_type and offer.partition == partition
-                        for offer in offers
-                    )
-                )
-                request = replace(request, partitions=partitions, time_limit="03:00:00")
         else:
             request = request_for(choice, offers, required_node=required_node)
         request = place_request(request, offers, policy.allow_short_partition, required_node)
@@ -294,7 +297,7 @@ def submit_arrays(
         )
         if int(footprint.stdout.split()[0]) >= STORAGE_LIMIT_KIB:
             raise RuntimeError("project storage limit reached")
-        grouped = group_tasks(missing, gpu_inventory(), constraint, required_node)
+        grouped = group_tasks(missing, gpu_inventory(), constraint, required_node, jobs, existing)
         counts = {key: len(members) for key, (_, members) in grouped.items()}
         counts.update(
             {
@@ -302,26 +305,15 @@ def submit_arrays(
                 for record in existing
             }
         )
-        type_groups: dict[str, list[str]] = {}
-        for key, (request, _) in grouped.items():
-            resource_type = request.resources.split(":")[1]
-            type_groups.setdefault(resource_type, []).append(key)
-        for record in existing:
-            type_groups.setdefault(cast(str, record["resource_type"]), []).append(
-                f"existing:{record['array_id']}"
-            )
-        limits: dict[str, int] = {}
-        for resource_type, keys in type_groups.items():
-            capacity = min(
-                policy.type_limits[resource_type],
-                policy.array_gpu_slots.get(resource_type, policy.type_limits[resource_type]),
-            )
-            limits.update(
-                shares({key: counts[key] for key in keys}, dict.fromkeys(keys, capacity), capacity)
-            )
-        throttles = shares(counts, limits, gpu_limit)
-        if any(value == 0 for value in throttles.values()):
-            raise RuntimeError("too many GPU groups for concurrency budget; split the submission")
+        resources = {key: request.resources.split(":")[1] for key, (request, _) in grouped.items()}
+        resources.update(
+            {
+                f"existing:{record['array_id']}": cast(str, record["resource_type"])
+                for record in existing
+            }
+        )
+        parents = {f"existing:{record['array_id']}": str(record["array_id"]) for record in existing}
+        throttles = allocate_throttles(counts, resources, jobs, parents, gpu_limit)
         for record in existing:
             persist_throttle(record, throttles[f"existing:{record['array_id']}"])
         results: list[dict[str, JsonValue]] = receipts
@@ -330,6 +322,8 @@ def submit_arrays(
                 raise ValueError("array exceeds MaxArraySize")
             payload: dict[str, JsonValue] = {
                 "checkout": str(checkout),
+                "constraint": constraint,
+                "required_node": required_node,
                 "request": cast(dict[str, JsonValue], asdict(request)),
                 "tasks": cast(list[JsonValue], [asdict(task) for task in members]),
             }
@@ -352,7 +346,7 @@ def submit_arrays(
             command = [
                 "sbatch",
                 "--parsable",
-                "--nice=1000",
+                f"--nice={load_policy().nice}",
                 "--export=NONE",
                 "--nodes=1",
                 f"--job-name=cz-array-{digest}",
@@ -388,36 +382,59 @@ def submit_arrays(
         return results
 
 
-def throttle_arrays(root: Path, gpu_limit: int) -> list[dict[str, JsonValue]]:
+def throttle_arrays(
+    root: Path, gpu_limit: int, identifier: str | None = None, throttle: int | None = None
+) -> list[dict[str, JsonValue]]:
     if root.resolve() != (Path.home() / "columba").resolve():
         raise ValueError("array controls must stay in ~/columba")
-    policy = load_policy()
+    if (identifier is None) != (throttle is None):
+        raise ValueError("targeted throttle requires both --job and --throttle")
     with submission_lock(root):
-        records = active_arrays(root, queue())
+        jobs = queue()
+        records = active_arrays(root, jobs)
+        if identifier is not None:
+            fields = owned_job(identifier)
+            parent = fields.get("ArrayJobId", identifier.split("_")[0])
+            record = next((item for item in records if str(item["array_id"]) == parent), None)
+            if record is None or throttle is None:
+                raise ValueError("no active managed array matches --job")
+            require_throttle_capacity(
+                root, records, jobs, parent, cast(str, record["resource_type"]), throttle
+            )
+            persist_throttle(record, throttle)
+            return [record]
         counts = {str(item["array_id"]): cast(int, item["task_count"]) for item in records}
-        type_groups: dict[str, list[str]] = {}
-        for item in records:
-            type_groups.setdefault(cast(str, item["resource_type"]), []).append(
-                str(item["array_id"])
-            )
-        limits: dict[str, int] = {}
-        for resource_type, identifiers in type_groups.items():
-            capacity = policy.type_limits[resource_type]
-            limits.update(
-                shares(
-                    {key: counts[key] for key in identifiers},
-                    dict.fromkeys(identifiers, capacity),
-                    capacity,
-                )
-            )
-        allocation = shares(counts, limits, gpu_limit)
-        if any(value == 0 for value in allocation.values()):
-            raise ValueError("more active arrays than slots; cannot assign zero/unlimited throttle")
+        resources = {str(item["array_id"]): cast(str, item["resource_type"]) for item in records}
+        allocation = allocate_throttles(
+            counts, resources, jobs, {key: key for key in counts}, gpu_limit
+        )
         atomic_json(root / "arrays/concurrency.json", {"gpu_limit": gpu_limit})
         for record in records:
-            identifier = str(record["array_id"])
-            persist_throttle(record, allocation[identifier])
+            persist_throttle(record, allocation[str(record["array_id"])])
         return list(records)
+
+
+def require_throttle_capacity(
+    root: Path,
+    records: Sequence[dict[str, JsonValue]],
+    jobs: Sequence[Job],
+    parent: str,
+    resource_type: str,
+    throttle: int,
+    type_claim: int | None = None,
+) -> None:
+    control = root / "arrays/concurrency.json"
+    overall = cast(int, read_json(control)["gpu_limit"]) if control.exists() else GPU_RUNNING_LIMIT
+    if not 0 < throttle <= overall:
+        raise ValueError("array throttle must fit the shared GPU limit")
+    total, typed = claimed_gpus(records, jobs, parent)
+    if total + throttle > overall:
+        raise ValueError("retarget throttle exceeds total array concurrency")
+    if (
+        typed.get(resource_type, 0) + (throttle if type_claim is None else type_claim)
+        > load_policy().type_limits[resource_type]
+    ):
+        raise ValueError("retarget throttle exceeds combined GPU type cap")
 
 
 def retarget_array(
@@ -446,26 +463,33 @@ def retarget_array(
             request_for(constraint, offers), offers, load_policy().allow_short_partition
         )
         resource_type = request.resources.split(":")[1]
-        if selected > load_policy().type_limits[resource_type]:
-            raise ValueError("array throttle exceeds destination GPU QoS cap")
-        active = active_arrays(root, queue())
-        control = root / "arrays/concurrency.json"
-        overall = (
-            cast(int, read_json(control)["gpu_limit"]) if control.exists() else GPU_RUNNING_LIMIT
-        )
-        others = [record for record in active if str(record["array_id"]) != parent]
-        if selected + sum(cast(int, record["throttle"]) for record in others) > overall:
-            raise ValueError("retarget throttle exceeds total array concurrency")
-        if (
+        current_jobs = queue()
+        destination_claim = (
             selected
-            + sum(
-                cast(int, record["throttle"])
-                for record in others
-                if record["resource_type"] == resource_type
+            if identifier == parent
+            else min(
+                selected,
+                1
+                + sum(
+                    job.gpu_count
+                    for job in current_jobs
+                    if job.owned
+                    and job.identifier.startswith(parent + "_")
+                    and job.identifier != identifier
+                    and job.state in ACTIVE_STATES
+                    and resource_type_for_job(job) == resource_type
+                ),
             )
-            > load_policy().type_limits[resource_type]
-        ):
-            raise ValueError("retarget throttle exceeds combined GPU type cap")
+        )
+        require_throttle_capacity(
+            root,
+            active_arrays(root, current_jobs),
+            current_jobs,
+            parent,
+            resource_type,
+            selected,
+            destination_claim,
+        )
         maximum_minutes = min(
             PARTITION_TIME_LIMIT_MINUTES[partition] for partition in request.partitions
         )
@@ -510,7 +534,9 @@ def retarget_array(
                 record.update(
                     {
                         "throttle": selected,
-                        "resource_type": resource_type,
+                        "resource_type": resource_type
+                        if identifier == parent
+                        else record["resource_type"],
                         "retarget": {
                             "task": identifier,
                             "constraint": constraint,
@@ -583,7 +609,16 @@ def main() -> None:
         return
     payload = cast(dict[str, JsonValue], json.loads(arguments.payload))
     if arguments.action == "throttle":
-        print(json.dumps(throttle_arrays(Path.home() / "columba", cast(int, payload["gpu_limit"]))))
+        print(
+            json.dumps(
+                throttle_arrays(
+                    Path.home() / "columba",
+                    cast(int, payload["gpu_limit"]),
+                    cast(str | None, payload.get("job")),
+                    cast(int | None, payload.get("throttle")),
+                )
+            )
+        )
         return
     if arguments.action == "retarget":
         print(
@@ -605,9 +640,11 @@ def main() -> None:
         )
         for item in cast(list[dict[str, JsonValue]], payload["tasks"])
     ]
+    from cluster.fanout import submit_runs
+
     print(
         json.dumps(
-            submit_arrays(
+            submit_runs(
                 Path.home() / "columba",
                 REPOSITORY,
                 tasks,

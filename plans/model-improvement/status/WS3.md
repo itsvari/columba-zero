@@ -819,3 +819,13 @@ state/device_faults ledgers in C6; choose when to move xgpd2 out of the static
 list. Full-node probes above normal QoS typed caps require administrator help.
 No implementation blocker remains. 947422 replacement remains the coordinator's
 explicit action.
+
+## Round 6 — dynamic GPU budget (2026-10-15)
+
+State: in progress. Branch ws3/cluster, GPT-6.1-sol via T3 delegate.
+Started from main d52f3d1. User overrides the earlier nice=1000 default to 0.
+Jobs 950409, 951220 and 951222 are protected from all mutations in this round.
+Work: remove fixed GPU shares; account for shared total and typed ceilings;
+live-capacity placement and finite automatic pending-array maintenance; targeted
+throttle CLI; configurable Nice. Validation will use mocked Slurm and read-only
+live cluster observations, with no production retargeting or job probes planned.
