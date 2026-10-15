@@ -2,3 +2,4 @@
 # One node per line; text after `#` is a comment. gpu-probe ignores this list.
 xgpe6  # Titan RTX: "No devices were found" (probe 945282, 14 Oct 2026)
 xgpe2  # Titan RTX: "No devices were found" (job 945409, 14 Oct 2026)
+xgpd2  # Titan V: "No devices were found" (array task 947421_0, 15 Oct 2026)
