@@ -705,6 +705,7 @@ def styles_tie_break(eligible: list[dict[str, JsonValue]]) -> dict[str, JsonValu
         if str(arm["recipe"]).replace("-v2s-", "-v2-") == recipe
         and arm["decode"] == selected["decode"]
         and arm["precision"] == selected["precision"]
+        and arm["input_hw"] == selected["input_hw"]
         and abs(
             number(arm["val_recall_mean"], "recall") - number(selected["val_recall_mean"], "recall")
         )
@@ -1395,7 +1396,8 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         "use styles recall to break the tie. The 5% band treats host timing noise",
         "as equal latency.",
         "",
-        "Accuracy is measured using columba_native package-default compute on xcng0.",
+        "Primary accuracy is measured using columba_native package-default compute on xcng0;",
+        "supplemental native styles accuracy and ACTIVE latency use xcng1.",
         "CPU PyTorch references use xcng0 for the first seed's two heads, then Mac",
         "vexcalibur. Mac versus xcng0 passes all 1,408 first-reference image comparisons.",
         "Every export independently reproduces parity against its own saved CPU reference.",
@@ -1461,6 +1463,73 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
     lines.extend(
         [
             "",
+            "## Precision comparisons",
+            "",
+            "Mean deltas are export minus same-head rectangular CPU PyTorch.",
+            "Accuracy and parity columns count passing seeds independently.",
+            "",
+            "| Arm / decode / precision | Test R@P90 delta | Test AP50 delta | "
+            "Accuracy gate | Parity |",
+            "|---|---:|---:|---:|---:|",
+        ]
+    )
+    for arm in arms:
+        seeds = [mapping(value, "seed") for value in cast(list[JsonValue], arm["seeds"])]
+        precision_deltas = [mapping(seed["accuracy_deltas"], "deltas") for seed in seeds]
+        recall_delta = statistics.mean(
+            number(delta["test_recall_at_p90"], "R") for delta in precision_deltas
+        )
+        ap_delta = statistics.mean(number(delta["test_ap50"], "AP") for delta in precision_deltas)
+        accuracy_passes = sum(seed["accuracy_gate_passed"] is True for seed in seeds)
+        parity_passes = sum(seed["parity_passed"] is True for seed in seeds)
+        lines.append(
+            f"| {arm['id']} | {recall_delta:+.4f} | {ap_delta:+.4f} | "
+            f"{accuracy_passes}/{len(seeds)} | {parity_passes}/{len(seeds)} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Head-swap comparison",
+            "",
+            "Deltas are one-to-one minus standard NMS, matched by recipe, precision",
+            "and deploy size. Latency compares worst-seed estimated Pi frame p95.",
+            "",
+            "| Arm / precision | Val R@P90 delta | Test R@P90 delta | Styles R@P90 delta | "
+            "Frame p95 delta ms |",
+            "|---|---:|---:|---:|---:|",
+        ]
+    )
+    for arm in arms:
+        if arm["decode"] != "yolo26":
+            continue
+        standard = next(
+            (
+                candidate
+                for candidate in arms
+                if candidate["recipe"] == arm["recipe"]
+                and candidate["precision"] == arm["precision"]
+                and candidate["input_hw"] == arm["input_hw"]
+                and candidate["decode"] == "yolo11"
+            ),
+            None,
+        )
+        if standard is None:
+            continue
+        differences = [
+            f"{number(arm[field], field) - number(standard[field], field):+.4f}"
+            if arm[field] is not None and standard[field] is not None
+            else "pending"
+            for field in (
+                "val_recall_mean",
+                "test_recall_mean",
+                "styles_recall_mean",
+                "pi5_p95_ms",
+            )
+        ]
+        lines.append(f"| {arm['recipe']} / {arm['precision']} | " + " | ".join(differences) + " |")
+    lines.extend(
+        [
+            "",
             "## Individual exports",
             "",
             "Deltas are export minus same-head rectangular PyTorch, measured on xcng.",
@@ -1499,6 +1568,9 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
             "",
             "No measured Pi 5 result exists. The calibration factor and the mapping",
             "from still-image recall to temporal hits remain estimates and assumptions.",
+            "",
+            "Reproduction commands, candidate addition, resource handling and policy",
+            "requests are in [WS7-methods.md](WS7-methods.md).",
             "",
         ]
     )

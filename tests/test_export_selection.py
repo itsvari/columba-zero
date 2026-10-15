@@ -306,6 +306,10 @@ class ExportSelectionTests(unittest.TestCase):
         for record in records[3:]:
             record["confuser_far"] = 0.06
         self.assertTrue(str(self.selection(records)["selected"]).startswith("yolo26n-v2-800/"))
+        for record in records[3:]:
+            record["confuser_far"] = 0.04
+            record["input_hw"] = [384, 640]
+        self.assertTrue(str(self.selection(records)["selected"]).startswith("yolo26n-v2-800/"))
 
     def test_species_requires_matched_single_and_pigeon_accuracy_gate(self) -> None:
         single = [candidate("single", seed, 0.79) for seed in range(3)]
