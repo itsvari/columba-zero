@@ -55,20 +55,27 @@
 
 ## In progress
 
-Check-in 15 Oct ~16:30.
+Check-in 15 Oct evening (main 8aeef6c merged).
 
-- **Interim round-2 report:** `experiments/reports/WS5-round2.md`.
-  - 16 of 18 plain runs DONE. Pending: yolo26n-v2-640 s0 (949457_0) and
-    yolo11n-v2s-800 s1 (947419_4).
-  - Every arm beats `baseline-repro-p50` (test R@P90 0.73–0.78 vs
-    0.246 ± 0.035).
-  - The 800-px yolo26n arms lead: test R@P90 0.78, confuser FAR 0.023 /
-    0.032.
-  - Confuser-gate breaches (≥ 4 of 73): yolo26n-v2s-640 s0,
-    yolo26n-v2-640 s2, yolo11n-v2s-640 s0, yolo11n-v2s-800 s0 and s2.
-- **Distillation:** transition 949889 (top_k 1 → yolo26n-v2s-640 with the
-  yolo26x teacher, 3 seeds) waits on the 2 pending seeds. The teachers are
-  DONE: yolo26x val/test R@P90 0.845/0.861, yolo11x 0.822/0.870.
+- **Round-2 plain: complete** (18 of 18) and fetched.
+  `experiments/reports/WS5-round2.md` has the full table.
+  - Every arm beats `baseline-repro-p50`.
+  - yolo26n-*-800 lead (test R@P90 0.78).
+  - yolo11n-v2s-800 sits at the 0.05 confuser gate, with 2 of 3 seeds over
+    it.
+- **Distill 640** (mechanical, transition 949889, yolo26x teacher):
+  - s1 DONE (950746): val R@P90 0.809 (best of round 2) but test 0.722, and
+    test P at the val threshold is 0.892. AP50 equals plain. No conclusion
+    from 1 seed.
+  - s0 (950745, h100-47) and s2 (950747, xgpj0) still running.
+- **Distill 800**, added by coordinator decision:
+  `training/recipes/yolo26n-v2s-800-round2-distill.yaml` (commit fd026c4).
+  - It is plain-800 plus teacher/`dis`, with `batch_override: 64` to match
+    plain-800's batch.
+  - Arrays: **951220** (s1, h100-96, pending) and **951222** (s0 running on
+    xgpi13 h100-47, s2 queued behind it with throttle 1).
+  - ETA (estimated): s1 ≈ 3–4 h after start; s0 and s2 ≈ 10–12 h one after
+    the other.
 - **Round 3 (species gate) started early, by coordinator decision.** 6 of 8
   GPU slots were idle and the single arm had 3 DONE seeds.
   - Recipe: `training/recipes/yolo26n-v2s-species-800-r3.yaml` (identical
