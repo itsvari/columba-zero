@@ -82,7 +82,7 @@ from cluster.slurm import (
     parse_queue,
     submit_pending,
 )
-from cluster.staging import stage_dataset
+from cluster.staging import align_test_taxonomy, stage_dataset
 from cluster.state import historical_states, snapshot
 from cluster.sweep import (
     DesiredRun,
@@ -930,6 +930,24 @@ class ClusterTests(unittest.TestCase):
         desired = DesiredRun(BASELINE_RECIPE, load_recipe(BASELINE_RECIPE), 0)
         with self.assertRaisesRegex(ValueError, "smoke"):
             submission_for(desired, Path("/root"), Path("/checkout"), "commit", 1)
+
+    def test_species_recipe_aligns_only_staged_single_test_names(self) -> None:
+        classes = REPOSITORY / "training/classes.yaml"
+        species = yaml.safe_load(classes.read_text())["taxonomies"]["species"]["names"]
+        with tempfile.TemporaryDirectory() as directory:
+            dataset = Path(directory)
+            (dataset / "data.yaml").write_text(
+                yaml.safe_dump({"test": "images/test", "names": ["pigeon"]})
+            )
+            self.assertFalse(align_test_taxonomy(dataset, "single", classes))
+            self.assertTrue(align_test_taxonomy(dataset, "species", classes))
+            aligned = yaml.safe_load((dataset / "data.yaml").read_text())
+            self.assertEqual(aligned["names"], species)
+            self.assertEqual(aligned["test"], "images/test")
+            self.assertFalse(align_test_taxonomy(dataset, "species", classes))
+            (dataset / "data.yaml").write_text(yaml.safe_dump({"names": ["dove", "pigeon"]}))
+            with self.assertRaises(ValueError):
+                align_test_taxonomy(dataset, "species", classes)
 
     def test_excluded_nodes_file_is_default_and_extras_are_added(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

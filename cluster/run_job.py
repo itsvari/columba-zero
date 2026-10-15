@@ -25,7 +25,7 @@ from cluster.artifacts import atomic_json, copy_artifacts, mark_done, read_json
 from cluster.hardware import configure_ultralytics, describe_hardware, select_batch
 from cluster.recipe import Recipe, load_recipe, recipe_sha256, resolve_teacher
 from cluster.requeue import REQUEUE_EXIT_STATUS, RequeueRequested
-from cluster.staging import sha256_file, stage_dataset, stage_weights
+from cluster.staging import align_test_taxonomy, sha256_file, stage_dataset, stage_weights
 
 CHECKPOINT_PERIOD_EPOCHS = 5
 NOMINAL_BATCH_SIZE = 64
@@ -403,6 +403,8 @@ def execute(
                 "test_dataset_archive_sha256": test_checksum,
             }
         )
+        if align_test_taxonomy(test_dataset, recipe.taxonomy, repository / "training/classes.yaml"):
+            report["test_taxonomy_aligned"] = f"single -> {recipe.taxonomy} (staged names only)"
         weights = stage_weights(recipe.base_model, root / "weights", scratch / "weights")
         report["base_model_sha256"] = sha256_file(weights)
         if recipe.framework == "ultralytics" and recipe.train.get("amp", True):
