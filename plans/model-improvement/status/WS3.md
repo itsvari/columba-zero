@@ -645,3 +645,11 @@ is ~/columba/logs/ws3-injob-probe.txt. Live smoke snapshots were committed
 c3103a4 (corrected requeue), fcf0103 (generation) and 162e7dd (actual dependency
 chain). Final publication/preparation uses the final branch state without
 changing any job's pinned checkout.
+
+## Round 5 in progress
+
+Branch ws3/cluster, GPT-6.1 via T3 delegate, 15 October 2026. Fast-forwarded to
+main bd4ff06. Implementing device-visibility retry, expiring dynamic exclusions,
+transition recovery without checkpoints, and throttle-preserving array retargets.
+Running round-2 jobs, 947422 and the separate node-scanning agent's probes remain
+untouched. Verification will simulate a fault in one brief allocation.

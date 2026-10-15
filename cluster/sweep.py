@@ -35,7 +35,7 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 SMOKE_TIME_LIMIT_MINUTES = 10
 SMOKE_CPU_COUNT = 4
 SMOKE_MEMORY_LIMIT_GB = 16
-PROBE_TIME_LIMIT_MINUTES = 10
+PROBE_TIME_LIMIT_MINUTES = 1
 EXCLUDED_NODES_FILE = REPOSITORY / "cluster/excluded_nodes.txt"
 
 
@@ -302,7 +302,7 @@ def fetch(root: Path, runs: Sequence[DesiredRun], destination: Path, leaderboard
 
 def fetch_orchestration(root: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
-    names = ("arrays", "transitions", "generated-recipes")
+    names = ("arrays", "transitions", "generated-recipes", "state")
     remote(["mkdir", "-p", *(str(root / name) for name in names)])
     for name in names:
         completed = subprocess.run(
@@ -345,6 +345,7 @@ def main() -> None:
             "arm-transition",
             "prepare-transition",
             "throttle-arrays",
+            "retarget-array",
         ),
     )
     parser.add_argument("--recipes", nargs="+", type=Path, default=[])
@@ -382,6 +383,10 @@ def main() -> None:
     parser.add_argument("--after", nargs="+", default=[])
     parser.add_argument("--teacher-after", nargs="+", default=[])
     parser.add_argument("--signal-after-epoch", type=int)
+    parser.add_argument("--clear-on-success", action="store_true")
+    parser.add_argument("--job")
+    parser.add_argument("--throttle", type=int)
+    parser.add_argument("--upstream")
     parser.add_argument("--generated-round", nargs="+", default=[])
     parser.add_argument(
         "--state-destination", type=Path, default=REPOSITORY / "outputs/ws3/cluster-state"
@@ -404,6 +409,7 @@ def main() -> None:
         "arm-transition",
         "prepare-transition",
         "throttle-arrays",
+        "retarget-array",
     }:
         if arguments.action in {"arm-transition", "prepare-transition"}:
             from cluster.transitions import load_rules
@@ -414,7 +420,20 @@ def main() -> None:
             ):
                 parser.error("arm-transition requires WS5-confirmed rules")
         checkout, commit = deploy(root)
-        if arguments.action == "throttle-arrays":
+        if arguments.action == "retarget-array":
+            if (
+                not arguments.job
+                or not arguments.constraint
+                or arguments.constraint in {"any", "null"}
+            ):
+                parser.error("retarget-array requires --job and a typed --constraint")
+            orchestration_payload = {
+                "job": arguments.job,
+                "constraint": arguments.constraint,
+                "throttle": arguments.throttle,
+            }
+            module, action = "cluster.arrays", "retarget"
+        elif arguments.action == "throttle-arrays":
             orchestration_payload = {"gpu_limit": arguments.gpu_limit}
             module, action = "cluster.arrays", "throttle"
         elif arguments.action == "submit-arrays":
@@ -439,6 +458,7 @@ def main() -> None:
                 "after": arguments.after,
                 "teacher_after": arguments.teacher_after,
                 "prepare_only": arguments.action == "prepare-transition",
+                "upstream": arguments.upstream,
             }
             module, action = "cluster.transitions", "arm"
         print(
@@ -494,7 +514,12 @@ def main() -> None:
                     )
                     print(json.dumps(metadata))
         if arguments.action == "status":
-            for item in [*orchestration["arrays"], *orchestration["transitions"]]:
+            for item in [
+                *orchestration["arrays"],
+                *orchestration["transitions"],
+                *orchestration.get("bad_nodes", []),
+                *orchestration.get("device_runs", []),
+            ]:
                 print(json.dumps(item))
         return
     if arguments.action == "fetch":
@@ -529,7 +554,9 @@ def main() -> None:
     if arguments.action == "arm-bundle":
         submissions = [bundle_submission(arguments.models, arguments.bundle_action, root, checkout)]
     elif arguments.action == "gpu-probe":
-        submissions = [probe_submission(arguments.probe_node, root, checkout)]
+        submissions = [
+            probe_submission(arguments.probe_node, root, checkout, arguments.clear_on_success)
+        ]
     else:
         submissions = [
             submission_for(
@@ -567,13 +594,16 @@ def main() -> None:
     )
 
 
-def probe_submission(node: str, root: Path, checkout: Path) -> Submission:
+def probe_submission(
+    node: str, root: Path, checkout: Path, clear_on_success: bool = False
+) -> Submission:
     if not GPU_NODE_PATTERN.fullmatch(node):
         raise ValueError("probe node must be an approved GPU node")
     template = (REPOSITORY / "cluster/templates/gpu-probe.sbatch").read_text()
     destination = root / "runs/gpu-probes" / node
     exports = f"export COLUMBA_CHECKOUT={shlex.quote(str(checkout))}\n"
     exports += f"export COLUMBA_RUN_PATH={shlex.quote(str(destination))}\n"
+    exports += f"export COLUMBA_PROBE_CLEAR_ON_SUCCESS={str(clear_on_success).lower()}\n"
     return {
         "name": f"cz-ws3-probe-{node}",
         "time_limit_minutes": PROBE_TIME_LIMIT_MINUTES,

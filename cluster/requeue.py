@@ -47,6 +47,23 @@ def update_ledger(directory: Path, job_id: str, restart_count: int, reason: str)
             if ledger.get("job_id") == job_id
             else 0
         )
+        device_path = directory / "device_faults.json"
+        device_events = (
+            cast(list[dict[str, JsonValue]], read_json(device_path).get("events", []))
+            if device_path.exists()
+            else []
+        )
+        device_restart = any(
+            entry.get("job_id") == job_id
+            and entry.get("expected_restart_count") == restart_count
+            and entry.get("status") in {"reserved", "requeued", "repair_pending"}
+            for entry in device_events
+        )
+        if reason == "start" and device_restart and restart_count > recorded:
+            if (directory / "HOLD").exists():
+                raise RuntimeError((directory / "HOLD").read_text())
+            atomic_json(path, {**ledger, "job_id": job_id, "recorded_restart_count": restart_count})
+            return False
         if reason == "start" and restart_count <= recorded:
             if (directory / "HOLD").exists():
                 raise RuntimeError((directory / "HOLD").read_text())

@@ -20,7 +20,7 @@ def record_failure(run_path: Path, metadata: dict[str, JsonValue], exit_status: 
     report_path = run_path / "run.json"
     previous = read_json(report_path) if report_path.is_file() else {}
     job_id = os.environ["SLURM_JOB_ID"]
-    if previous.get("job_id") == job_id and previous.get("status") == "failed":
+    if previous.get("job_id") == job_id and previous.get("status") in {"failed", "device_fault"}:
         return
     report: dict[str, JsonValue] = {
         **previous,

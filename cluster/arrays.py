@@ -15,8 +15,15 @@ from typing import cast
 
 from app.json_data import JsonValue
 from cluster.artifacts import atomic_json, read_json
+from cluster.device_faults import combined_exclusions, owned_job
 from cluster.gpu_policy import load_policy
-from cluster.gpu_selection import GpuOffer, GpuRequest, gpu_inventory, request_for
+from cluster.gpu_selection import (
+    PARTITION_TIME_LIMIT_MINUTES,
+    GpuOffer,
+    GpuRequest,
+    gpu_inventory,
+    request_for,
+)
 from cluster.locking import submission_lock
 from cluster.recipe import load_recipe, recipe_sha256
 from cluster.slurm import ACTIVE_STATES, GPU_RUNNING_LIMIT, Budget, Job, job_name, queue
@@ -129,6 +136,9 @@ def group_tasks(
     required_node: str | None = None,
 ) -> dict[str, tuple[GpuRequest, tuple[ArrayTask, ...]]]:
     policy = load_policy()
+    offers = tuple(
+        offer for offer in offers if offer.node not in combined_exclusions(Path.home() / "columba")
+    )
     grouped: dict[str, tuple[GpuRequest, list[ArrayTask]]] = {}
     heavy_types = [key for key in policy.array_gpu_slots if key != "nv"]
     heavy_index = 0
@@ -181,6 +191,33 @@ def group_tasks(
                 request = replace(request, partitions=partitions, time_limit="03:00:00")
         else:
             request = request_for(choice, offers, required_node=required_node)
+        resource_type = request.resources.split(":")[1]
+        matched = [
+            offer
+            for offer in offers
+            if offer.resource_type == resource_type
+            and (required_node is None or offer.node == required_node)
+            and (
+                resource_type != "nv"
+                or request.constraint == "t4|titanv|titanrtx"
+                or request.constraint in offer.features
+            )
+        ]
+        partitions = ("gpu-long", "gpu") if policy.allow_short_partition else ("gpu-long",)
+        available = next(
+            (
+                partition
+                for partition in partitions
+                if any(offer.partition == partition and offer.free_units > 0 for offer in matched)
+            ),
+            None,
+        )
+        if available:
+            request = replace(
+                request,
+                partitions=(available,),
+                time_limit="03:00:00" if available == "gpu" else "3-00:00:00",
+            )
         key = json.dumps(asdict(request), sort_keys=True)
         if key not in grouped:
             grouped[key] = (request, [])
@@ -311,11 +348,9 @@ def submit_arrays(
                 f"--output={root}/logs/%x-%A_%a.log",
                 *request.arguments(),
             ]
-            exclusions = [
-                line.split("#")[0].strip()
-                for line in (checkout / "cluster/excluded_nodes.txt").read_text().splitlines()
-            ]
-            exclusions = [node for node in exclusions if node]
+            exclusions = combined_exclusions(
+                root, static_path=checkout / "cluster/excluded_nodes.txt"
+            )
             if exclusions:
                 command.append("--exclude=" + ",".join(exclusions))
             if required_node:
@@ -373,6 +408,87 @@ def throttle_arrays(root: Path, gpu_limit: int) -> list[dict[str, JsonValue]]:
         return list(records)
 
 
+def retarget_array(
+    root: Path, identifier: str, constraint: str, throttle: int | None = None
+) -> dict[str, JsonValue]:
+    with submission_lock(root):
+        fields = owned_job(identifier)
+        parent = fields.get("ArrayJobId")
+        if not parent:
+            raise ValueError("retarget-array requires an array or array task")
+        jobs = [
+            job
+            for job in queue()
+            if job.identifier == identifier or job.identifier.startswith(identifier + "_")
+        ]
+        if not jobs or any(not job.owned or job.state != "PENDING" for job in jobs):
+            raise ValueError("retarget-array accepts only currently PENDING owned array tasks")
+        current = int(fields.get("ArrayTaskThrottle", "0"))
+        selected = current if throttle is None else throttle
+        if selected < 1 or selected > GPU_RUNNING_LIMIT:
+            raise ValueError("array throttle must be within 1..8")
+        offers = tuple(
+            offer for offer in gpu_inventory() if offer.node not in combined_exclusions(root)
+        )
+        request = request_for(constraint, offers)
+        resource_type = request.resources.split(":")[1]
+        if selected > load_policy().type_limits[resource_type]:
+            raise ValueError("array throttle exceeds destination GPU QoS cap")
+        maximum_minutes = min(
+            PARTITION_TIME_LIMIT_MINUTES[partition] for partition in request.partitions
+        )
+        original = fields.get("TimeLimit", request.time_limit)
+        days, clock = original.split("-", 1) if "-" in original else ("0", original)
+        components = [int(value) for value in clock.split(":")]
+        original_minutes = int(days) * 24 * 60 + components[0] * 60 + components[1]
+        try:
+            subprocess.run(
+                [
+                    "scontrol",
+                    "update",
+                    f"JobId={identifier}",
+                    f"Partition={','.join(request.partitions)}",
+                    f"TresPerNode=gres/{request.resources}",
+                    f"Features={request.constraint or ''}",
+                    "ReqNodeList=",
+                    f"ExcNodeList={','.join(combined_exclusions(root))}",
+                    f"TimeLimit={min(original_minutes, maximum_minutes)}",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            subprocess.run(
+                ["scontrol", "update", f"JobId={parent}", f"ArrayTaskThrottle={selected}"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        for path in (root / "arrays").glob("*/submission.json"):
+            record = read_json(path)
+            if str(record["array_id"]) == parent:
+                record.update(
+                    {
+                        "throttle": selected,
+                        "resource_type": resource_type,
+                        "retarget": {
+                            "task": identifier,
+                            "constraint": constraint,
+                            "partition": ",".join(request.partitions),
+                        },
+                    }
+                )
+                atomic_json(path, record)
+        return {
+            "array_id": parent,
+            "task": identifier,
+            "gpu_request": request.resources,
+            "partition": ",".join(request.partitions),
+            "throttle": selected,
+        }
+
+
 def task_environment(path: Path, index: int) -> dict[str, str]:
     manifest = read_json(path)
     tasks = cast(list[dict[str, JsonValue]], manifest["tasks"])
@@ -416,7 +532,7 @@ def task_environment(path: Path, index: int) -> dict[str, str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("submit", "task-env", "throttle"))
+    parser.add_argument("action", choices=("submit", "task-env", "throttle", "retarget"))
     parser.add_argument("--payload")
     parser.add_argument("--manifest", type=Path)
     arguments = parser.parse_args()
@@ -429,6 +545,18 @@ def main() -> None:
     payload = cast(dict[str, JsonValue], json.loads(arguments.payload))
     if arguments.action == "throttle":
         print(json.dumps(throttle_arrays(Path.home() / "columba", cast(int, payload["gpu_limit"]))))
+        return
+    if arguments.action == "retarget":
+        print(
+            json.dumps(
+                retarget_array(
+                    Path.home() / "columba",
+                    str(payload["job"]),
+                    str(payload["constraint"]),
+                    cast(int | None, payload.get("throttle")),
+                )
+            )
+        )
         return
     tasks = [
         task_for(

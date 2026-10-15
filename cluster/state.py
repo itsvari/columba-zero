@@ -6,6 +6,7 @@ import argparse
 import json
 import re
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeAlias, cast
 
@@ -68,6 +69,8 @@ def snapshot(root: Path, job_states: dict[str, str]) -> dict[str, JsonValue]:
             ledger = (
                 mapping(directory / "requeue.json") if (directory / "requeue.json").exists() else {}
             )
+            device_path = directory / "device_faults.json"
+            device = mapping(device_path) if device_path.exists() else {}
             report = mapping(directory / "run.json") if (directory / "run.json").exists() else {}
             hold = (
                 (directory / "HOLD").read_text().strip() if (directory / "HOLD").exists() else None
@@ -88,6 +91,7 @@ def snapshot(root: Path, job_states: dict[str, str]) -> dict[str, JsonValue]:
                     "run_name": task["run_name"],
                     "state": state,
                     "requeue_count": ledger.get("count", 0),
+                    "device_fault_retries": device.get("retry_count", 0),
                     "hold": hold,
                     "throttle": record["throttle"],
                     "resource_type": record["resource_type"],
@@ -120,7 +124,38 @@ def snapshot(root: Path, job_states: dict[str, str]) -> dict[str, JsonValue]:
                 "after": plan["after"],
             }
         )
-    return {"arrays": arrays, "transitions": transitions}
+    bad_path = root / "state/bad_nodes.json"
+    nodes = (
+        cast(dict[str, dict[str, JsonValue]], mapping(bad_path).get("nodes", {}))
+        if bad_path.exists()
+        else {}
+    )
+    bad_nodes: list[JsonValue] = [
+        {
+            **entry,
+            "kind": "bad_node",
+            "state": "simulated"
+            if entry.get("simulated")
+            else "active"
+            if datetime.fromisoformat(cast(str, entry["expires_at"])) > datetime.now(UTC)
+            else "expired",
+        }
+        for entry in nodes.values()
+    ]
+    device_runs: list[JsonValue] = [
+        {
+            "kind": "device_retry",
+            "run": str(path.parent.relative_to(root / "runs")),
+            **mapping(path),
+        }
+        for path in sorted((root / "runs").glob("*/*/device_faults.json"))
+    ]
+    return {
+        "arrays": arrays,
+        "transitions": transitions,
+        "bad_nodes": bad_nodes,
+        "device_runs": device_runs,
+    }
 
 
 def main() -> None:

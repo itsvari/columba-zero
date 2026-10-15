@@ -27,6 +27,7 @@ from cluster.artifacts import (
     read_json,
     update_leaderboard,
 )
+from cluster.device_faults import fault_evidence, reserve_retry, update_event
 from cluster.locking import submission_lock
 from cluster.recipe import Recipe, load_recipe, validate_recipe
 from cluster.slurm import ACTIVE_STATES, Budget, queue
@@ -541,7 +542,8 @@ def recover_interrupted_inputs(
     directory: Path,
     recovery_paths: Sequence[Path] | None = None,
 ) -> bool:
-    pending: list[tuple[Path, int, str, int]] = []
+    pending: list[tuple[Path, int, str, int, str | None]] = []
+    waiting: set[str] = set()
     ledger_path = root / "transitions/recovery" / f"{rules.identifier}.json"
     ledger = read_json(ledger_path) if ledger_path.exists() else {"runs": {}}
     entries = cast(dict[str, JsonValue], ledger["runs"])
@@ -559,6 +561,45 @@ def recover_interrupted_inputs(
                 and report.get("array_task_id") is not None
                 else str(report.get("job_id", ""))
             )
+            device_path = run_path / "device_faults.json"
+            if device_path.exists():
+                events = cast(list[dict[str, JsonValue]], read_json(device_path).get("events", []))
+                active = {
+                    job.identifier for job in queue() if job.owned and job.state in ACTIVE_STATES
+                }
+                if job_id in active and events:
+                    waiting.add(job_id)
+                    continue
+                repair_jobs = {
+                    str(entry["repair_job_id"]) for entry in events if entry.get("repair_job_id")
+                }
+                if repair_jobs & active:
+                    waiting.update(repair_jobs & active)
+                    continue
+            evidence = fault_evidence(root, run_path, report)
+            if evidence is not None:
+                node, error = evidence
+                event = reserve_retry(
+                    root,
+                    run_path,
+                    node,
+                    job_id,
+                    str(report.get("job_id", job_id.split("_")[0])),
+                    cast(int, report.get("slurm_restart_count", 0)),
+                    error,
+                )
+                if event["status"] == "exhausted":
+                    raise HoldRequired(f"{relative}: device-fault retry budget exhausted")
+                pending.append(
+                    (
+                        path,
+                        seed,
+                        relative,
+                        cast(int, report.get("epochs_done", 0)),
+                        str(event["event_id"]),
+                    )
+                )
+                continue
             state = terminal_state(job_id)
             if (
                 state not in {"TIMEOUT", "PREEMPTED", "NODE_FAIL"}
@@ -571,8 +612,8 @@ def recover_interrupted_inputs(
                 int, previous.get("last_epoch", 0)
             ):
                 raise HoldRequired(f"{relative}: recovery limit/no checkpoint progress")
-            pending.append((path, seed, relative, epoch))
-    if not pending:
+            pending.append((path, seed, relative, epoch, None))
+    if not pending and not waiting:
         return False
     with submission_lock(root):
         jobs = queue()
@@ -582,11 +623,22 @@ def recover_interrupted_inputs(
         ):
             raise HoldRequired("no CPU budget to re-arm recovered transition")
         arrays = submit_arrays(
-            root, checkout, [task_for(path, seed) for path, seed, _, _ in pending], reserved_jobs=1
+            root,
+            checkout,
+            [task_for(path, seed) for path, seed, _, _, _ in pending],
+            reserved_jobs=1,
         )
-        if not arrays:
+        if not arrays and not waiting:
             raise HoldRequired("recovery tasks already active; explicit dependencies required")
-        for _, _, relative, epoch in pending:
+        for _, _, relative, epoch, device_event in pending:
+            if device_event is not None:
+                update_event(
+                    root,
+                    root / "runs" / relative,
+                    device_event,
+                    {"status": "resubmitted", "array_ids": [item["array_id"] for item in arrays]},
+                )
+                continue
             previous = cast(dict[str, JsonValue], entries.get(relative, {}))
             entries[relative] = {
                 "count": cast(int, previous.get("count", 0)) + 1,
@@ -598,14 +650,18 @@ def recover_interrupted_inputs(
             root,
             checkout,
             Path(cast(str, plan["rules"])),
-            [os.environ["SLURM_JOB_ID"], *(str(item["array_id"]) for item in arrays)],
+            [
+                os.environ["SLURM_JOB_ID"],
+                *(str(item["array_id"]) for item in arrays),
+                *sorted(waiting),
+            ],
             cast(list[str], plan.get("teacher_after", [])),
             cast(str | None, plan.get("upstream")),
         )
         atomic_json(
             directory / "run.json",
             {
-                "status": "recovering",
+                "status": "recovering" if pending else "waiting_for_device_repair",
                 "round": rules.identifier,
                 "recovered_runs": [item[2] for item in pending],
                 "arrays": cast(list[JsonValue], arrays),
@@ -790,6 +846,7 @@ def main() -> None:
                 Path(cast(str, payload["rules"])),
                 cast(list[str], payload["after"]),
                 cast(list[str], payload.get("teacher_after", [])),
+                upstream=cast(str | None, payload.get("upstream")),
                 prepare_only=bool(payload.get("prepare_only", False)),
             )
         )

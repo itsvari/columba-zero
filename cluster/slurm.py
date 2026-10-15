@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, NotRequired, TypedDict, cast
 
+from cluster.device_faults import combined_exclusions, node_resources
 from cluster.gpu_policy import available_request, load_policy
 from cluster.gpu_selection import (
     GPU_CONSTRAINTS,
@@ -109,6 +110,7 @@ class Submission(TypedDict):
     time_limit_minutes: NotRequired[int]
     cpu_count: NotRequired[int]
     memory_limit_gb: NotRequired[int]
+    gpu_count: NotRequired[int]
 
 
 def parse_queue(output: str) -> tuple[Job, ...]:
@@ -194,6 +196,13 @@ def scheduling_request(
     jobs: Sequence[Job] = (),
 ) -> tuple[tuple[str, ...], str] | None:
     policy = load_policy()
+    if not submission["name"].startswith("cz-ws3-probe-"):
+        submission = {
+            **submission,
+            "excluded_nodes": list(
+                combined_exclusions(Path.home() / "columba", submission.get("excluded_nodes", []))
+            ),
+        }
     offers = tuple(
         offer
         for offer in offers
@@ -238,6 +247,9 @@ def scheduling_request(
         required_node=submission.get("required_node"),
         excluded_nodes=submission.get("excluded_nodes", []),
     )
+    count = submission.get("gpu_count", 1)
+    if count != 1:
+        request = replace(request, resources=request.resources.rsplit(":", 1)[0] + f":{count}")
     return request_arguments(
         request, submission
     ), f"{request.resources}@{','.join(request.partitions)}"
@@ -290,7 +302,7 @@ def reserve_submitted_capacity(
     if eligible is None:
         return tuple(offers)
     return tuple(
-        replace(offer, free_units=max(0, offer.free_units - 1))
+        replace(offer, free_units=max(0, offer.free_units - int(resources.rsplit(":", 1)[1])))
         if offer.node == eligible.node and offer.resource_type == eligible.resource_type
         else offer
         for offer in offers
@@ -319,7 +331,14 @@ def submit_pending(
             .is_relative_to((Path.home() / "columba").resolve())
         ):
             raise ValueError("run paths must stay inside ~/columba")
-        excluded_nodes = submission.get("excluded_nodes", [])
+        excluded_nodes = (
+            submission.get("excluded_nodes", [])
+            if submission["name"].startswith("cz-ws3-probe-")
+            else list(
+                combined_exclusions(Path.home() / "columba", submission.get("excluded_nodes", []))
+            )
+        )
+        submission = {**submission, "excluded_nodes": excluded_nodes}
         if any(not re.fullmatch(r"xgp[d-k][0-9]+|xcng[01]", node) for node in excluded_nodes):
             raise ValueError("excluded nodes must belong to approved GPU or ARM lanes")
         required_node = submission.get("required_node")
@@ -330,6 +349,13 @@ def submit_pending(
         resource_arguments = (
             gpu_resource_arguments(submission) if submission["lane"] == "nv" else ()
         )
+        if submission["name"].startswith("cz-ws3-probe-"):
+            resource_type, gpu_count = node_resources(cast(str, required_node))
+            if gpu_count > load_policy().type_limits.get(resource_type, 0):
+                raise ValueError(
+                    "all-GPU probe exceeds the per-type QoS cap; administrator help required"
+                )
+            submission = {**submission, "gpu_count": gpu_count}
         jobs = queue()
         if (Path(submission["run_path"]) / "DONE").is_file():
             results.append({"name": submission["name"], "status": "done"})
@@ -369,7 +395,7 @@ def submit_pending(
                 results.append({"name": submission["name"], "status": "active"})
                 continue
             retargeted_from = active.identifier
-        if not budget.allows(jobs, submission["lane"]):
+        if not budget.allows(jobs, submission["lane"], submission.get("gpu_count", 1)):
             results.append({"name": submission["name"], "status": "budget full"})
             continue
         command = [
