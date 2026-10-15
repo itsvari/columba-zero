@@ -1,0 +1,29 @@
+{
+  "model_id": "best",
+  "model_path": "/Users/vari/.t3/worktrees/columba-zero/t3-27965e4a/outputs/ws7/checkpoints/yolo26n-v2s-800-round2-plain/seed1/weights/best.pt",
+  "framework": "ultralytics",
+  "format": "pt",
+  "input_hw": [
+    448,
+    800
+  ],
+  "decode": "yolo26",
+  "conf_floor": 0.001,
+  "nms_iou": null,
+  "agnostic_nms": false,
+  "max_det": 300,
+  "host": "vexcalibur",
+  "dataset": "columba-test-v2-styles",
+  "split": "test",
+  "created_at": "2026-10-15T09:05:31.326891+00:00",
+  "image_id_source": "manifest",
+  "images": 957,
+  "label": "measured",
+  "device": "cpu",
+  "batch": 1,
+  "ncnn_compute": null,
+  "versions": {
+    "ultralytics": "8.4.175",
+    "torch": "2.14.1"
+  }
+}

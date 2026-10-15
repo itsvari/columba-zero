@@ -1,0 +1,17 @@
+{
+  "recipe": "yolo26n-v2-800-round2-plain",
+  "seed": 0,
+  "decode": "yolo11",
+  "precision": "int8",
+  "input_hw": [
+    448,
+    800
+  ],
+  "model_id": "yolo26n-v2-800-round2-plain/seed0/yolo11/int8",
+  "package": "/tmp/cz-950463/exports/yolo26n-v2-800-round2-plain/seed0/yolo11/int8_ncnn_model",
+  "reference": "/home/a/ashelow/columba/scratch/ws7/results/yolo26n-v2-800-round2-plain/seed0/yolo11/pt",
+  "taxonomy": "single",
+  "provisional": true,
+  "accuracy_gate_passed": false,
+  "parity_passed": false
+}

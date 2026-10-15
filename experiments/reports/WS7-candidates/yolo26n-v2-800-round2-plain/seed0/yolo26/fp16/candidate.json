@@ -1,0 +1,17 @@
+{
+  "recipe": "yolo26n-v2-800-round2-plain",
+  "seed": 0,
+  "decode": "yolo26",
+  "precision": "fp16",
+  "input_hw": [
+    448,
+    800
+  ],
+  "model_id": "yolo26n-v2-800-round2-plain/seed0/yolo26/fp16",
+  "package": "/tmp/cz-950463/exports/yolo26n-v2-800-round2-plain/seed0/yolo26/fp16_ncnn_model",
+  "reference": "/home/a/ashelow/columba/scratch/ws7/results/yolo26n-v2-800-round2-plain/seed0/yolo26/pt",
+  "taxonomy": "single",
+  "provisional": true,
+  "accuracy_gate_passed": true,
+  "parity_passed": false
+}

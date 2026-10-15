@@ -111,6 +111,26 @@ It does not turn HOLD into a selection. The manifest entry is provisional and
 existing default model entry stays active. Final promotion belongs to the
 coordinator after distilled and species results arrive.
 
+The initial blocked diagnostic package can be fetched and verified in a
+checkout containing this branch's manifest:
+
+```sh
+rsync -a -e 'ssh -o BatchMode=yes' \
+  columba-cluster:columba/scratch/ws7/packages/ outputs/ws7/packages/
+python tools/prepare_models.py \
+  --model-id yolo26n-v2s-800-round2-plain-seed1-yolo11-fp32-provisional
+```
+
+The original matrix is job 950463 on xcng0. The supplemental timing/styles
+job is 950885 on xcng1. Their results, exports and logs remain under the WS7
+scratch root. A diagnostic T4 reference job, 950509, was cancelled by WS7
+after 10 min 59 s because its reference parity failed. No WS5 job was changed
+or cancelled. The initial matrix used PASSIVE accuracy; the controlled
+same-package comparison reproduced identical predictions for fp32, fp16 and
+int8 under ACTIVE on all 319 test images. The committed
+[`WS7-platform/`](WS7-platform/) records those hashes, timing probes, CPU
+reference comparisons and input-hash diagnostics.
+
 ## Policies requiring coordinator review
 
 - Document optional `omp_wait_policy` in C7 and set `OMP_WAIT_POLICY=ACTIVE`

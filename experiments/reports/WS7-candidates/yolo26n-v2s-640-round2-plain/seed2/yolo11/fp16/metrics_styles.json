@@ -1,0 +1,212 @@
+{
+  "pigeon": {
+    "ap50": 0.6107672622634691,
+    "ap50_95": 0.4001030617970881,
+    "recall_at_p90": 0.4948064211520302,
+    "small_recall_at_p90": 0.23880597014925373,
+    "precision_at_threshold": 0.8942148760330578,
+    "recall_at_threshold": 0.5108593012275732
+  },
+  "pigeon_recall_at_p90": 0.4948064211520302,
+  "empty_false_alarm_rate": 0.0026666666666666666,
+  "confuser_false_alarm_rate": 0.1232876712328767,
+  "per_class_ap50": {
+    "pigeon": 0.6107672622634691
+  },
+  "counts": {
+    "images": 957,
+    "empty_images": 375,
+    "confuser_images": 219,
+    "pigeon_boxes": 1059,
+    "small_pigeon_boxes": 670,
+    "groups": 295
+  },
+  "dataset": "columba-test-v2-styles",
+  "split": "test",
+  "predictions": "/home/a/ashelow/columba/scratch/ws7/results/yolo26n-v2s-640-round2-plain/seed2/yolo11/fp16/predictions_styles.json",
+  "input_hw": [
+    384,
+    640
+  ],
+  "operating_threshold": {
+    "value": 0.53662109375,
+    "source": "/home/a/ashelow/columba/scratch/ws7/results/yolo26n-v2s-640-round2-plain/seed2/yolo11/fp16/metrics_val.json"
+  },
+  "image_id_source": "manifest",
+  "label": "measured",
+  "host": "xcng1",
+  "definitions": "AP uses pycocotools: 101 recall points, IoU 0.50:0.05:0.95, all areas,\nmaxDets=300. AP50 is at IoU 0.50. Matching for operating metrics is greedy,\nper image/class, descending score, one-to-one, IoU >= 0.50. Equal-score\npredictions use file order within an image and enter a threshold together.\nrecall_at_p90 is the highest pigeon recall at a score threshold with overall\npigeon precision >= 0.90. small_recall_at_p90 uses the same eligible thresholds\nand matching, counting only matched small pigeon ground truths; large matches\nstill contribute to overall precision. Small means min(GT width, GT height)\nmultiplied by min(input_height/image_height, input_width/image_width) < 32 pixels.\nThresholds include predictions with score >= threshold. Selection chooses the\nlowest observed score meeting precision >= 0.90, on val only. Test selection\nis refused. If unattainable, selection writes a finite threshold just above 1,\nattainable=false, and recall_at_p90=0. --threshold-from reuses a selected val\nthreshold, including this no-detection sentinel. Default threshold is 0.5,\nexplicitly recorded as default; supply a selected val file for test comparisons.\nNo ground truths: AP=null, recall=0. No predictions: precision=0, recall=0.\nEmpty/confuser FAR counts images with >=1 pigeon prediction at the operating\nthreshold, divided by images with no birds / only non-pigeon birds respectively,\nas defined by manifest classes_present, even for unlabelled single-taxonomy\nconfusers. A missing denominator gives null. Missing predictions are fine;\nunknown image/category IDs, malformed boxes and non-finite numbers are errors.\nby_style/by_source recompute metrics within each group at the shared operating\nthreshold, with each group's own PR curve. Counts include manifest group IDs.\nWithout manifest.jsonl, IDs are unique image stems; style/source are unknown\nand bird presence is inferred from labels, so unlabelled confusers are unknown.\n--subset FILE evaluates only manifest IDs listed one per line. Predictions are\nfirst validated against the full split, then restricted to the subset. An empty\nsubset or unknown subset ID is an error. Threshold selection on a subset is\nstill restricted to val. Subset test metrics retain the supplied val threshold.",
+  "subset": null,
+  "by_style": {
+    "noir_day": {
+      "pigeon": {
+        "ap50": 0.6968047193824294,
+        "ap50_95": 0.46044730126138456,
+        "recall_at_p90": 0.6147308781869688,
+        "small_recall_at_p90": 0.37264150943396224,
+        "precision_at_threshold": 0.9191489361702128,
+        "recall_at_threshold": 0.6118980169971672
+      },
+      "pigeon_recall_at_p90": 0.6147308781869688,
+      "empty_false_alarm_rate": 0.0,
+      "confuser_false_alarm_rate": 0.1232876712328767,
+      "per_class_ap50": {
+        "pigeon": 0.6968047193824294
+      },
+      "counts": {
+        "images": 319,
+        "empty_images": 125,
+        "confuser_images": 73,
+        "pigeon_boxes": 353,
+        "small_pigeon_boxes": 212,
+        "groups": 295
+      }
+    },
+    "noir_night": {
+      "pigeon": {
+        "ap50": 0.612877370695628,
+        "ap50_95": 0.3960305765452694,
+        "recall_at_p90": 0.46175637393767704,
+        "small_recall_at_p90": 0.18396226415094338,
+        "precision_at_threshold": 0.8660287081339713,
+        "recall_at_threshold": 0.5127478753541076
+      },
+      "pigeon_recall_at_p90": 0.46175637393767704,
+      "empty_false_alarm_rate": 0.008,
+      "confuser_false_alarm_rate": 0.136986301369863,
+      "per_class_ap50": {
+        "pigeon": 0.612877370695628
+      },
+      "counts": {
+        "images": 319,
+        "empty_images": 125,
+        "confuser_images": 73,
+        "pigeon_boxes": 353,
+        "small_pigeon_boxes": 212,
+        "groups": 295
+      }
+    },
+    "wide": {
+      "pigeon": {
+        "ap50": 0.5237830173004431,
+        "ap50_95": 0.3467473118211711,
+        "recall_at_p90": 0.38526912181303113,
+        "small_recall_at_p90": 0.14634146341463414,
+        "precision_at_threshold": 0.8944099378881988,
+        "recall_at_threshold": 0.40793201133144474
+      },
+      "pigeon_recall_at_p90": 0.38526912181303113,
+      "empty_false_alarm_rate": 0.0,
+      "confuser_false_alarm_rate": 0.1095890410958904,
+      "per_class_ap50": {
+        "pigeon": 0.5237830173004431
+      },
+      "counts": {
+        "images": 319,
+        "empty_images": 125,
+        "confuser_images": 73,
+        "pigeon_boxes": 353,
+        "small_pigeon_boxes": 246,
+        "groups": 295
+      }
+    }
+  },
+  "by_source": {
+    "coco-birds": {
+      "pigeon": {
+        "ap50": 0.40411092669566495,
+        "ap50_95": 0.28820625237156666,
+        "recall_at_p90": 0.13333333333333333,
+        "small_recall_at_p90": 0.0,
+        "precision_at_threshold": 0.5,
+        "recall_at_threshold": 0.4
+      },
+      "pigeon_recall_at_p90": 0.13333333333333333,
+      "empty_false_alarm_rate": null,
+      "confuser_false_alarm_rate": 0.044444444444444446,
+      "per_class_ap50": {
+        "pigeon": 0.40411092669566495
+      },
+      "counts": {
+        "images": 51,
+        "empty_images": 0,
+        "confuser_images": 45,
+        "pigeon_boxes": 15,
+        "small_pigeon_boxes": 9,
+        "groups": 17
+      }
+    },
+    "coco-negatives": {
+      "pigeon": {
+        "ap50": null,
+        "ap50_95": null,
+        "recall_at_p90": 0.0,
+        "small_recall_at_p90": 0.0,
+        "precision_at_threshold": 0.0,
+        "recall_at_threshold": 0.0
+      },
+      "pigeon_recall_at_p90": 0.0,
+      "empty_false_alarm_rate": 0.0026666666666666666,
+      "confuser_false_alarm_rate": null,
+      "per_class_ap50": {
+        "pigeon": null
+      },
+      "counts": {
+        "images": 375,
+        "empty_images": 375,
+        "confuser_images": 0,
+        "pigeon_boxes": 0,
+        "small_pigeon_boxes": 0,
+        "groups": 125
+      }
+    },
+    "inaturalist": {
+      "pigeon": {
+        "ap50": null,
+        "ap50_95": null,
+        "recall_at_p90": 0.0,
+        "small_recall_at_p90": 0.0,
+        "precision_at_threshold": 0.0,
+        "recall_at_threshold": 0.0
+      },
+      "pigeon_recall_at_p90": 0.0,
+      "empty_false_alarm_rate": null,
+      "confuser_false_alarm_rate": 0.14367816091954022,
+      "per_class_ap50": {
+        "pigeon": null
+      },
+      "counts": {
+        "images": 174,
+        "empty_images": 0,
+        "confuser_images": 174,
+        "pigeon_boxes": 0,
+        "small_pigeon_boxes": 0,
+        "groups": 58
+      }
+    },
+    "roboflow-yolo1199": {
+      "pigeon": {
+        "ap50": 0.6310639415582682,
+        "ap50_95": 0.4084758981009,
+        "recall_at_p90": 0.5459770114942529,
+        "small_recall_at_p90": 0.31316187594553707,
+        "precision_at_threshold": 0.9519572953736655,
+        "recall_at_threshold": 0.5124521072796935
+      },
+      "pigeon_recall_at_p90": 0.5459770114942529,
+      "empty_false_alarm_rate": null,
+      "confuser_false_alarm_rate": null,
+      "per_class_ap50": {
+        "pigeon": 0.6310639415582682
+      },
+      "counts": {
+        "images": 357,
+        "empty_images": 0,
+        "confuser_images": 0,
+        "pigeon_boxes": 1044,
+        "small_pigeon_boxes": 661,
+        "groups": 95
+      }
+    }
+  }
+}
