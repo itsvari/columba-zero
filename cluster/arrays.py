@@ -129,6 +129,42 @@ def shares(counts: dict[str, int], limits: dict[str, int], total: int) -> dict[s
     return allocated
 
 
+def place_request(
+    request: GpuRequest,
+    offers: Sequence[GpuOffer],
+    allow_short: bool,
+    required_node: str | None = None,
+) -> GpuRequest:
+    resource_type = request.resources.split(":")[1]
+    matched = [
+        offer
+        for offer in offers
+        if offer.resource_type == resource_type
+        and (required_node is None or offer.node == required_node)
+        and (
+            resource_type != "nv"
+            or request.constraint == "t4|titanv|titanrtx"
+            or request.constraint in offer.features
+        )
+    ]
+    partitions = ("gpu-long", "gpu") if allow_short else ("gpu-long",)
+    available = next(
+        (
+            partition
+            for partition in partitions
+            if any(offer.partition == partition and offer.free_units > 0 for offer in matched)
+        ),
+        None,
+    )
+    if available:
+        return replace(
+            request,
+            partitions=(available,),
+            time_limit="03:00:00" if available == "gpu" else "3-00:00:00",
+        )
+    return request
+
+
 def group_tasks(
     tasks: Sequence[ArrayTask],
     offers: Sequence[GpuOffer],
@@ -191,33 +227,7 @@ def group_tasks(
                 request = replace(request, partitions=partitions, time_limit="03:00:00")
         else:
             request = request_for(choice, offers, required_node=required_node)
-        resource_type = request.resources.split(":")[1]
-        matched = [
-            offer
-            for offer in offers
-            if offer.resource_type == resource_type
-            and (required_node is None or offer.node == required_node)
-            and (
-                resource_type != "nv"
-                or request.constraint == "t4|titanv|titanrtx"
-                or request.constraint in offer.features
-            )
-        ]
-        partitions = ("gpu-long", "gpu") if policy.allow_short_partition else ("gpu-long",)
-        available = next(
-            (
-                partition
-                for partition in partitions
-                if any(offer.partition == partition and offer.free_units > 0 for offer in matched)
-            ),
-            None,
-        )
-        if available:
-            request = replace(
-                request,
-                partitions=(available,),
-                time_limit="03:00:00" if available == "gpu" else "3-00:00:00",
-            )
+        request = place_request(request, offers, policy.allow_short_partition, required_node)
         key = json.dumps(asdict(request), sort_keys=True)
         if key not in grouped:
             grouped[key] = (request, [])
@@ -430,10 +440,30 @@ def retarget_array(
         offers = tuple(
             offer for offer in gpu_inventory() if offer.node not in combined_exclusions(root)
         )
-        request = request_for(constraint, offers)
+        request = place_request(
+            request_for(constraint, offers), offers, load_policy().allow_short_partition
+        )
         resource_type = request.resources.split(":")[1]
         if selected > load_policy().type_limits[resource_type]:
             raise ValueError("array throttle exceeds destination GPU QoS cap")
+        active = active_arrays(root, queue())
+        control = root / "arrays/concurrency.json"
+        overall = (
+            cast(int, read_json(control)["gpu_limit"]) if control.exists() else GPU_RUNNING_LIMIT
+        )
+        others = [record for record in active if str(record["array_id"]) != parent]
+        if selected + sum(cast(int, record["throttle"]) for record in others) > overall:
+            raise ValueError("retarget throttle exceeds total array concurrency")
+        if (
+            selected
+            + sum(
+                cast(int, record["throttle"])
+                for record in others
+                if record["resource_type"] == resource_type
+            )
+            > load_policy().type_limits[resource_type]
+        ):
+            raise ValueError("retarget throttle exceeds combined GPU type cap")
         maximum_minutes = min(
             PARTITION_TIME_LIMIT_MINUTES[partition] for partition in request.partitions
         )

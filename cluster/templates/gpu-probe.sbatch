@@ -5,6 +5,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
 #SBATCH --time=00:01:00
+#SBATCH --no-requeue
 set -euo pipefail
 trap 'rm -rf -- "/tmp/cz-${SLURM_JOB_ID:?}"' EXIT
 cd "$COLUMBA_CHECKOUT"

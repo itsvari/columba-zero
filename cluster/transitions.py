@@ -432,6 +432,7 @@ def _arm_transition(
         json.dumps(
             [
                 rules.identifier,
+                checkout.name,
                 hashlib.sha256(rules_path.read_bytes()).hexdigest(),
                 list(after),
                 list(teacher_after),

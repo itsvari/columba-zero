@@ -33,6 +33,7 @@ FAULT_PATTERNS = (
     "cuda initialization failed",
     "cuda error: initialization error",
     "cuda unknown error",
+    "cuda error: unknown error",
     "cuda driver error: initialization error",
     "torch.cuda.is_available() is false",
     "gpu visibility count",
@@ -502,7 +503,17 @@ def main() -> None:
     if not run_path.resolve().is_relative_to(root / "runs"):
         raise ValueError("device ledger must stay in project runs")
     if arguments.action == "repair":
-        repair(root, run_path, arguments.event)
+        try:
+            repair(root, run_path, arguments.event)
+        except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
+            update_event(
+                root,
+                run_path,
+                arguments.event,
+                {"status": "repair_failed", "repair_error": str(error)},
+            )
+            (run_path / "HOLD").write_text(f"device repair failed: {error}\n")
+            raise
         return
     if arguments.simulate_once and (
         not os.environ["SLURM_JOB_NAME"].startswith("cz-ws3-device-")
@@ -518,7 +529,13 @@ def main() -> None:
             print(json.dumps(check_visibility(expected_gpu_count(), arguments.nvidia_only)))
     except DeviceVisibilityError as error:
         print(str(error), flush=True)
-        handle_fault(root, run_path, str(error), arguments.simulate_once)
+        try:
+            handle_fault(root, run_path, str(error), arguments.simulate_once)
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as repair_error:
+            (run_path / "HOLD").write_text(
+                f"device repair could not be scheduled: {repair_error}\n"
+            )
+            print(str(repair_error), flush=True)
         raise SystemExit(DEVICE_FAILURE_EXIT_STATUS) from error
 
 
