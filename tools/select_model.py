@@ -18,8 +18,11 @@ import shutil
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 from collections import defaultdict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import cast
 
@@ -50,6 +53,26 @@ REQUIRED_SEEDS = frozenset({0, 1, 2})
 
 def affinity_cores() -> list[int]:
     return sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else []
+
+
+@contextmanager
+def taxonomy_view(dataset: Path, taxonomy: str) -> Iterator[Path]:
+    from cluster.staging import align_test_taxonomy
+
+    if taxonomy == "single":
+        yield dataset
+        return
+    with tempfile.TemporaryDirectory(prefix="cz-taxonomy-") as temporary:
+        view = Path(temporary) / dataset.name
+        view.mkdir()
+        for child in dataset.iterdir():
+            destination = view / child.name
+            if child.name == "data.yaml":
+                shutil.copy2(child, destination)
+            else:
+                destination.symlink_to(child.resolve(), target_is_directory=child.is_dir())
+        align_test_taxonomy(view, taxonomy, Path("training/classes.yaml"))
+        yield view
 
 
 def write_json(path: Path, value: JsonValue) -> None:
@@ -290,12 +313,16 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
         "samples_ms": [float(value) for value in wall_ms],
         "label": "measured",
         "backend": "columba_native",
+        "omp_wait_policy": os.environ.get("OMP_WAIT_POLICY", "runtime_default"),
         "compute": detector.compute,
         "compute_flags": detector.compute_flags,
         "camera_hw": [480, 640],
         "confidence": arguments.confidence,
         "weights_sha256": fingerprint(arguments.model / "model.ncnn.bin"),
         "parameters_sha256": fingerprint(arguments.model / "model.ncnn.param"),
+        "int8_calibration": read_report(arguments.model / "calibration.json")
+        if (arguments.model / "calibration.json").exists()
+        else None,
         "end_to_end_boundary": (
             "native letterbox, inference, decode/NMS, Python return and bool decision"
         ),
@@ -305,6 +332,13 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
 
 
 def evaluate_candidate(arguments: argparse.Namespace) -> None:
+    with taxonomy_view(arguments.test_dataset, arguments.taxonomy) as aligned:
+        evaluate_aligned_candidate(
+            argparse.Namespace(**{**vars(arguments), "test_dataset": aligned})
+        )
+
+
+def evaluate_aligned_candidate(arguments: argparse.Namespace) -> None:
     if platform.machine() != "aarch64" or platform.node().split(".")[0] not in ("xcng0", "xcng1"):
         raise ValueError(
             "evaluate must run on allocated xcng with the A76-compatible native extension"
@@ -317,6 +351,13 @@ def evaluate_candidate(arguments: argparse.Namespace) -> None:
     for decode in arguments.decodes:
         reference = destination / decode / "pt"
         reference.mkdir(parents=True, exist_ok=True)
+        if arguments.references:
+            cached = (
+                arguments.references / arguments.recipe / f"seed{arguments.seed}" / decode / "pt"
+            )
+            for name in ("predictions_val.json", "predictions_test.json"):
+                shutil.copy2(cached / name, reference / name)
+                shutil.copy2(sidecar_path(cached / name), sidecar_path(reference / name))
         for split, dataset in (("val", arguments.dataset), ("test", arguments.test_dataset)):
             output = reference / f"predictions_{split}.json"
             if output.exists():
@@ -434,6 +475,7 @@ def evaluate_candidate(arguments: argparse.Namespace) -> None:
                     "package": str(package),
                     "reference": str(reference),
                     "taxonomy": arguments.taxonomy,
+                    "single_recipe": arguments.single_recipe,
                     "provisional": True,
                     "accuracy_gate_passed": accuracy["passed"],
                     "parity_passed": comparisons["passed"],
@@ -455,6 +497,7 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
     if threshold.get("value") != test_threshold.get("value"):
         raise ValueError(f"{directory}: test threshold differs from validation")
     native = read_report(sidecar_path(directory / "predictions_test.json"))
+    reference_meta = read_report(directory.parent / "pt/predictions_test.meta.json")
     if native.get("framework") != "columba_native" or not str(native.get("host", "")).startswith(
         "xcng"
     ):
@@ -473,6 +516,17 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
             raise ValueError(f"{directory}: mismatched candidate precision")
     if native.get("compute_flags") != latency.get("compute_flags"):
         raise ValueError(f"{directory}: accuracy/latency compute flags differ")
+    if native.get("ncnn_compute") != "runtime_default":
+        raise ValueError(f"{directory}: accuracy must use deployed package-default compute")
+    flags = mapping(native["compute_flags"], "compute flags")
+    expected_fp16 = descriptor["precision"] in ("fp16", "int8")
+    for flag in ("use_fp16_packed", "use_fp16_storage", "use_fp16_arithmetic"):
+        if flags.get(flag) is not expected_fp16:
+            raise ValueError(f"{directory}: compute mode does not match deployed package")
+    if latency.get("omp_wait_policy") != "ACTIVE":
+        raise ValueError(f"{directory}: remeasure latency with OMP_WAIT_POLICY=ACTIVE")
+    if test.get("dataset") != "columba-test-v2":
+        raise ValueError(f"{directory}: primary gates require frozen columba-test-v2")
     return {
         **descriptor,
         "directory": str(directory),
@@ -484,10 +538,15 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
         "reaction_p95_ms": mapping(reaction["reaction_ms"], "reaction")["p95"],
         "threshold": threshold["value"],
         "host": native["host"],
+        "reference_host": reference_meta["host"],
+        "reference_device": reference_meta["device"],
         "parity_passed": read_report(directory / "parity.json")["passed"],
         "accuracy_gate_passed": read_report(directory / "accuracy_gate.json")["passed"],
         "accuracy_deltas": read_report(directory / "accuracy_gate.json")["deltas"],
         "parity_failures": read_report(directory / "parity.json")["failures"],
+        "styles": read_report(directory / "metrics_styles.json")["pigeon"]
+        if (directory / "metrics_styles.json").exists()
+        else None,
     }
 
 
@@ -505,6 +564,105 @@ def baseline_scores(leaderboard: Path) -> tuple[float, ...]:
 
 def metric(record: dict[str, JsonValue], split: str, name: str) -> float:
     return number(mapping(record[split], split)[name], name)
+
+
+def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
+    for arm in arms:
+        seeds = [mapping(seed, "seed") for seed in cast(list[JsonValue], arm["seeds"])]
+        if seeds[0].get("taxonomy", "single") != "species":
+            continue
+        matched_recipe = seeds[0].get("single_recipe")
+        reference = next(
+            (
+                candidate
+                for candidate in arms
+                if candidate["recipe"] == matched_recipe
+                and candidate["decode"] == arm["decode"]
+                and candidate["precision"] == arm["precision"]
+                and candidate["input_hw"] == arm["input_hw"]
+            ),
+            None,
+        )
+        reasons = cast(list[JsonValue], arm["failures"])
+        if reference is None:
+            reasons.append("species gate needs --single-recipe and its evaluated three-seed arm")
+        elif (
+            number(arm["test_recall_mean"], "recall")
+            < number(reference["test_recall_mean"], "recall") - MAXIMUM_ACCURACY_DROP
+        ):
+            reasons.append("species pigeon recall is more than 0.01 below matched single")
+        if reference is not None:
+            comparison = [
+                mapping(seed, "seed") for seed in cast(list[JsonValue], reference["seeds"])
+            ]
+            for field in ("empty_far", "confuser_far"):
+                if statistics.mean(number(seed[field], field) for seed in seeds) > statistics.mean(
+                    number(seed[field], field) for seed in comparison
+                ):
+                    reasons.append(f"species mean {field} is worse than matched single")
+            if (
+                number(arm["pi5_p95_ms"], "latency")
+                > number(reference["pi5_p95_ms"], "latency") * 1.05
+            ):
+                reasons.append("species latency is over 5% slower than matched single")
+        arm["failures"] = reasons
+        arm["passes"] = not reasons
+
+
+def styles_tie_break(eligible: list[dict[str, JsonValue]]) -> dict[str, JsonValue] | None:
+    selected = max(
+        eligible,
+        key=lambda arm: (
+            number(arm["val_recall_mean"], "recall"),
+            -number(arm["pi5_p95_ms"], "latency"),
+        ),
+        default=None,
+    )
+    if selected is None:
+        return None
+    recipe = str(selected["recipe"]).replace("-v2s-", "-v2-")
+    peers = [
+        arm
+        for arm in eligible
+        if str(arm["recipe"]).replace("-v2s-", "-v2-") == recipe
+        and arm["decode"] == selected["decode"]
+        and arm["precision"] == selected["precision"]
+        and abs(
+            number(arm["val_recall_mean"], "recall") - number(selected["val_recall_mean"], "recall")
+        )
+        <= 0.01
+        and max(number(arm["pi5_p95_ms"], "latency"), number(selected["pi5_p95_ms"], "latency"))
+        <= min(number(arm["pi5_p95_ms"], "latency"), number(selected["pi5_p95_ms"], "latency"))
+        * 1.05
+    ]
+    if len(peers) < 2:
+        return selected
+    if any(arm["styles_recall_mean"] is None for arm in peers):
+        return None
+    return max(
+        peers,
+        key=lambda arm: (
+            number(arm["styles_recall_mean"], "styles recall"),
+            number(arm["val_recall_mean"], "recall"),
+            -number(arm["pi5_p95_ms"], "latency"),
+        ),
+    )
+
+
+def pareto_front(arms: list[dict[str, JsonValue]]) -> list[JsonValue]:
+    return [
+        arm["id"]
+        for arm in arms
+        if not any(
+            number(other["val_recall_mean"], "recall") >= number(arm["val_recall_mean"], "recall")
+            and number(other["pi5_p95_ms"], "latency") <= number(arm["pi5_p95_ms"], "latency")
+            and (
+                other["val_recall_mean"] != arm["val_recall_mean"]
+                or other["pi5_p95_ms"] != arm["pi5_p95_ms"]
+            )
+            for other in arms
+        )
+    ]
 
 
 def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> dict[str, JsonValue]:
@@ -546,6 +704,7 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
             {
                 "id": "/".join(key[:3]) + "/" + key[3],
                 "recipe": key[0],
+                "input_hw": seeds[0]["input_hw"],
                 "decode": key[1],
                 "precision": key[2],
                 "val_recall_mean": statistics.mean(
@@ -554,6 +713,11 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
                 "test_recall_mean": mean_recall,
                 "test_recall_std": standard_deviation,
                 "test_ap50_mean": statistics.mean(metric(seed, "test", "ap50") for seed in seeds),
+                "styles_recall_mean": statistics.mean(
+                    metric(seed, "styles", "recall_at_p90") for seed in seeds
+                )
+                if all(seed.get("styles") is not None for seed in seeds)
+                else None,
                 "test_operating_recall_mean": statistics.mean(
                     metric(seed, "test", "recall_at_threshold") for seed in seeds
                 ),
@@ -567,28 +731,10 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
                 "seeds": [dict(seed) for seed in seeds],
             }
         )
+    enforce_species_gate(arms)
     eligible = [arm for arm in arms if arm["passes"]]
-    front = [
-        arm["id"]
-        for arm in eligible
-        if not any(
-            number(other["val_recall_mean"], "recall") >= number(arm["val_recall_mean"], "recall")
-            and number(other["pi5_p95_ms"], "latency") <= number(arm["pi5_p95_ms"], "latency")
-            and (
-                other["val_recall_mean"] != arm["val_recall_mean"]
-                or other["pi5_p95_ms"] != arm["pi5_p95_ms"]
-            )
-            for other in eligible
-        )
-    ]
-    selected = max(
-        eligible,
-        key=lambda arm: (
-            number(arm["val_recall_mean"], "recall"),
-            -number(arm["pi5_p95_ms"], "latency"),
-        ),
-        default=None,
-    )
+    front = pareto_front(eligible)
+    selected = styles_tie_break(eligible)
     return {
         "provisional": True,
         "baseline": {
@@ -602,11 +748,231 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
             "each split R@P90/AP50/operating recall drop <=0.01 vs same-head rectangular PyTorch"
         ),
         "arms": [dict(arm) for arm in arms],
-        "pareto_front": front,
+        "pareto_front": pareto_front(arms),
+        "admissible_front": front,
+        "styles_tie_break": (
+            "paired v2/v2s, val recall within 0.01, same decode/precision, latency within 5%"
+        ),
         "selected": selected["id"] if selected else None,
         "package_candidate": selected["representative"] if selected else None,
         "awaiting": ["round2-distill", "round3-species"],
     }
+
+
+def remeasure_latency(arguments: argparse.Namespace) -> None:
+    if os.environ.get("OMP_WAIT_POLICY", "").upper() != "ACTIVE":
+        raise ValueError("latency gate must run with OMP_WAIT_POLICY=ACTIVE, matching deployment")
+    for descriptor_path in sorted(arguments.candidates.rglob("candidate.json")):
+        directory = descriptor_path.parent
+        descriptor = read_report(descriptor_path)
+        package = (
+            arguments.exports
+            / str(descriptor["recipe"])
+            / f"seed{descriptor['seed']}"
+            / str(descriptor["decode"])
+            / f"{descriptor['precision']}_ncnn_model"
+        )
+        current = read_report(directory / "latency.json")
+        if current.get("omp_wait_policy") == "ACTIVE":
+            continue
+        shutil.copy2(directory / "latency.json", directory / "latency-passive.json")
+        threshold = mapping(
+            read_report(directory / "metrics_val.json")["operating_threshold"], "threshold"
+        )
+        command(
+            "tools.select_model",
+            "benchmark-native",
+            "--model",
+            str(package),
+            "--dataset",
+            str(arguments.dataset),
+            "--prefix",
+            str(arguments.prefix),
+            "--model-id",
+            str(descriptor["model_id"]),
+            "--confidence",
+            str(threshold["value"]),
+            "--calibration",
+            str(arguments.calibration),
+            "--out",
+            str(directory / "latency.json"),
+        )
+        latency = read_report(directory / "latency.json")
+        test = mapping(read_report(directory / "metrics_test.json")["pigeon"], "pigeon")
+        samples, distribution = processing_samples(
+            latency, calibration_factor(read_report(arguments.calibration), "xcng-n1")
+        )
+        reaction = simulate_reaction(
+            samples,
+            ReactionSettings(recall=max(0.001, number(test["recall_at_threshold"], "recall"))),
+        )
+        reaction.update(
+            {
+                "processing_host": "estimated Pi5",
+                "distribution": distribution,
+                "recall_source": "test operating recall as per-frame proxy",
+                "omp_wait_policy": "ACTIVE",
+            }
+        )
+        write_json(directory / "reaction.json", reaction)
+        if descriptor["seed"] == 0:
+            comparison = [
+                "tools.bench_ncnn",
+                "run",
+                "--model",
+                str(package),
+                "--input-hw",
+                *map(str, cast(list[int], descriptor["input_hw"])),
+                "--model-id",
+                str(descriptor["model_id"]).replace("/", "-"),
+                "--host-profile",
+                "xcng",
+                "--prefix",
+                str(arguments.prefix),
+                "--format",
+                str(descriptor["precision"]),
+                "--confidence",
+                str(threshold["value"]),
+                "--output",
+                str(directory / "ws4-bridge"),
+            ]
+            if descriptor["decode"] == "yolo26":
+                comparison.append("--nms-free")
+            command(*comparison)
+        print(f"ACTIVE latency completed {descriptor['model_id']}", flush=True)
+
+
+def score_styles(arguments: argparse.Namespace) -> None:
+    for descriptor_path in sorted(arguments.candidates.rglob("candidate.json")):
+        descriptor = read_report(descriptor_path)
+        if descriptor["precision"] not in arguments.precisions:
+            continue
+        with taxonomy_view(arguments.dataset, str(descriptor["taxonomy"])) as aligned:
+            score_export_styles(descriptor_path.parent, descriptor, aligned, arguments.exports)
+
+
+def score_export_styles(
+    directory: Path,
+    descriptor: dict[str, JsonValue],
+    dataset: Path,
+    exports: Path,
+) -> None:
+    package = (
+        exports
+        / str(descriptor["recipe"])
+        / f"seed{descriptor['seed']}"
+        / str(descriptor["decode"])
+        / f"{descriptor['precision']}_ncnn_model"
+    )
+    output = directory / "predictions_styles.json"
+    if not output.exists():
+        command(
+            "tools.select_model",
+            "predict-native",
+            "--model",
+            str(package),
+            "--dataset",
+            str(dataset),
+            "--split",
+            "test",
+            "--model-id",
+            str(descriptor["model_id"]),
+            "--out",
+            str(output),
+        )
+    write_json(
+        directory / "metrics_styles.json",
+        evaluate(
+            dataset,
+            "test",
+            output,
+            threshold_from=directory / "metrics_val.json",
+        ),
+    )
+    print(f"styles completed {descriptor['model_id']}", flush=True)
+
+
+def predict_references(arguments: argparse.Namespace) -> None:
+    with taxonomy_view(arguments.test_dataset, arguments.taxonomy) as aligned:
+        if arguments.styles_dataset:
+            with taxonomy_view(arguments.styles_dataset, arguments.taxonomy) as styles:
+                predict_aligned_references(
+                    argparse.Namespace(
+                        **{
+                            **vars(arguments),
+                            "test_dataset": aligned,
+                            "styles_dataset": styles,
+                        }
+                    )
+                )
+        else:
+            predict_aligned_references(
+                argparse.Namespace(**{**vars(arguments), "test_dataset": aligned})
+            )
+
+
+def predict_aligned_references(arguments: argparse.Namespace) -> None:
+    directory = arguments.output / arguments.recipe / f"seed{arguments.seed}"
+    for decode in arguments.decodes:
+        reference = directory / decode / "pt"
+        reference.mkdir(parents=True, exist_ok=True)
+        splits = [("val", "val", arguments.dataset), ("test", "test", arguments.test_dataset)]
+        if arguments.styles_dataset:
+            splits.append(("styles", "test", arguments.styles_dataset))
+        for name, split, dataset in splits:
+            output = reference / f"predictions_{name}.json"
+            if output.exists():
+                continue
+            command(
+                "tools.predict_to_coco",
+                "--model",
+                str(arguments.checkpoint),
+                "--dataset",
+                str(dataset),
+                "--split",
+                split,
+                "--out",
+                str(output),
+                "--imgsz",
+                *map(str, arguments.input_hw),
+                "--decode",
+                decode,
+                "--device",
+                arguments.device,
+                "--batch",
+                str(arguments.batch),
+            )
+        score(reference, arguments.dataset, arguments.test_dataset)
+        if arguments.styles_dataset:
+            write_json(
+                reference / "metrics_styles.json",
+                evaluate(
+                    arguments.styles_dataset,
+                    "test",
+                    reference / "predictions_styles.json",
+                    threshold_from=reference / "metrics_val.json",
+                ),
+            )
+
+
+def fetch_candidate(arguments: argparse.Namespace) -> None:
+    from cluster.sweep import remote
+
+    receipt = read_report(arguments.output / "submissions" / f"{arguments.recipe}.json")
+    workspace = str(receipt["workspace"])
+    remote(["test", "-f", workspace + "/DONE"])
+    (arguments.output / "results").mkdir(parents=True, exist_ok=True)
+    (arguments.output / "exports").mkdir(parents=True, exist_ok=True)
+    for name in ("results", "exports"):
+        subprocess.run(
+            [
+                "rsync",
+                "-aL",
+                f"columba-cluster:{workspace}/{name}/",
+                str(arguments.output / name) + "/",
+            ],
+            check=True,
+        )
 
 
 def add_candidate(arguments: argparse.Namespace) -> None:
@@ -650,6 +1016,24 @@ def add_candidate(arguments: argparse.Namespace) -> None:
                 output=output / "exports",
             )
         )
+    if arguments.reference_data_root:
+        for seed in sorted(REQUIRED_SEEDS):
+            predict_references(
+                argparse.Namespace(
+                    checkpoint=checkpoint_root / f"seed{seed}/weights/best.pt",
+                    recipe=arguments.recipe,
+                    seed=seed,
+                    input_hw=arguments.input_hw,
+                    taxonomy=arguments.taxonomy,
+                    decodes=arguments.decodes,
+                    output=output / "references",
+                    dataset=arguments.reference_data_root / arguments.dataset_name,
+                    test_dataset=arguments.reference_data_root / "columba-test-v2",
+                    styles_dataset=arguments.reference_data_root / "columba-test-v2-styles",
+                    device="cpu",
+                    batch=1,
+                )
+            )
     checkout, _ = deploy(root)
     remote(["mkdir", "-p", str(workspace / "exports"), str(workspace / "results")])
     subprocess.run(
@@ -661,6 +1045,17 @@ def add_candidate(arguments: argparse.Namespace) -> None:
         ],
         check=True,
     )
+    if arguments.reference_data_root:
+        remote(["mkdir", "-p", str(workspace / "references")])
+        subprocess.run(
+            [
+                "rsync",
+                "-a",
+                str(output / "references" / arguments.recipe),
+                f"columba-cluster:{workspace}/references/",
+            ],
+            check=True,
+        )
     evaluation = shlex.join(
         [
             "python",
@@ -696,7 +1091,7 @@ cleanup() {{
     rm -rf -- "$stage"
 }}
 trap cleanup EXIT
-export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=4 OMP_WAIT_POLICY=PASSIVE
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=4 OMP_WAIT_POLICY=ACTIVE
 export TMPDIR="$stage" YOLO_CONFIG_DIR="$stage/settings" SLURM_EXPORT_ENV=ALL
 export PATH="$HOME/columba/scratch/ws8/venv/bin:$PATH"
 export PYTHONPATH="$HOME/columba/scratch/ws8/round3/repo/native/build/linux-aarch64:$checkout"
@@ -710,6 +1105,7 @@ tar --zstd -xf "$HOME/columba/data/{arguments.dataset_name}.tar.zst" -C "$stage"
 python -m tools.build_dataset verify-freeze "$stage/columba-test-v2" \\
     data_sources/columba-test-v2.sha256
 cp -r "$workspace/exports" "$stage/exports"
+tar --zstd -xf "$HOME/columba/data/columba-test-v2-styles.tar.zst" -C "$stage"
 for seed in 0 1 2; do
     taskset -c 0-3 {evaluation} --seed "$seed" \\
         --checkpoint "$HOME/columba/runs/{arguments.recipe}/seed$seed/weights/best.pt" \\
@@ -777,8 +1173,22 @@ def package_candidate(arguments: argparse.Namespace) -> None:
     destination = repository / "outputs/ws7/packages" / model_id
     destination.mkdir(parents=True, exist_ok=True)
     files: list[JsonValue] = []
-    for name in ("model.ncnn.param", "model.ncnn.bin", "metadata.yaml"):
+    names = ["model.ncnn.param", "model.ncnn.bin", "metadata.yaml"]
+    names.extend(
+        name
+        for name in ("calibration.json", "calibration.table", "export.json")
+        if (source / name).is_file()
+    )
+    for name in names:
         shutil.copy2(source / name, destination / name)
+        if name == "metadata.yaml":
+            import yaml
+
+            metadata = mapping(yaml.safe_load((destination / name).read_text()), "metadata")
+            columba = mapping(metadata["columba"], "columba")
+            columba["model_id"] = model_id
+            metadata["columba"] = columba
+            (destination / name).write_text(yaml.safe_dump(metadata, sort_keys=False))
         payload = (destination / name).read_bytes()
         files.append(
             {"file": name, "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
@@ -811,8 +1221,15 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         "",
         f"Provisional selection: `{decision['selected'] or 'HOLD: no arm passes every gate'}`.",
         "Final selection waits for distilled and species candidates.",
+        "Styles is a secondary measured column. Test-v2 still supplies every promotion",
+        "gate. Paired v2/v2s arms within 0.01 validation recall and 5% measured latency",
+        "use styles recall to break the tie. The 5% band treats host timing noise",
+        "as equal latency.",
         "",
         "Accuracy is measured using columba_native package-default compute on xcng.",
+        "These 16:9 deploy-size measurements decide the section-1 and false-alarm",
+        "gates. WS5 square-input leaderboard scores are context, not deployment scores.",
+        "Latency uses OMP_WAIT_POLICY=ACTIVE. PASSIVE results are retained as diagnostics.",
         "Pi 5 latency is estimated with WS4 cal-v0-published, xcng times x 1.527110713.",
         "Reaction is simulated by WS4 with 30 FPS, k2/n3, 20,000 trials, seed 42,",
         "independent hits and per-frame recall proxied by test recall at each export's",
@@ -837,9 +1254,10 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         "",
         (
             "| Arm / decode / precision / input | Val R@P90 | Test R@P90 mean +/- sd | "
-            "Test AP50 | Test operating R | Pi frame p95 ms | Reaction p95 ms | Pass |"
+            "Test AP50 | Test operating R | Styles R@P90 | Pi frame p95 ms | "
+            "Reaction p95 ms | Pass |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|---|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for arm in arms:
         lines.append(
@@ -848,6 +1266,7 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
             f"{number(arm['test_recall_std'], 'std'):.4f} | "
             f"{number(arm['test_ap50_mean'], 'AP'):.4f} | "
             f"{number(arm['test_operating_recall_mean'], 'recall'):.4f} | "
+            f"{arm['styles_recall_mean']} | "
             f"{number(arm['pi5_p95_ms'], 'latency'):.2f} | "
             f"{number(arm['reaction_p95_ms'], 'reaction'):.2f} | "
             f"{'yes' if arm['passes'] else 'no'} |"
@@ -889,7 +1308,7 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
     lines.extend(
         [
             "",
-            f"Admissible Pareto front: `{decision['pareto_front']}`.",
+            f"Admissible Pareto front: `{decision['admissible_front']}`.",
             "",
             "No measured Pi 5 result exists. The calibration factor and the mapping",
             "from still-image recall to temporal hits remain estimates and assumptions.",
@@ -903,7 +1322,7 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     commands = root.add_subparsers(dest="action", required=True)
-    for action in ("export", "evaluate"):
+    for action in ("export", "evaluate", "references"):
         sub = commands.add_parser(action)
         sub.add_argument("--checkpoint", type=Path, required=True)
         sub.add_argument("--recipe", required=True)
@@ -916,12 +1335,20 @@ def parser() -> argparse.ArgumentParser:
         sub.add_argument("--output", type=Path, required=True)
         if action == "evaluate":
             sub.add_argument("--exports", type=Path, required=True)
+            sub.add_argument("--references", type=Path)
+            sub.add_argument("--single-recipe", help="matched single-taxonomy arm for PLAN 5.4")
             sub.add_argument("--dataset", type=Path, required=True)
             sub.add_argument("--test-dataset", type=Path, required=True)
             sub.add_argument("--prefix", type=Path, required=True)
             sub.add_argument(
                 "--calibration", type=Path, default=Path("experiments/latency/calibration.json")
             )
+        if action == "references":
+            sub.add_argument("--dataset", type=Path, required=True)
+            sub.add_argument("--test-dataset", type=Path, required=True)
+            sub.add_argument("--styles-dataset", type=Path)
+            sub.add_argument("--device", default="cpu")
+            sub.add_argument("--batch", type=int, default=1)
     for action in ("predict-native", "benchmark-native"):
         sub = commands.add_parser(action)
         sub.add_argument("--model", type=Path, required=True)
@@ -941,10 +1368,37 @@ def parser() -> argparse.ArgumentParser:
     sub.add_argument("--input-hw", type=int, nargs=2, required=True)
     sub.add_argument("--taxonomy", choices=("single", "species"), default="single")
     sub.add_argument("--dataset-name", default="columba-train-v2")
+    sub.add_argument("--single-recipe")
+    sub.add_argument(
+        "--reference-data-root",
+        type=Path,
+        help="optional Mac C1 root for CPU reference precomputation",
+    )
     sub.add_argument(
         "--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11", "yolo26"]
     )
     sub.add_argument("--output", type=Path, default=Path("outputs/ws7"))
+    sub = commands.add_parser("fetch", help="fetch a completed add bundle and its C8 packages")
+    sub.add_argument("--recipe", required=True)
+    sub.add_argument("--output", type=Path, default=Path("outputs/ws7"))
+    sub = commands.add_parser("remeasure")
+    sub.add_argument("--candidates", type=Path, required=True)
+    sub.add_argument("--exports", type=Path, required=True)
+    sub.add_argument("--dataset", type=Path, required=True)
+    sub.add_argument("--prefix", type=Path, required=True)
+    sub.add_argument(
+        "--calibration", type=Path, default=Path("experiments/latency/calibration.json")
+    )
+    sub = commands.add_parser("styles")
+    sub.add_argument("--candidates", type=Path, required=True)
+    sub.add_argument("--exports", type=Path, required=True)
+    sub.add_argument("--dataset", type=Path, required=True)
+    sub.add_argument(
+        "--precisions",
+        nargs="+",
+        choices=("fp32", "fp16", "int8"),
+        default=["fp32", "fp16", "int8"],
+    )
     sub = commands.add_parser("package")
     sub.add_argument("--decision", type=Path, required=True)
     sub.add_argument("--exports", type=Path, required=True)
@@ -967,12 +1421,20 @@ def main() -> None:
         export_candidate(arguments)
     elif arguments.action == "evaluate":
         evaluate_candidate(arguments)
+    elif arguments.action == "references":
+        predict_references(arguments)
+    elif arguments.action == "styles":
+        score_styles(arguments)
+    elif arguments.action == "remeasure":
+        remeasure_latency(arguments)
     elif arguments.action == "predict-native":
         native_predictions(arguments)
     elif arguments.action == "benchmark-native":
         benchmark_native(arguments)
     elif arguments.action == "add":
         add_candidate(arguments)
+    elif arguments.action == "fetch":
+        fetch_candidate(arguments)
     elif arguments.action == "package":
         package_candidate(arguments)
     else:

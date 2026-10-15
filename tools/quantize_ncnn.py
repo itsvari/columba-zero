@@ -134,7 +134,7 @@ def quantize_package(
         for command in commands:
             subprocess.run(command, check=True)
         layers = (output / "model.ncnn.param").read_text().splitlines()[2:]
-        if not any(" 8=" in layer for layer in layers):
+        if not any(layer.startswith("Convolution") and " 8=" in layer for layer in layers):
             raise ValueError("NCNN conversion produced no int8 scale terms")
         metadata = mapping(yaml.safe_load((model / "metadata.yaml").read_text()), "metadata")
         columba = mapping(metadata["columba"], "columba")

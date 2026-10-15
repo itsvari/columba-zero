@@ -1,4 +1,4 @@
-"""Copy and verify the original model artefacts using the tracked manifest."""
+"""Copy and verify incumbent or provisional C8 artefacts using the tracked manifest."""
 
 from __future__ import annotations
 

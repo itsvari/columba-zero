@@ -8,9 +8,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.json_data import JsonValue
-from tools.evaluate_predictions import Dataset, ImageRecord
+from tools.evaluate_predictions import Dataset, ImageRecord, mapping
 from tools.quantize_ncnn import calibration_images
-from tools.select_model import accuracy_gate, parity, select_candidates
+from tools.select_model import (
+    accuracy_gate,
+    candidate_record,
+    parity,
+    select_candidates,
+    taxonomy_view,
+)
 
 BASELINE = (0.21, 0.24, 0.28)
 
@@ -101,6 +107,113 @@ class ExportSelectionTests(unittest.TestCase):
             self.assertTrue(parity(reference, exported, "int8", ["bird"])["passed"])
             exported.write_text("[]")
             self.assertFalse(parity(reference, exported, "int8", ["bird"])["passed"])
+
+    def test_species_taxonomy_view_preserves_immutable_dataset(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            dataset = Path(temporary) / "columba-test-v2"
+            dataset.mkdir()
+            configuration = dataset / "data.yaml"
+            configuration.write_text("names: [pigeon]\n")
+            original = configuration.read_bytes()
+            with taxonomy_view(dataset, "species") as aligned:
+                self.assertNotEqual(aligned, dataset)
+                self.assertIn("spotted_dove", (aligned / "data.yaml").read_text())
+                self.assertEqual(configuration.read_bytes(), original)
+            self.assertFalse(aligned.exists())
+
+    def test_candidate_requires_matching_native_accuracy_and_active_latency(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "fp16"
+            directory.mkdir()
+            reference = directory.parent / "pt"
+            reference.mkdir()
+            flags: dict[str, JsonValue] = {
+                key: True for key in ("use_fp16_packed", "use_fp16_storage", "use_fp16_arithmetic")
+            }
+            reports: dict[str, JsonValue] = {
+                "candidate": {
+                    "model_id": "arm/seed0/fp16",
+                    "precision": "fp16",
+                    "input_hw": [384, 640],
+                },
+                "metrics_val": {
+                    "split": "val",
+                    "input_hw": [384, 640],
+                    "pigeon": {},
+                    "operating_threshold": {"value": 0.5, "source": "selected"},
+                },
+                "metrics_test": {
+                    "split": "test",
+                    "dataset": "columba-test-v2",
+                    "input_hw": [384, 640],
+                    "pigeon": {},
+                    "empty_false_alarm_rate": 0.0,
+                    "confuser_false_alarm_rate": 0.0,
+                    "operating_threshold": {"value": 0.5, "source": "metrics_val.json"},
+                },
+                "latency": {
+                    "backend": "columba_native",
+                    "input_hw": [384, 640],
+                    "model_id": "arm/seed0/fp16",
+                    "format": "ncnn-fp16",
+                    "compute_flags": flags,
+                    "omp_wait_policy": "ACTIVE",
+                    "estimated_pi5": {"end_to_end_p95_ms": 50.0},
+                },
+                "reaction": {"reaction_ms": {"p95": 300.0}},
+                "parity": {"passed": True, "failures": 0},
+                "accuracy_gate": {"passed": True, "deltas": {}},
+                "predictions_test.meta": {
+                    "framework": "columba_native",
+                    "host": "xcng0",
+                    "input_hw": [384, 640],
+                    "model_id": "arm/seed0/fp16",
+                    "format": "ncnn-fp16",
+                    "compute_flags": flags,
+                    "ncnn_compute": "runtime_default",
+                },
+            }
+            for name, report in reports.items():
+                (directory / f"{name}.json").write_text(json.dumps(report))
+            (reference / "predictions_test.meta.json").write_text(
+                json.dumps({"host": "vexcalibur", "device": "cpu"})
+            )
+            self.assertTrue(candidate_record(directory)["accuracy_gate_passed"])
+            invalid = mapping(reports["latency"], "latency")
+            invalid["omp_wait_policy"] = "PASSIVE"
+            (directory / "latency.json").write_text(json.dumps(invalid))
+            with self.assertRaisesRegex(ValueError, "remeasure latency"):
+                candidate_record(directory)
+            invalid["omp_wait_policy"] = "ACTIVE"
+            invalid["input_hw"] = [640, 640]
+            (directory / "latency.json").write_text(json.dumps(invalid))
+            with self.assertRaisesRegex(ValueError, "mismatched candidate input"):
+                candidate_record(directory)
+
+    def test_styles_breaks_matched_data_ties_without_changing_test_gates(self) -> None:
+        records = [
+            candidate(recipe, seed, recall)
+            for recipe, recall in (("yolo26n-v2-800", 0.802), ("yolo26n-v2s-800", 0.800))
+            for seed in range(3)
+        ]
+        for record in records:
+            record["styles"] = {"recall_at_p90": 0.7 if "v2s" in str(record["recipe"]) else 0.6}
+        self.assertTrue(str(self.selection(records)["selected"]).startswith("yolo26n-v2s-800/"))
+        for record in records[3:]:
+            record["confuser_far"] = 0.06
+        self.assertTrue(str(self.selection(records)["selected"]).startswith("yolo26n-v2-800/"))
+
+    def test_species_requires_matched_single_and_pigeon_accuracy_gate(self) -> None:
+        single = [candidate("single", seed, 0.79) for seed in range(3)]
+        species = [candidate("species", seed, 0.81) for seed in range(3)]
+        for record in species:
+            record["taxonomy"] = "species"
+            record["single_recipe"] = "single"
+        self.assertTrue(str(self.selection(single + species)["selected"]).startswith("species/"))
+        self.assertIsNone(self.selection(species)["selected"])
+        for record in species:
+            record["test"] = {"recall_at_p90": 0.76, "ap50": 0.85, "recall_at_threshold": 0.75}
+        self.assertTrue(str(self.selection(single + species)["selected"]).startswith("single/"))
 
     def test_calibration_is_deterministic_and_rejects_test_content(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
