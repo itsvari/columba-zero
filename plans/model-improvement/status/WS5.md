@@ -55,42 +55,35 @@
 
 ## In progress
 
-Check-in 15 Oct evening (main 8aeef6c merged).
+Check-in 16 Oct (main 88eabb0 merged).
 
-- **Round-2 plain: complete** (18 of 18) and fetched.
-  `experiments/reports/WS5-round2.md` has the full table.
-  - Every arm beats `baseline-repro-p50`.
-  - yolo26n-*-800 lead (test R@P90 0.78).
-  - yolo11n-v2s-800 sits at the 0.05 confuser gate, with 2 of 3 seeds over
-    it.
-- **Distill 640** (mechanical, transition 949889, yolo26x teacher):
-  - s1 DONE (950746): val R@P90 0.809 (best of round 2) but test 0.722, and
-    test P at the val threshold is 0.892. AP50 equals plain. No conclusion
-    from 1 seed.
-  - s0 (950745, h100-47) and s2 (950747, xgpj0) still running.
-- **Distill 800**, added by coordinator decision:
-  `training/recipes/yolo26n-v2s-800-round2-distill.yaml` (commit fd026c4).
-  - It is plain-800 plus teacher/`dis`, with `batch_override: 64` to match
-    plain-800's batch.
-  - Arrays: **951220** (s1, h100-96, pending) and **951222** (s0 running on
-    xgpi13 h100-47, s2 queued behind it with throttle 1).
-  - ETA (estimated): s1 ≈ 3–4 h after start; s0 and s2 ≈ 10–12 h one after
-    the other.
-- **Round 3 (species gate) started early, by coordinator decision.** 6 of 8
-  GPU slots were idle and the single arm had 3 DONE seeds.
-  - Recipe: `training/recipes/yolo26n-v2s-species-800-r3.yaml` (identical
-    to `yolo26n-v2s-800-round2-plain` except species dataset/taxonomy and
-    `batch_override: 16`, which keeps the effective batch at 64).
-  - Array **950409**, Titan V (xgpd4/5/6), throttle 3. All 3 tasks are
-    past epoch 2 at batch 16, ≈ 160 s/epoch (measured), and run.json shows
-    `test_taxonomy_aligned`. The single arm stopped at epochs 106–147, so
-    DONE in ≈ 5–7 h; worst case at 300 epochs ≈ 13 h.
-  - Runner change: `cluster.staging.align_test_taxonomy` renames the staged
-    `columba-test-v2` names to species, so an 11-class model can be
-    evaluated. Pigeon metrics and FARs were checked identical.
-  - Latency side of the gate passes: **+1.9%** estimated Pi p95 at 448×800
-    for nc=11 vs nc=1 (xcng0 job 950426).
-  - The accuracy/FAR decision comes when the seeds finish.
+- **Round 3 (species gate, PLAN 5.4): decided at training size, provisional
+  until WS7.** Full table in `experiments/reports/WS5-round3.md`; rows are
+  fetched to the leaderboard.
+
+  | Clause | Species vs single, 3 seeds each |
+  |---|---|
+  | Recall | **pass**: test R@P90 0.791 ± 0.013 vs 0.780 ± 0.024; val 0.818 ± 0.004 vs 0.794 ± 0.006 |
+  | Latency | **pass**: +1.9% est. Pi p95 at 448×800 |
+  | False alarms | **fail** (strict, test): empty FAR 0.008 (1 street scene on every seed) vs 0.000; confuser 0.041 vs 0.032. No worse on val. |
+
+  - **Decision:** do not ship species. Ship the single-class model, trained
+    with the species images as unlabelled negatives (v2s single).
+  - WS7's deploy-size gate (`select_model.py enforce_species_gate`) makes
+    the final call. The seeds for WS7, chosen on val:
+    `yolo26n-v2s-species-800-r3/seed2` and its single reference
+    `yolo26n-v2s-800-round2-plain/seed1`.
+  - **Proposed, not started:** a single-taxonomy control at
+    `batch_override: 16` on Titan V (3 seeds, ≈ 17 nv GPU-h). It would
+    separate the batch/GPU confound from the taxonomy effect.
+- **Distill-640 complete** (`WS5-round2.md`):
+  - val R@P90 0.807 ± 0.009 vs plain 0.788 ± 0.010, but test 0.733 ± 0.013
+    vs 0.743 ± 0.003.
+  - Test precision at the val threshold is < 0.90 on every seed.
+  - Confuser FAR 0.050 (s2 breaches).
+  - No improvement on test.
+- **Distill-800** running (951222 s0/s2 on h100-47, 951220 s1 on A100-40).
+  A placeholder is in `WS5-round2.md`.
 
 ## Blockers and requests
 

@@ -1,11 +1,12 @@
 # WS5 round 2: interim report
 
-Status on 15 Oct 2026, evening. This is **not** WS5-final.
+Status on 16 Oct 2026. This is **not** WS5-final.
 - **Plain arms:** complete, 18 of 18 runs DONE.
-- **Distillation:** in progress.
-  - 640: generated mechanically by transition 949889 (yolo26x teacher). 1 of
-    3 seeds DONE.
-  - 800: added by coordinator decision on 15 Oct evening. 0 of 3 seeds DONE.
+- **Distillation:**
+  - 640: generated mechanically by transition 949889 (yolo26x teacher).
+    3 of 3 seeds DONE; compared with plain below.
+  - 800: added by coordinator decision on 15 Oct evening. Running; a
+    placeholder is below.
 
 Promotion is judged at the deploy size, on native exports (PLAN section 1,
 15 Oct decision; WS7). The training-size numbers here are context.
@@ -130,25 +131,51 @@ patience 50, effective batch 64.
 
 | Arm | Seeds | val R@P90 | test R@P90 | test small R@P90 | test AP50 | test P / R @ val thr | empty FAR | confuser FAR (FAs) |
 |---|---|---|---|---|---|---|---|---|
-| yolo26n-v2s-640-round2-distill | 1/3: s1 DONE (950746, H100 NVL, 106 ep); s0 running (950745, h100-47, epoch 67); s2 running (950747, xgpj0, epoch 29) | 0.809 | 0.722 | 0.494 | 0.835 | 0.892 / 0.725 | 0.000 | 0.041 (3) |
-| *plain yolo26n-v2s-640 (3 seeds)* | 3/3 | 0.788 ± 0.010 | 0.743 ± 0.003 | 0.534 ± 0.010 | 0.835 ± 0.006 | 0.912 / 0.732 | 0.003 | 0.041 ± 0.014 |
-| yolo26n-v2s-800-round2-distill | 0/3: s1 951220 (h100-96); s0, s2 951222 (h100-47, throttle 1, sequential) | – | – | – | – | – | – | – |
-| *plain yolo26n-v2s-800 (3 seeds)* | 3/3 | 0.794 ± 0.006 | 0.780 ± 0.024 | 0.537 ± 0.051 | 0.860 ± 0.017 | 0.924 / 0.748 | 0.000 | 0.032 ± 0.016 |
+| yolo26n-v2s-640-round2-distill | 3/3 (950745 h100-47, 950746 H100 NVL, 950747 A100-80) | 0.807 ± 0.009 | 0.733 ± 0.013 | 0.517 ± 0.026 | 0.845 ± 0.009 | 0.890 / 0.743 | 0.000 | 0.050 ± 0.016 (3, 3, **5**) |
+| *plain yolo26n-v2s-640* | 3/3 | 0.788 ± 0.010 | 0.743 ± 0.003 | 0.534 ± 0.010 | 0.835 ± 0.006 | 0.912 / 0.732 | 0.003 | 0.041 ± 0.014 (**4**, 2, 3) |
+| yolo26n-v2s-800-round2-distill | running: s0, s2 951222 (h100-47); s1 951220 (A100-40) | *placeholder: pending* | | | | | | |
+| *plain yolo26n-v2s-800* | 3/3 | 0.794 ± 0.006 | 0.780 ± 0.024 | 0.537 ± 0.051 | 0.860 ± 0.017 | 0.924 / 0.748 | 0.000 | 0.032 ± 0.016 (3, 1, 3) |
 
-**First 640 distill seed** (measured, 1 seed; no conclusion yet):
-- **Val:** R@P90 0.809, the highest of any round-2 run and +0.021 over the
-  plain-640 mean (about 2 sd).
-- **Test:** R@P90 0.722, −0.021 vs plain. Small recall 0.494 vs 0.534, also
-  lower. AP50 is identical (0.835). Confuser FAR is the same (3 false
-  alarms).
-- **Why the test drop:** precision at the val threshold falls to 0.892 on
-  test, below 0.90. The val threshold (0.517) is less calibrated for test
-  than plain's. Per PLAN section 1, when P < 0.90 on test, rank by recall at
-  the val threshold. That is 0.725 vs plain 0.732 ± 0.006, a tie within
-  about 1 sd.
-- **Training:** batch 64; 61 s/epoch on H100 NVL, 1 h 51 m total. The
-  distillation loss fell from ≈ 17 at epoch 1 to ≈ 1.4 at epoch 106. Peak
-  GPU memory 13.1 GB.
+### Distill-640 vs plain-640 (3 seeds each, measured, training size)
+
+| Metric | Distill | Plain | Δ |
+|---|---|---|---:|
+| val R@P90 | 0.807 ± 0.009 (0.815, 0.809, 0.797) | 0.788 ± 0.010 | **+0.019** |
+| test R@P90 | 0.733 ± 0.013 (0.748, 0.722, 0.728) | 0.743 ± 0.003 | −0.010 |
+| test P at val threshold | **0.890 ± 0.004** (all seeds < 0.90) | 0.912 ± 0.008 | −0.022 |
+| test R at val threshold | 0.743 ± 0.016 | 0.732 ± 0.006 | +0.011 |
+| test AP50 | 0.845 ± 0.009 | 0.835 ± 0.006 | +0.010 |
+| test small R@P90 | 0.517 ± 0.026 | 0.534 ± 0.010 | −0.017 |
+| test empty FAR | 0.000 | 0.003 | −0.003 |
+| test confuser FAR (FAs) | 0.050 (3, 3, 5) | 0.041 (4, 2, 3) | +0.009 |
+
+**Reading:**
+- Distillation at 640 raises val recall by about 2 sd, but the gain does
+  not reach test.
+- Test R@P90 is −0.010, within the plain sd at the section-1 rule's
+  granularity: Δ must exceed max(sd) = 0.013, so no improvement.
+- Test AP50 and recall at the val threshold are about +0.01, but
+  precision at the val threshold drops below 0.90 on every seed. The
+  distilled model's val-chosen threshold transfers worse to test.
+- Confuser false alarms are equal or one image worse, and s2 breaches
+  the gate (5).
+
+**Verdict:** at 640, distillation is not a measurable improvement over
+plain on test. Val ranking alone would have picked it (val 0.807 vs 0.788),
+which is exactly why promotion uses test and WS7's deploy-size scoring.
+By the val seed rule, the distill-640 seed WS7 would export is s0 (val
+0.815; val FARs 0.000 / 0.014).
+
+Training cost (measured): 61 s/epoch on H100 NVL, 99 s on the h100-47 MIG
+slice, 107 s on A100-80 (xgpj0, 3-hour slices), all at batch 64; 106–157
+epochs. Plain-640 is ≈ 2× faster per epoch on comparable GPUs.
+
+### Distill-800
+
+*Placeholder: fill in when 951220/951222 finish (≈ 5–7 h each, per the
+coordinator 16 Oct). Same table and the same section-1 comparison against
+plain-800. Measured so far: batch 64, 20.3 GB peak, 151 s/epoch on
+h100-47.*
 
 **800 distill arm** (`training/recipes/yolo26n-v2s-800-round2-distill.yaml`,
 commit fd026c4):
@@ -225,6 +252,7 @@ comparison arm already has 3 completed seeds.
   - The difference is +0.9 ms, or +1.9% at p95 (+1.2% at end-to-end p50),
     well within 5%.
   - C7 files: `experiments/latency/ws5-species/`.
-- The accuracy and false-alarm parts of the gate are decided when the 3
-  species seeds finish (next check-in). No species teacher will be
-  trained.
+- **Result:** see `experiments/reports/WS5-round3.md`. Species passes the
+  recall and latency clauses but fails the strict test false-alarm clause
+  by 1–2 images, so it is not shipped at training size (provisional; WS7
+  decides at deploy size). No species teacher was trained.
