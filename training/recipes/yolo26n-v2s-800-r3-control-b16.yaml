@@ -1,0 +1,42 @@
+id: yolo26n-v2s-800-r3-control-b16
+framework: ultralytics
+base_model: yolo26n.pt
+dataset: columba-train-v2s
+taxonomy: single
+seeds:
+- 0
+- 1
+- 2
+lane: nv
+gpu_constraint: null
+est_gpu_hours: 7.3
+teacher: null
+train:
+  epochs: 300
+  patience: 50
+  imgsz: 800
+  nbs: 64
+  cos_lr: true
+  close_mosaic: 15
+  cache: ram
+  workers: 6
+  save_period: 5
+  plots: false
+  optimizer: MuSGD
+  lr0: 0.01
+  momentum: 0.9
+  warmup_bias_lr: 0.0
+deploy_sizes:
+- - 352
+  - 608
+- - 384
+  - 640
+- - 448
+  - 800
+notes: 'WS5 round-3 control (coordinator-approved 16 Oct): identical to yolo26n-v2s-800-round2-plain
+  except batch_override 16 (accumulate 4, effective batch 64), pinned to Titan V at submission,
+  to match yolo26n-v2s-species-800-r3 in everything but taxonomy. Separates the batch/BatchNorm
+  and GPU confound from the taxonomy effect in the PLAN 5.4 comparison. Rule fixed before
+  results: if the 3-seed mean test R@P90 is within the larger seed sd of species, the species
+  recall gain is attributed to batch and this arm becomes a WS7 candidate.'
+batch_override: 16
