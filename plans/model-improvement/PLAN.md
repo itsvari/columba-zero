@@ -86,6 +86,27 @@ leaderboard as `incumbent-contaminated` diagnostics. The false-alarm gates
 still apply as written; the deployed v1-2 fails them badly (measured empty FAR
 0.11, confuser FAR 0.56 at 640, all on unseen images).
 
+**Decision (coordinator, 15 Oct 2026, from `experiments/reports/WS7-provisional.md`):**
+how the gates apply to exported candidates.
+
+- Accuracy and false-alarm numbers for promotion are measured on the
+  deployed path (`columba_native` on xcng) at the 16:9 deploy size, with the
+  operating threshold re-selected on val for each export. Square-input
+  training-size scores are context only.
+- Arms rank by 3-seed mean val `pigeon_recall_at_p90`. The section-1 accuracy
+  rule uses the arm's 3-seed test mean. The **shipped seed** is chosen on val
+  only: the highest val R@P90 among seeds whose val false-alarm rates pass.
+  The false-alarm, latency, reaction and parity gates then apply to that
+  seed's export. If it fails a test gate, the arm is held; no other seed is
+  tried on the strength of test results.
+- Export parity, fp16: fp16 arithmetic changes a few borderline detections
+  (WS8). fp16 passes parity when the fp32 export of the same graph passes
+  `compare_exports.py` strictly **and** fp16 loses at most 0.01 of val and
+  test R@P90, AP50 and operating recall against the same-head rectangular
+  PyTorch model. int8 uses the same accuracy tolerance.
+- v2 vs v2s ties (within 0.01 val R@P90 and 5% latency) break on
+  `columba-test-v2-styles` recall.
+
 Known test-set limits (to fix with WS10 site footage, `columba-test-site-v1`):
 test-v2 positives come almost entirely from one Roboflow source, and 196 of 212
 small boxes come from one depot session.
