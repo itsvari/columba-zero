@@ -697,6 +697,11 @@ configuration docs are updated.
    periods). Label ≈ 300 frames. Add a real-footage test split (`columba-test-site-v1`).
    Run fine-tuning (a WS5 round 4 recipe) and re-select (WS7).
 5. Set the final threshold and k/n from site footage.
+6. OpenMP wait policy: time the full pipeline on the Pi with
+   `OMP_WAIT_POLICY=ACTIVE` and `PASSIVE` (WS7 measured PASSIVE at more than
+   twice ACTIVE's NCNN time on xcng). ACTIVE spins idle threads, which may slow
+   the capture, tracking and render threads on 4 cores. Set the winner in the
+   launch environment before NCNN loads, and record it (C7 `omp_wait_policy`).
 
 ## 8. Coordinator playbook
 
