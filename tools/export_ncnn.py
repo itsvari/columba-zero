@@ -64,7 +64,12 @@ def export_package(
         model = cast(ExportModel, YOLO(str(copied), task="detect"))
         if decode == "yolo26":
             head = model.model.model[-1]
-            if head.one2one_cv2 is None or head.one2one_cv3 is None:
+            if (
+                not hasattr(head, "one2one_cv2")
+                or not hasattr(head, "one2one_cv3")
+                or head.one2one_cv2 is None
+                or head.one2one_cv3 is None
+            ):
                 raise ValueError("checkpoint has no YOLO26 one-to-one head")
             head.cv2, head.cv3 = head.one2one_cv2, head.one2one_cv3
             head.one2one_cv2, head.one2one_cv3 = None, None

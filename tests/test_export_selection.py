@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ from unittest.mock import patch
 
 from app.json_data import JsonValue
 from tools.evaluate_predictions import Dataset, ImageRecord, mapping
+from tools.prepare_models import prepare_models
 from tools.quantize_ncnn import calibration_images
 from tools.select_model import (
     accuracy_gate,
@@ -107,6 +109,51 @@ class ExportSelectionTests(unittest.TestCase):
             self.assertTrue(parity(reference, exported, "int8", ["bird"])["passed"])
             exported.write_text("[]")
             self.assertFalse(parity(reference, exported, "int8", ["bird"])["passed"])
+
+    def test_provisional_manifest_verifies_c8_without_switching_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            source = repository / "candidate"
+            source.mkdir()
+            records = []
+            for name in ("model.ncnn.param", "model.ncnn.bin", "metadata.yaml"):
+                payload = name.encode()
+                (source / name).write_bytes(payload)
+                records.append(
+                    {
+                        "file": name,
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                        "bytes": len(payload),
+                    }
+                )
+            manifest = repository / "deploy/model_manifest.json"
+            manifest.parent.mkdir()
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "source": "incumbent",
+                        "runtime_directory": "models/incumbent",
+                        "files": [],
+                        "provisional_models": [
+                            {
+                                "model_id": "candidate-provisional",
+                                "provisional": True,
+                                "source": "candidate",
+                                "runtime_directory": "models/candidate",
+                                "files": records,
+                            }
+                        ],
+                    }
+                )
+            )
+            prepared = prepare_models(repository, "candidate-provisional")
+            self.assertEqual((prepared / "model.ncnn.bin").read_bytes(), b"model.ncnn.bin")
+            self.assertFalse((repository / "models/incumbent").exists())
+            (source / "model.ncnn.bin").write_bytes(b"corrupt")
+            with self.assertRaisesRegex(SystemExit, "source checksum mismatch"):
+                prepare_models(repository, "candidate-provisional")
+            with self.assertRaisesRegex(SystemExit, "expected one provisional model entry"):
+                prepare_models(repository, "unknown")
 
     def test_species_taxonomy_view_preserves_immutable_dataset(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

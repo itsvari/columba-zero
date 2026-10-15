@@ -23,6 +23,7 @@ import time
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -49,6 +50,7 @@ THREAD_COUNT = 4
 TIMED_ITERATIONS = 200
 WARMUP_ITERATIONS = 20
 REQUIRED_SEEDS = frozenset({0, 1, 2})
+RSYNC_REMOTE_SHELL = "ssh -o BatchMode=yes -o ConnectTimeout=20"
 
 
 def affinity_cores() -> list[int]:
@@ -62,7 +64,10 @@ def taxonomy_view(dataset: Path, taxonomy: str) -> Iterator[Path]:
     if taxonomy == "single":
         yield dataset
         return
-    with tempfile.TemporaryDirectory(prefix="cz-taxonomy-") as temporary:
+    job_id = os.environ.get("SLURM_JOB_ID")
+    scratch = Path(f"/tmp/cz-{job_id}") if job_id else Path("outputs/ws7/tmp").resolve()
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="cz-taxonomy-", dir=scratch) as temporary:
         view = Path(temporary) / dataset.name
         view.mkdir()
         for child in dataset.iterdir():
@@ -75,9 +80,22 @@ def taxonomy_view(dataset: Path, taxonomy: str) -> Iterator[Path]:
         yield view
 
 
+def complete_sidecars(directory: Path) -> None:
+    for path in directory.glob("predictions_*.meta.json"):
+        metadata = read_report(path)
+        if "created_at" in metadata:
+            continue
+        metadata["created_at"] = datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat()
+        metadata["created_at_source"] = "original prediction sidecar modification time"
+        write_json(path, metadata)
+
+
 def write_json(path: Path, value: JsonValue) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as temporary:
+        temporary.write(json.dumps(value, indent=2, allow_nan=False) + "\n")
+        temporary_path = Path(temporary.name)
+    temporary_path.replace(path)
 
 
 def command(*arguments: str) -> None:
@@ -150,6 +168,7 @@ def native_predictions(arguments: argparse.Namespace) -> None:
         {
             "model_id": arguments.model_id,
             "framework": "columba_native",
+            "created_at": datetime.now(UTC).isoformat(),
             "format": settings.format,
             "input_hw": list(settings.input_hw),
             "decode": settings.decode,
@@ -265,6 +284,8 @@ def accuracy_gate(reference: Path, actual: Path) -> dict[str, JsonValue]:
 
 
 def benchmark_native(arguments: argparse.Namespace) -> None:
+    if platform.machine() != "aarch64" or platform.node().split(".")[0] not in ("xcng0", "xcng1"):
+        raise ValueError("native C7 gate requires an allocated xcng host")
     import columba_native
     import cv2
 
@@ -272,6 +293,7 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
 
     cv2.setNumThreads(1)
     detector = columba_native.Detector(str(arguments.model.resolve()), THREAD_COUNT)
+    confidence = min(arguments.confidence, 1.0)
     dataset = load_dataset(arguments.dataset, "val")
     frames = [cv2.imread(str(image.path)) for image in dataset.images[:WARMUP_ITERATIONS]]
     if any(frame is None for frame in frames):
@@ -283,9 +305,7 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
     wall_ms: list[float] = []
     for index in range(WARMUP_ITERATIONS + TIMED_ITERATIONS):
         started_s = time.perf_counter()
-        rows, timings = detector.detect_with_timings(
-            frames[index % len(frames)], arguments.confidence
-        )
+        rows, timings = detector.detect_with_timings(frames[index % len(frames)], confidence)
         bool(len(rows))
         elapsed_ms = (time.perf_counter() - started_s) * 1000
         if index < WARMUP_ITERATIONS:
@@ -317,7 +337,8 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
         "compute": detector.compute,
         "compute_flags": detector.compute_flags,
         "camera_hw": [480, 640],
-        "confidence": arguments.confidence,
+        "confidence": confidence,
+        "requested_operating_threshold": arguments.confidence,
         "weights_sha256": fingerprint(arguments.model / "model.ncnn.bin"),
         "parameters_sha256": fingerprint(arguments.model / "model.ncnn.param"),
         "int8_calibration": read_report(arguments.model / "calibration.json")
@@ -329,6 +350,27 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
         "frame_source": "first 20 validation photographs resized to camera shape, cycling",
     }
     write_json(arguments.out, apply_calibration(report, read_report(arguments.calibration)))
+
+
+def reaction_for_recall(samples_ms: list[float], recall: float) -> dict[str, JsonValue]:
+    if recall <= 0:
+        return {
+            "label": "simulated",
+            "reaction_ms": {"p50": None, "p95": None},
+            "status": "zero observed recall cannot confirm",
+            "recall": recall,
+        }
+    try:
+        return simulate_reaction(samples_ms, ReactionSettings(recall=recall))
+    except ValueError as error:
+        if "confirmation did not finish" not in str(error):
+            raise
+        return {
+            "label": "simulated",
+            "reaction_ms": {"p50": None, "p95": None},
+            "status": str(error),
+            "recall": recall,
+        }
 
 
 def evaluate_candidate(arguments: argparse.Namespace) -> None:
@@ -449,10 +491,7 @@ def evaluate_aligned_candidate(arguments: argparse.Namespace) -> None:
             samples, distribution = processing_samples(
                 latency, calibration_factor(read_report(arguments.calibration), "xcng-n1")
             )
-            reaction = simulate_reaction(
-                samples,
-                ReactionSettings(recall=max(0.001, number(test["recall_at_threshold"], "recall"))),
-            )
+            reaction = reaction_for_recall(samples, number(test["recall_at_threshold"], "recall"))
             reaction.update(
                 {
                     "processing_host": "estimated Pi5",
@@ -529,7 +568,7 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
         raise ValueError(f"{directory}: primary gates require frozen columba-test-v2")
     return {
         **descriptor,
-        "directory": str(directory),
+        "directory": os.path.relpath(directory, Path.cwd()),
         "val": validation["pigeon"],
         "test": test["pigeon"],
         "empty_far": test["empty_false_alarm_rate"],
@@ -724,7 +763,9 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
                 "pi5_p95_ms": max(number(seed["pi5_p95_ms"], "latency") for seed in seeds),
                 "reaction_p95_ms": max(
                     number(seed["reaction_p95_ms"], "reaction") for seed in seeds
-                ),
+                )
+                if all(seed["reaction_p95_ms"] is not None for seed in seeds)
+                else None,
                 "passes": not reasons,
                 "failures": [str(reason) for reason in reasons],
                 "representative": representative["directory"],
@@ -735,6 +776,16 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
     eligible = [arm for arm in arms if arm["passes"]]
     front = pareto_front(eligible)
     selected = styles_tie_break(eligible)
+    comparable = [
+        arm
+        for arm in arms
+        if all(
+            mapping(seed, "seed")["parity_passed"] is True
+            and mapping(seed, "seed")["accuracy_gate_passed"] is True
+            for seed in cast(list[JsonValue], arm["seeds"])
+        )
+    ]
+    diagnostic = styles_tie_break(comparable)
     return {
         "provisional": True,
         "baseline": {
@@ -755,6 +806,8 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
         ),
         "selected": selected["id"] if selected else None,
         "package_candidate": selected["representative"] if selected else None,
+        "diagnostic_candidate": diagnostic["representative"] if diagnostic else None,
+        "diagnostic_failures": diagnostic["failures"] if diagnostic else [],
         "awaiting": ["round2-distill", "round3-species"],
     }
 
@@ -772,6 +825,9 @@ def remeasure_latency(arguments: argparse.Namespace) -> None:
             / str(descriptor["decode"])
             / f"{descriptor['precision']}_ncnn_model"
         )
+        if not (package / "model.ncnn.bin").is_file():
+            continue
+        complete_sidecars(directory)
         current = read_report(directory / "latency.json")
         if current.get("omp_wait_policy") == "ACTIVE":
             continue
@@ -802,10 +858,7 @@ def remeasure_latency(arguments: argparse.Namespace) -> None:
         samples, distribution = processing_samples(
             latency, calibration_factor(read_report(arguments.calibration), "xcng-n1")
         )
-        reaction = simulate_reaction(
-            samples,
-            ReactionSettings(recall=max(0.001, number(test["recall_at_threshold"], "recall"))),
-        )
+        reaction = reaction_for_recall(samples, number(test["recall_at_threshold"], "recall"))
         reaction.update(
             {
                 "processing_host": "estimated Pi5",
@@ -832,7 +885,7 @@ def remeasure_latency(arguments: argparse.Namespace) -> None:
                 "--format",
                 str(descriptor["precision"]),
                 "--confidence",
-                str(threshold["value"]),
+                str(min(number(threshold["value"], "threshold"), 1.0)),
                 "--output",
                 str(directory / "ws4-bridge"),
             ]
@@ -846,6 +899,18 @@ def score_styles(arguments: argparse.Namespace) -> None:
     for descriptor_path in sorted(arguments.candidates.rglob("candidate.json")):
         descriptor = read_report(descriptor_path)
         if descriptor["precision"] not in arguments.precisions:
+            continue
+        if (descriptor_path.parent / "metrics_styles.json").exists():
+            complete_sidecars(descriptor_path.parent)
+            continue
+        package = (
+            arguments.exports
+            / str(descriptor["recipe"])
+            / f"seed{descriptor['seed']}"
+            / str(descriptor["decode"])
+            / f"{descriptor['precision']}_ncnn_model"
+        )
+        if not (package / "model.ncnn.bin").is_file():
             continue
         with taxonomy_view(arguments.dataset, str(descriptor["taxonomy"])) as aligned:
             score_export_styles(descriptor_path.parent, descriptor, aligned, arguments.exports)
@@ -992,9 +1057,18 @@ def add_candidate(arguments: argparse.Namespace) -> None:
     workspace = root / "scratch/ws7/additions" / arguments.recipe
     checkpoint_root = output / "checkpoints" / arguments.recipe
     checkpoint_root.mkdir(parents=True, exist_ok=True)
+    for seed in sorted(REQUIRED_SEEDS):
+        try:
+            remote(["test", "-f", str(root / "runs" / arguments.recipe / f"seed{seed}" / "DONE")])
+        except RuntimeError as error:
+            raise ValueError(
+                f"{arguments.recipe}/seed{seed} is not DONE; wait for its final checkpoint"
+            ) from error
     subprocess.run(
         [
             "rsync",
+            "-e",
+            RSYNC_REMOTE_SHELL,
             "-a",
             "--include=*/",
             "--include=best.pt",
@@ -1039,6 +1113,8 @@ def add_candidate(arguments: argparse.Namespace) -> None:
     subprocess.run(
         [
             "rsync",
+            "-e",
+            RSYNC_REMOTE_SHELL,
             "-a",
             str(output / "exports" / arguments.recipe),
             f"columba-cluster:{workspace}/exports/",
@@ -1158,6 +1234,9 @@ def package_candidate(arguments: argparse.Namespace) -> None:
 
     decision = read_report(arguments.decision)
     selected = decision.get("package_candidate")
+    eligible = isinstance(selected, str)
+    if not eligible and arguments.diagnostic:
+        selected = decision.get("diagnostic_candidate")
     if not isinstance(selected, str):
         raise ValueError("selection is HOLD; no candidate passed all gates")
     descriptor = read_report(Path(selected) / "candidate.json")
@@ -1198,7 +1277,9 @@ def package_candidate(arguments: argparse.Namespace) -> None:
     entry: dict[str, JsonValue] = {
         "model_id": model_id,
         "provisional": True,
-        "promotion_status": "dry-run-only",
+        "promotion_status": "dry-run-only" if eligible else "blocked-by-gates",
+        "eligible": eligible,
+        "failed_gates": [] if eligible else decision["diagnostic_failures"],
         "selection": str(arguments.decision),
         "source": str(destination.relative_to(repository)),
         "runtime_directory": f"models/{model_id}",
@@ -1401,6 +1482,11 @@ def parser() -> argparse.ArgumentParser:
     )
     sub = commands.add_parser("package")
     sub.add_argument("--decision", type=Path, required=True)
+    sub.add_argument(
+        "--diagnostic",
+        action="store_true",
+        help="package a blocked candidate for hash-check dry run while selection stays HOLD",
+    )
     sub.add_argument("--exports", type=Path, required=True)
     sub = commands.add_parser("select")
     sub.add_argument(
