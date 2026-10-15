@@ -31,6 +31,8 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.json_data import JsonValue
+from app.models import Frame
+from native.verify_native import NativeModel
 from tools.bench_ncnn import apply_calibration, calibration_factor, read_report, summary
 from tools.compare_exports import ExportPrediction, match_predictions
 from tools.evaluate_predictions import evaluate, load_dataset, mapping, number, sidecar_path
@@ -51,6 +53,12 @@ TIMED_ITERATIONS = 200
 WARMUP_ITERATIONS = 20
 REQUIRED_SEEDS = frozenset({0, 1, 2})
 RSYNC_REMOTE_SHELL = "ssh -o BatchMode=yes -o ConnectTimeout=20"
+CAMERA_INPUT_HW_PX = (480, 640)
+BENCHMARK_FRAME_COUNT = 20
+VALIDATION_TIE_RECALL_FRACTION = 0.01
+LATENCY_TIE_RATIO = 1.05
+MAXIMUM_SPECIES_RECALL_DROP = 0.01
+SPECIES_LATENCY_RATIO = 1.05
 
 
 def affinity_cores() -> list[int]:
@@ -142,12 +150,14 @@ def native_predictions(arguments: argparse.Namespace) -> None:
     cv2.setNumThreads(1)
     settings = model_settings(arguments.model, None, None)
     dataset = load_dataset(arguments.dataset, arguments.split)
-    detector = columba_native.Detector(str(arguments.model.resolve()), THREAD_COUNT)
+    detector = cast(
+        NativeModel, columba_native.Detector(str(arguments.model.resolve()), THREAD_COUNT)
+    )
     if tuple(detector.names[index] for index in range(len(detector.names))) != dataset.names:
         raise ValueError("native model names differ from dataset")
     predictions: list[JsonValue] = []
     for image in dataset.images:
-        frame = cv2.imread(str(image.path))
+        frame = cast(Frame | None, cv2.imread(str(image.path)))
         if frame is None:
             raise ValueError(f"cannot read {image.path}")
         for row in detector.detect(frame, CONFIDENCE_FLOOR):
@@ -182,7 +192,7 @@ def native_predictions(arguments: argparse.Namespace) -> None:
             "label": "measured",
             "ncnn_compute": "runtime_default",
             "effective_compute": detector.compute,
-            "compute_flags": detector.compute_flags,
+            "compute_flags": {key: bool(value) for key, value in detector.compute_flags.items()},
             "threads": THREAD_COUNT,
             "pinned_cores": [int(core) for core in affinity_cores()],
         },
@@ -292,13 +302,22 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
     from tools.export_ncnn import fingerprint
 
     cv2.setNumThreads(1)
-    detector = columba_native.Detector(str(arguments.model.resolve()), THREAD_COUNT)
+    detector = cast(
+        NativeModel, columba_native.Detector(str(arguments.model.resolve()), THREAD_COUNT)
+    )
     confidence = min(arguments.confidence, 1.0)
     dataset = load_dataset(arguments.dataset, "val")
-    frames = [cv2.imread(str(image.path)) for image in dataset.images[:WARMUP_ITERATIONS]]
-    if any(frame is None for frame in frames):
+    decoded_frames = [
+        cast(Frame | None, cv2.imread(str(image.path)))
+        for image in dataset.images[:BENCHMARK_FRAME_COUNT]
+    ]
+    if any(frame is None for frame in decoded_frames):
         raise ValueError("unreadable benchmark frame")
-    frames = [cv2.resize(frame, (640, 480)) for frame in frames if frame is not None]
+    frames = [
+        cast(Frame, cv2.resize(frame, (CAMERA_INPUT_HW_PX[1], CAMERA_INPUT_HW_PX[0])))
+        for frame in decoded_frames
+        if frame is not None
+    ]
     stages: dict[str, list[float]] = {
         stage: [] for stage in ("preprocess", "extract", "postprocess", "total")
     }
@@ -335,8 +354,8 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
         "backend": "columba_native",
         "omp_wait_policy": os.environ.get("OMP_WAIT_POLICY", "runtime_default"),
         "compute": detector.compute,
-        "compute_flags": detector.compute_flags,
-        "camera_hw": [480, 640],
+        "compute_flags": {key: bool(value) for key, value in detector.compute_flags.items()},
+        "camera_hw": list(CAMERA_INPUT_HW_PX),
         "confidence": confidence,
         "requested_operating_threshold": arguments.confidence,
         "weights_sha256": fingerprint(arguments.model / "model.ncnn.bin"),
@@ -347,7 +366,7 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
         "end_to_end_boundary": (
             "native letterbox, inference, decode/NMS, Python return and bool decision"
         ),
-        "frame_source": "first 20 validation photographs resized to camera shape, cycling",
+        "frame_source": f"first {BENCHMARK_FRAME_COUNT} val photographs at camera shape, cycling",
     }
     write_json(arguments.out, apply_calibration(report, read_report(arguments.calibration)))
 
@@ -579,6 +598,9 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
         "host": native["host"],
         "reference_host": reference_meta["host"],
         "reference_device": reference_meta["device"],
+        "reference_styles": read_report(directory.parent / "pt/metrics_styles.json")["pigeon"]
+        if (directory.parent / "pt/metrics_styles.json").exists()
+        else None,
         "parity_passed": read_report(directory / "parity.json")["passed"],
         "accuracy_gate_passed": read_report(directory / "accuracy_gate.json")["passed"],
         "accuracy_deltas": read_report(directory / "accuracy_gate.json")["deltas"],
@@ -616,6 +638,7 @@ def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
                 candidate
                 for candidate in arms
                 if candidate["recipe"] == matched_recipe
+                and candidate["taxonomy"] == "single"
                 and candidate["decode"] == arm["decode"]
                 and candidate["precision"] == arm["precision"]
                 and candidate["input_hw"] == arm["input_hw"]
@@ -627,7 +650,7 @@ def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
             reasons.append("species gate needs --single-recipe and its evaluated three-seed arm")
         elif (
             number(arm["test_recall_mean"], "recall")
-            < number(reference["test_recall_mean"], "recall") - MAXIMUM_ACCURACY_DROP
+            < number(reference["test_recall_mean"], "recall") - MAXIMUM_SPECIES_RECALL_DROP
         ):
             reasons.append("species pigeon recall is more than 0.01 below matched single")
         if reference is not None:
@@ -641,7 +664,7 @@ def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
                     reasons.append(f"species mean {field} is worse than matched single")
             if (
                 number(arm["pi5_p95_ms"], "latency")
-                > number(reference["pi5_p95_ms"], "latency") * 1.05
+                > number(reference["pi5_p95_ms"], "latency") * SPECIES_LATENCY_RATIO
             ):
                 reasons.append("species latency is over 5% slower than matched single")
         arm["failures"] = reasons
@@ -669,10 +692,10 @@ def styles_tie_break(eligible: list[dict[str, JsonValue]]) -> dict[str, JsonValu
         and abs(
             number(arm["val_recall_mean"], "recall") - number(selected["val_recall_mean"], "recall")
         )
-        <= 0.01
+        <= VALIDATION_TIE_RECALL_FRACTION
         and max(number(arm["pi5_p95_ms"], "latency"), number(selected["pi5_p95_ms"], "latency"))
         <= min(number(arm["pi5_p95_ms"], "latency"), number(selected["pi5_p95_ms"], "latency"))
-        * 1.05
+        * LATENCY_TIE_RATIO
     ]
     if len(peers) < 2:
         return selected
@@ -744,6 +767,7 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
                 "id": "/".join(key[:3]) + "/" + key[3],
                 "recipe": key[0],
                 "input_hw": seeds[0]["input_hw"],
+                "taxonomy": seeds[0].get("taxonomy", "single"),
                 "decode": key[1],
                 "precision": key[2],
                 "val_recall_mean": statistics.mean(
@@ -752,6 +776,11 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
                 "test_recall_mean": mean_recall,
                 "test_recall_std": standard_deviation,
                 "test_ap50_mean": statistics.mean(metric(seed, "test", "ap50") for seed in seeds),
+                "reference_styles_recall_mean": statistics.mean(
+                    metric(seed, "reference_styles", "recall_at_p90") for seed in seeds
+                )
+                if all(seed.get("reference_styles") is not None for seed in seeds)
+                else None,
                 "styles_recall_mean": statistics.mean(
                     metric(seed, "styles", "recall_at_p90") for seed in seeds
                 )
@@ -779,7 +808,8 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
     comparable = [
         arm
         for arm in arms
-        if all(
+        if len(cast(list[JsonValue], arm["seeds"])) == len(REQUIRED_SEEDS)
+        and all(
             mapping(seed, "seed")["parity_passed"] is True
             and mapping(seed, "seed")["accuracy_gate_passed"] is True
             for seed in cast(list[JsonValue], arm["seeds"])
@@ -1032,6 +1062,8 @@ def fetch_candidate(arguments: argparse.Namespace) -> None:
         subprocess.run(
             [
                 "rsync",
+                "-e",
+                RSYNC_REMOTE_SHELL,
                 "-aL",
                 f"columba-cluster:{workspace}/{name}/",
                 str(arguments.output / name) + "/",
@@ -1126,12 +1158,20 @@ def add_candidate(arguments: argparse.Namespace) -> None:
         subprocess.run(
             [
                 "rsync",
+                "-e",
+                RSYNC_REMOTE_SHELL,
                 "-a",
                 str(output / "references" / arguments.recipe),
                 f"columba-cluster:{workspace}/references/",
             ],
             check=True,
         )
+    single_recipe_arguments = (
+        ("--single-recipe", arguments.single_recipe) if arguments.single_recipe else ()
+    )
+    reference_arguments = (
+        ("--references", str(workspace / "references")) if arguments.reference_data_root else ()
+    )
     evaluation = shlex.join(
         [
             "python",
@@ -1146,6 +1186,8 @@ def add_candidate(arguments: argparse.Namespace) -> None:
             arguments.taxonomy,
             "--decodes",
             *arguments.decodes,
+            *single_recipe_arguments,
+            *reference_arguments,
         ]
     )
     script = f"""#!/usr/bin/env bash
@@ -1161,10 +1203,18 @@ checkout={shlex.quote(str(checkout))}
 stage="/tmp/cz-$SLURM_JOB_ID"
 mkdir -p "$stage"
 cleanup() {{
+    local exit_status=$?
+    trap - EXIT
     if [[ -d "$stage/exports" ]]; then
-        rsync -a "$stage/exports/" "$workspace/exports/"
+        if ! rsync -a "$stage/exports/" "$workspace/exports/"; then
+            exit_status=1
+        fi
     fi
     rm -rf -- "$stage"
+    if [[ "$exit_status" == 0 ]]; then
+        date -u > "$workspace/DONE"
+    fi
+    exit "$exit_status"
 }}
 trap cleanup EXIT
 export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=4 OMP_WAIT_POLICY=ACTIVE
@@ -1183,13 +1233,14 @@ python -m tools.build_dataset verify-freeze "$stage/columba-test-v2" \\
 cp -r "$workspace/exports" "$stage/exports"
 tar --zstd -xf "$HOME/columba/data/columba-test-v2-styles.tar.zst" -C "$stage"
 for seed in 0 1 2; do
-    taskset -c 0-3 {evaluation} --seed "$seed" \\
+    srun --cpu-bind=cores {evaluation} --seed "$seed" \\
         --checkpoint "$HOME/columba/runs/{arguments.recipe}/seed$seed/weights/best.pt" \\
         --exports "$stage/exports" --output "$workspace/results" \\
         --dataset "$stage/{arguments.dataset_name}" --test-dataset "$stage/columba-test-v2" \\
         --prefix "$HOME/columba/scratch/ws4/ncnn-xcng"
 done
-date -u > "$workspace/DONE"
+srun --cpu-bind=cores python -m tools.select_model styles --candidates "$workspace/results" \\
+    --exports "$stage/exports" --dataset "$stage/columba-test-v2-styles"
 """
     print(
         json.dumps(
@@ -1292,7 +1343,20 @@ def package_candidate(arguments: argparse.Namespace) -> None:
         item for item in entries if mapping(item, "entry").get("model_id") != model_id
     ] + [entry]
     write_json(manifest_path, manifest)
-    print(prepare_models(repository, model_id))
+    verified = prepare_models(repository, model_id)
+    decision["package_verification"] = {
+        "model_id": model_id,
+        "eligible": eligible,
+        "provisional": True,
+        "directory": str(verified.relative_to(repository)),
+        "source": str(destination.relative_to(repository)),
+        "manifest": "deploy/model_manifest.json",
+        "status": "SHA-256 and byte counts verified",
+    }
+    write_json(arguments.decision, decision)
+    if arguments.report:
+        write_decision_report(arguments.report, decision)
+    print(verified)
 
 
 def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
@@ -1307,7 +1371,11 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         "use styles recall to break the tie. The 5% band treats host timing noise",
         "as equal latency.",
         "",
-        "Accuracy is measured using columba_native package-default compute on xcng.",
+        "Accuracy is measured using columba_native package-default compute on xcng0.",
+        "CPU PyTorch references use xcng0 for the first seed's two heads, then Mac",
+        "vexcalibur. Mac versus xcng0 passes all 1,408 first-reference image comparisons.",
+        "Every export independently reproduces parity against its own saved CPU reference.",
+        "Styles scores are measured on WS2's synthetic camera-style copies.",
         "These 16:9 deploy-size measurements decide the section-1 and false-alarm",
         "gates. WS5 square-input leaderboard scores are context, not deployment scores.",
         "Latency uses OMP_WAIT_POLICY=ACTIVE. PASSIVE results are retained as diagnostics.",
@@ -1335,21 +1403,35 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         "",
         (
             "| Arm / decode / precision / input | Val R@P90 | Test R@P90 mean +/- sd | "
-            "Test AP50 | Test operating R | Styles R@P90 | Pi frame p95 ms | "
+            "Test AP50 | Test operating R | PT styles R@P90 | Export styles R@P90 | "
+            "Pi frame p95 ms | "
             "Reaction p95 ms | Pass |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|---:|---|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for arm in arms:
+        styles = arm["styles_recall_mean"]
+        reference_styles = arm["reference_styles_recall_mean"]
+        reaction_p95_ms = arm["reaction_p95_ms"]
+        styles_display = "pending" if styles is None else f"{number(styles, 'styles'):.4f}"
+        reference_styles_display = (
+            "pending" if reference_styles is None else f"{number(reference_styles, 'styles'):.4f}"
+        )
+        reaction_display = (
+            "unconfirmed"
+            if reaction_p95_ms is None
+            else f"{number(reaction_p95_ms, 'reaction'):.2f}"
+        )
         lines.append(
             f"| {arm['id']} | {number(arm['val_recall_mean'], 'val'):.4f} | "
             f"{number(arm['test_recall_mean'], 'test'):.4f} +/- "
             f"{number(arm['test_recall_std'], 'std'):.4f} | "
             f"{number(arm['test_ap50_mean'], 'AP'):.4f} | "
             f"{number(arm['test_operating_recall_mean'], 'recall'):.4f} | "
-            f"{arm['styles_recall_mean']} | "
+            f"{reference_styles_display} | "
+            f"{styles_display} | "
             f"{number(arm['pi5_p95_ms'], 'latency'):.2f} | "
-            f"{number(arm['reaction_p95_ms'], 'reaction'):.2f} | "
+            f"{reaction_display} | "
             f"{'yes' if arm['passes'] else 'no'} |"
         )
     lines.extend(
@@ -1396,8 +1478,119 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
             "",
         ]
     )
+    if decision.get("package_verification") is not None:
+        verified = mapping(decision["package_verification"], "package verification")
+        lines.extend(
+            [
+                "## Package dry run",
+                "",
+                f"`{verified['model_id']}` is provisional. {verified['status']}.",
+                f"Package source: `{verified['source']}`. "
+                f"Verified copy: `{verified['directory']}`.",
+                f"Manifest: `{verified['manifest']}`. "
+                f"Eligible for promotion: `{verified['eligible']}`.",
+                "",
+            ]
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines))
+
+
+def audit_candidates(arguments: argparse.Namespace) -> None:
+    import math
+
+    from tools.quantize_ncnn import CALIBRATION_IMAGES, digest
+
+    validation = load_dataset(arguments.dataset, "val")
+    frozen = load_dataset(arguments.test_dataset, "test")
+    validation_hashes = {image.image_id: digest(image.path) for image in validation.images}
+    frozen_hashes = {digest(image.path) for image in frozen.images}
+    verified = quantised = 0
+    for marker in sorted(arguments.candidates.rglob("candidate.json")):
+        directory = marker.parent
+        descriptor = read_report(marker)
+        candidate_record(directory)
+        latency = read_report(directory / "latency.json")
+        samples = latency.get("samples_ms")
+        if not isinstance(samples, list) or len(samples) < TIMED_ITERATIONS:
+            raise ValueError(f"{directory}: C7 needs at least 200 paired samples")
+        calculated = summary([number(value, "sample") for value in samples])
+        measured = mapping(latency["end_to_end_ms"], "timings")
+        estimated = mapping(latency["estimated_pi5"], "estimated Pi")
+        if not math.isclose(number(calculated["p95"], "p95"), number(measured["p95"], "p95")):
+            raise ValueError(f"{directory}: C7 p95 differs from its paired samples")
+        if not math.isclose(
+            number(estimated["end_to_end_p95_ms"], "Pi p95"),
+            number(measured["p95"], "host p95") * number(estimated["factor"], "factor"),
+        ):
+            raise ValueError(f"{directory}: Pi estimate differs from calibrated host p95")
+        package = (
+            arguments.exports
+            / str(descriptor["recipe"])
+            / f"seed{descriptor['seed']}"
+            / str(descriptor["decode"])
+            / f"{descriptor['precision']}_ncnn_model"
+        )
+        for filename, field in (
+            ("model.ncnn.bin", "weights_sha256"),
+            ("model.ncnn.param", "parameters_sha256"),
+        ):
+            if digest(package / filename) != latency[field]:
+                raise ValueError(f"{directory}: benchmark model hash differs from package")
+        validation_threshold = mapping(
+            read_report(directory / "metrics_val.json")["operating_threshold"], "threshold"
+        )
+        for name in ("test", "styles"):
+            report = read_report(directory / f"metrics_{name}.json")
+            if (
+                mapping(report["operating_threshold"], "threshold")["value"]
+                != validation_threshold["value"]
+            ):
+                raise ValueError(f"{directory}: {name} threshold differs from val")
+        reproduced = parity(
+            directory.parent / "pt/predictions_test.json",
+            directory / "predictions_test.json",
+            str(descriptor["precision"]),
+            [image.image_id for image in frozen.images],
+        )
+        recorded = read_report(directory / "parity.json")
+        for field in ("passed", "failures", "count_mismatches"):
+            if reproduced[field] != recorded[field]:
+                raise ValueError(f"{directory}: parity {field} does not reproduce")
+        if descriptor["precision"] == "int8":
+            calibration = read_report(package / "calibration.json")
+            images = calibration["images"]
+            if (
+                calibration["split"] != "val"
+                or not isinstance(images, list)
+                or len(images) != CALIBRATION_IMAGES
+            ):
+                raise ValueError(f"{directory}: requires 200 recorded val calibration images")
+            for value in images:
+                image = mapping(value, "calibration image")
+                image_id = str(image["id"])
+                if image_id not in validation_hashes:
+                    raise ValueError(f"calibration image is not in val: {image_id}")
+                actual = validation_hashes[image_id]
+                if actual != image["sha256"] or actual in frozen_hashes:
+                    raise ValueError(f"calibration provenance/test exclusion fails: {image_id}")
+            quantised += 1
+        verified += 1
+    audit_report: dict[str, JsonValue] = {
+        "label": "measured",
+        "host": platform.node(),
+        "candidates_verified": verified,
+        "parity_reports_reproduced": verified,
+        "int8_calibrations_verified": quantised,
+        "calibration_images_each": CALIBRATION_IMAGES,
+        "test_calibration_overlap": False,
+        "checks": (
+            "native compute, own val thresholds, C7 samples/scaling, "
+            "package hashes, C3 parity, val-only calibration"
+        ),
+    }
+    write_json(arguments.out, audit_report)
+    print(json.dumps(audit_report))
 
 
 def parser() -> argparse.ArgumentParser:
@@ -1459,6 +1652,12 @@ def parser() -> argparse.ArgumentParser:
         "--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11", "yolo26"]
     )
     sub.add_argument("--output", type=Path, default=Path("outputs/ws7"))
+    sub = commands.add_parser("audit", help="verify saved C3/C4/C7 data and real package bytes")
+    sub.add_argument("--candidates", type=Path, required=True)
+    sub.add_argument("--exports", type=Path, required=True)
+    sub.add_argument("--dataset", type=Path, required=True)
+    sub.add_argument("--test-dataset", type=Path, required=True)
+    sub.add_argument("--out", type=Path, required=True)
     sub = commands.add_parser("fetch", help="fetch a completed add bundle and its C8 packages")
     sub.add_argument("--recipe", required=True)
     sub.add_argument("--output", type=Path, default=Path("outputs/ws7"))
@@ -1482,6 +1681,7 @@ def parser() -> argparse.ArgumentParser:
     )
     sub = commands.add_parser("package")
     sub.add_argument("--decision", type=Path, required=True)
+    sub.add_argument("--report", type=Path)
     sub.add_argument(
         "--diagnostic",
         action="store_true",
@@ -1521,6 +1721,8 @@ def main() -> None:
         add_candidate(arguments)
     elif arguments.action == "fetch":
         fetch_candidate(arguments)
+    elif arguments.action == "audit":
+        audit_candidates(arguments)
     elif arguments.action == "package":
         package_candidate(arguments)
     else:

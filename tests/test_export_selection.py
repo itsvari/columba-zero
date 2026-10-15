@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
+import shlex
+import subprocess
 import tempfile
 import unittest
 from dataclasses import replace
@@ -14,8 +17,10 @@ from tools.prepare_models import prepare_models
 from tools.quantize_ncnn import calibration_images
 from tools.select_model import (
     accuracy_gate,
+    add_candidate,
     candidate_record,
     parity,
+    reaction_for_recall,
     select_candidates,
     taxonomy_view,
 )
@@ -109,6 +114,58 @@ class ExportSelectionTests(unittest.TestCase):
             self.assertTrue(parity(reference, exported, "int8", ["bird"])["passed"])
             exported.write_text("[]")
             self.assertFalse(parity(reference, exported, "int8", ["bird"])["passed"])
+
+    def test_add_builds_valid_guarded_arm_script_without_network(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            arguments = argparse.Namespace(
+                recipe="yolo26n-v2s-species-800-r3",
+                input_hw=[448, 800],
+                taxonomy="species",
+                dataset_name="columba-train-v2s-species",
+                decodes=["yolo11", "yolo26"],
+                output=Path(temporary),
+                reference_data_root=None,
+                single_recipe="yolo26n-v2s-800-round2-plain",
+            )
+            with (
+                patch("cluster.sweep.remote_root", return_value=Path("/home/worker/columba")),
+                patch(
+                    "cluster.sweep.deploy",
+                    return_value=(Path("/home/worker/columba/checkout"), "commit"),
+                ),
+                patch("cluster.sweep.current_queue", return_value=()),
+                patch(
+                    "cluster.sweep.remote",
+                    side_effect=["", "", "", "", '[{"status":"budget full"}]'],
+                ) as remote,
+                patch("tools.select_model.export_candidate"),
+                patch("tools.select_model.subprocess.run"),
+            ):
+                add_candidate(arguments)
+            payload = json.loads(shlex.split(remote.call_args.args[0][2])[-1])
+            self.assertEqual(payload["budget"], {"gpu_jobs": 8, "cpu_jobs": 2, "queued_jobs": 24})
+            script = payload["submissions"][0]["script"]
+            subprocess.run(["bash", "-n"], input=script, text=True, check=True, capture_output=True)
+            self.assertIn("OMP_WAIT_POLICY=ACTIVE", script)
+            self.assertIn("--single-recipe yolo26n-v2s-800-round2-plain", script)
+            self.assertIn("tools.select_model styles", script)
+            self.assertIn("#SBATCH --nice=1000", script)
+
+    def test_hold_can_name_a_diagnostic_package_without_promoting_it(self) -> None:
+        records = [candidate("arm", seed) for seed in range(3)]
+        records[0]["confuser_far"] = 0.06
+        decision = self.selection(records)
+        self.assertIsNone(decision["selected"])
+        self.assertIsNone(decision["package_candidate"])
+        self.assertIsNotNone(decision["diagnostic_candidate"])
+        self.assertTrue(decision["diagnostic_failures"])
+
+    def test_zero_recall_has_no_fabricated_reaction_quantile(self) -> None:
+        reaction = reaction_for_recall([30.0, 40.0], 0.0)
+        self.assertIsNone(mapping(reaction["reaction_ms"], "reaction")["p95"])
+        records = [candidate("arm", seed) for seed in range(3)]
+        records[0]["reaction_p95_ms"] = None
+        self.assertIsNone(self.selection(records)["selected"])
 
     def test_provisional_manifest_verifies_c8_without_switching_default(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
