@@ -1,0 +1,36 @@
+id: yolo11n-v2s-640-round2-plain
+framework: ultralytics
+base_model: yolo11n.pt
+dataset: columba-train-v2s
+taxonomy: single
+seeds:
+- 0
+- 1
+- 2
+lane: nv
+gpu_constraint: null
+est_gpu_hours: 7.3
+teacher: null
+train:
+  epochs: 300
+  patience: 50
+  imgsz: 640
+  nbs: 64
+  cos_lr: true
+  close_mosaic: 15
+  cache: ram
+  workers: 6
+  save_period: 5
+  plots: false
+  optimizer: MuSGD
+  lr0: 0.01
+  momentum: 0.9
+  warmup_bias_lr: 0.0
+deploy_sizes:
+- - 352
+  - 608
+- - 384
+  - 640
+- - 448
+  - 800
+notes: Mechanical round2-plain, source yolo11n-v2s-640-r1; selection on val only.
