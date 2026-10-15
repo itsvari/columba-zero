@@ -38,7 +38,13 @@ def sibling_jobs(name: str) -> tuple[tuple[str, str], ...]:
     )
 
 
-def acquire(root: Path, run_path: Path, target: str, name: str) -> bool:
+def acquire(
+    root: Path,
+    run_path: Path,
+    target: str,
+    name: str,
+    metadata: dict[str, JsonValue] | None = None,
+) -> bool:
     root = root.resolve()
     if not run_path.resolve().is_relative_to(root / "runs") or not re.fullmatch(
         r"[0-9]+(?:_[0-9]+)?", target
@@ -47,6 +53,12 @@ def acquire(root: Path, run_path: Path, target: str, name: str) -> bool:
     identity = hashlib.sha256(str(run_path.resolve()).encode()).hexdigest()[:16]
     claim_path = root / "claims" / f"{identity}.json"
     with submission_lock(root):
+        run_path.mkdir(parents=True, exist_ok=True)
+        report = read_json(run_path / "run.json") if (run_path / "run.json").exists() else {}
+        for key in ("recipe_sha256", "dataset"):
+            if metadata and report.get(key) is not None and report[key] != metadata.get(key):
+                raise ValueError("claim metadata changed under an existing run")
+        report = {**(metadata or {}), **report}
         previous = read_json(claim_path) if claim_path.exists() else {}
         jobs = sibling_jobs(name)
         live = {identifier for identifier, state in jobs if state in LIVE_STATES}
@@ -84,8 +96,6 @@ def acquire(root: Path, run_path: Path, target: str, name: str) -> bool:
                 text=True,
                 capture_output=True,
             )
-        run_path.mkdir(parents=True, exist_ok=True)
-        report = read_json(run_path / "run.json") if (run_path / "run.json").exists() else {}
         history = cast(list[JsonValue], report.get("fanout_claims", []))
         atomic_json(
             run_path / "run.json",
@@ -112,6 +122,7 @@ def main() -> None:
         Path(os.environ["COLUMBA_RUN_PATH"]),
         target,
         os.environ["SLURM_JOB_NAME"],
+        cast(dict[str, JsonValue], json.loads(os.environ["COLUMBA_RUN_METADATA"])),
     )
     raise SystemExit(0 if won else DUPLICATE_START_EXIT_STATUS)
 

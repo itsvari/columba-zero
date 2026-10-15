@@ -2350,7 +2350,7 @@ class FanoutTests(unittest.TestCase):
             )
             self.assertTrue(
                 all(
-                    "--hold" in command and "--nice=0" in command and "--time=00:01:00" in command
+                    "--hold" in command and "--nice=0" in command and "--time=00:00:40" in command
                     for command in submitted
                 )
             )
@@ -2479,3 +2479,21 @@ class FanoutTests(unittest.TestCase):
                 )
             terminal.assert_not_called()
             self.assertIn("900_0", arm.call_args.args[3])
+
+    def test_claim_report_preserves_recipe_identity_before_runner_validation(self) -> None:
+        from cluster.recipe import recipe_sha256
+        from cluster.run_claim import acquire
+        from cluster.run_job import validate_existing_run
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = OrchestrationTests().write_recipe(root / "recipe.yaml")
+            recipe = load_recipe(path)
+            run = root / "runs/nano/seed0"
+            metadata: dict[str, JsonValue] = {
+                "recipe_sha256": recipe_sha256(path),
+                "dataset": recipe.dataset,
+            }
+            with patch("cluster.run_claim.sibling_jobs", return_value=(("10_0", "RUNNING"),)):
+                self.assertTrue(acquire(root, run, "10_0", "cz-identity", metadata))
+            validate_existing_run(run, recipe, recipe_sha256(path))

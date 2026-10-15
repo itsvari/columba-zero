@@ -299,7 +299,7 @@ def submit_runs(
                         command.append("--begin=now+1minute")
                     if task.recipe_id.startswith("smoke-"):
                         script = script.replace("#SBATCH --signal=B:USR1@600\n", "")
-                        command.extend(["--time=00:01:00", "--cpus-per-task=2", "--mem=8G"])
+                        command.extend(["--time=00:00:40", "--cpus-per-task=2", "--mem=8G"])
                     completed = subprocess.run(
                         command, input=script, check=True, capture_output=True, text=True
                     )
