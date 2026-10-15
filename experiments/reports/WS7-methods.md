@@ -20,6 +20,7 @@ For the species arm, after the coordinator confirms the recipe is ready:
 python -m tools.select_model add \
   --recipe yolo26n-v2s-species-800-r3 \
   --input-hw 448 800 \
+  --decodes yolo11 \
   --taxonomy species \
   --dataset-name columba-train-v2s-species \
   --single-recipe yolo26n-v2s-800-round2-plain \
@@ -46,6 +47,9 @@ Pass any number of additional candidate roots to `select`. Keep one copy of
 each recipe/head/precision/seed in those roots. Duplicate seed records fail
 the three-seed gate. C4 and C7 files, plus parity and accuracy-gate evidence,
 drive selection; no inference or threshold fitting occurs during selection.
+The default baseline is now the three native fp16 384x640 C4 reports under
+`experiments/reports/WS7-baseline/fp16`, not the square WS5 leaderboard.
+Int8 and one-to-one results remain diagnostics and cannot be admitted.
 
 Species scoring uses an isolated taxonomy view of each single-taxonomy test
 set. `cluster.staging.align_test_taxonomy` changes only that view's YAML.
@@ -111,14 +115,14 @@ It does not turn HOLD into a selection. The manifest entry is provisional and
 existing default model entry stays active. Final promotion belongs to the
 coordinator after distilled and species results arrive.
 
-The initial blocked diagnostic package can be fetched and verified in a
+The current provisional fp16 package can be fetched and verified in a
 checkout containing this branch's manifest:
 
 ```sh
 rsync -a -e 'ssh -o BatchMode=yes' \
   columba-cluster:columba/scratch/ws7/packages/ outputs/ws7/packages/
 python tools/prepare_models.py \
-  --model-id yolo26n-v2s-800-round2-plain-seed1-yolo11-fp32-provisional
+  --model-id yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16-provisional
 ```
 
 The original matrix is job 950463 on xcng0. The supplemental timing/styles
@@ -131,18 +135,62 @@ int8 under ACTIVE on all 319 test images. The committed
 [`WS7-platform/`](WS7-platform/) records those hashes, timing probes, CPU
 reference comparisons and input-hash diagnostics.
 
-## Policies requiring coordinator review
+## Confirmed coordinator policy, 15 October
 
-- Document optional `omp_wait_policy` in C7 and set `OMP_WAIT_POLICY=ACTIVE`
-  in the deployed launcher. PASSIVE more than doubled NCNN inference time in
-  a controlled same-allocation comparison. WS7 does not own that launcher.
-- Confirm the explicit precision gate: each val/test R@P90, AP50 and operating
-  recall may drop at most 0.01 versus the same-head rectangular PyTorch run.
-  Strict export parity remains a separate gate.
-- Confirm per-seed false-alarm/time/parity gates and the styles tie policy:
-  otherwise matching v2/v2s configurations within 0.01 validation recall and
-  5% latency use mean styles recall. Test-v2 supplies all promotion gates.
-- Review the temporal approximation before deployment. Reaction estimates
-  assume independent frame hits and proxy per-frame recall with the measured
-  still-image operating recall. No measured Pi 5 or correlated-video result
-  is claimed.
+Contracts v1.8 and PLAN section 1 define the revised gates. Arms rank by
+three-seed mean val R@P90, and use three-seed test mean for the improvement
+rule. Choose the shipped seed on val only, among seeds passing val FAR.
+Test FAR, latency, reaction, precision accuracy and parity gate that export.
+A failed test gate holds the arm; another seed is never tried because of test.
+Every seed's FAR remains in the report for robustness context.
+
+Fp16 parity requires strict same-graph fp32 parity plus at most 0.01 loss in
+each val/test R@P90, AP50 and operating recall. Strict fp16 per-image parity
+is reported diagnostically. Int8 and one-to-one are excluded from deployment.
+Matching v2/v2s arms within 0.01 val recall and 5% latency use styles recall.
+
+All WS7 C7 files now record ACTIVE or PASSIVE. Legacy bridge/PASSIVE records
+were annotated from their recorded job environments; timing samples were
+unchanged. ACTIVE is the WS7 measurement profile. WS10 will decide the deployed
+policy on real Pi hardware, including pipeline contention. The launcher stays
+unchanged. Reaction still assumes independent temporal hits and proxies frame
+recall with still-image operating recall; no measured Pi result is claimed.
+
+## Rectangular baseline and geometry replay
+
+Job 951221 measured all three baseline seeds at 384x640 using native fp32 and
+fp16, with four allocated ARM cores. It completed successfully. Its raw C3/C4
+files are under `~/columba/scratch/ws7/baseline-native/` and locally under
+`outputs/ws7/baseline-native/`. New exports are under `revision-exports/` in
+the same scratch roots. No finalist graph was re-exported.
+
+Mac CPU reference command, repeated with seed 0, 1 and 2:
+
+```sh
+python -m tools.select_model references \
+  --checkpoint "$PWD/outputs/ws7/checkpoints/baseline-repro-p50/seed0/weights/best.pt" \
+  --recipe baseline-repro-p50 --seed 0 --input-hw 384 640 --decodes yolo11 \
+  --output outputs/ws7/revision-references \
+  --dataset /Users/vari/columba-data/columba-train-v1clean \
+  --test-dataset /Users/vari/columba-data/columba-test-v2 --device cpu --batch 1
+```
+
+The aspect diagnostic uses the provisional pick's PyTorch checkpoint, not its
+fp16 export. Both C3 files use the same Mac CPU implementation and checkpoint.
+The square source can be regenerated with `tools.predict_to_coco`, `--imgsz
+800 800`, `--decode yolo11`, `--device cpu`, and that checkpoint's absolute path.
+
+```sh
+python -m tools.select_model aspect \
+  --dataset /Users/vari/columba-data/columba-test-v2 \
+  --square-predictions outputs/ws7/aspect/square/predictions_test.json \
+  --rectangular-predictions outputs/ws7/results/yolo26n-v2s-800-round2-plain/seed1/yolo11/pt/predictions_test.json \
+  --out experiments/reports/WS7-aspect.json \
+  --report experiments/reports/WS7-aspect.md
+```
+
+The report distinguishes shape-specific WS1 small cohorts from the fixed
+square-defined cohort. Bucket P90 score cuts and full-test P90 cuts are
+diagnostics only. They never replace val-selected deployment thresholds.
+The reviewed interpretation is saved in `WS7-aspect.json`; regenerating the
+diagnostic requires reviewing that interpretation again.

@@ -364,7 +364,6 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
         "samples_ms": [float(value) for value in wall_ms],
         "label": "measured",
         "backend": "columba_native",
-        "omp_wait_policy": os.environ.get("OMP_WAIT_POLICY", "runtime_default"),
         "compute": detector.compute,
         "compute_flags": {key: bool(value) for key, value in detector.compute_flags.items()},
         "camera_hw": list(CAMERA_INPUT_HW_PX),
@@ -380,6 +379,9 @@ def benchmark_native(arguments: argparse.Namespace) -> None:
         ),
         "frame_source": f"first {BENCHMARK_FRAME_COUNT} val photographs at camera shape, cycling",
     }
+    wait_policy = os.environ.get("OMP_WAIT_POLICY", "").upper()
+    if wait_policy in ("ACTIVE", "PASSIVE"):
+        report["omp_wait_policy"] = wait_policy
     write_json(arguments.out, apply_calibration(report, read_report(arguments.calibration)))
 
 
@@ -1023,7 +1025,7 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
 
 def remeasure_latency(arguments: argparse.Namespace) -> None:
     if os.environ.get("OMP_WAIT_POLICY", "").upper() != "ACTIVE":
-        raise ValueError("latency gate must run with OMP_WAIT_POLICY=ACTIVE, matching deployment")
+        raise ValueError("WS7 latency comparison requires the OMP_WAIT_POLICY=ACTIVE profile")
     for descriptor_path in sorted(arguments.candidates.rglob("candidate.json")):
         directory = descriptor_path.parent
         descriptor = read_report(descriptor_path)
@@ -1643,10 +1645,10 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
             "## Precision comparisons",
             "",
             "Mean deltas are export minus same-head rectangular CPU PyTorch.",
-            "Accuracy and parity columns count passing seeds independently.",
+            "Accuracy and strict per-image diagnostic parity count passing seeds independently.",
             "",
             "| Arm / decode / precision | Test R@P90 delta | Test AP50 delta | "
-            "Accuracy gate | Parity |",
+            "Accuracy gate | Strict parity diagnostic |",
             "|---|---:|---:|---:|---:|",
         ]
     )
@@ -1792,6 +1794,7 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
                 f"| {gate['gate']} | {display} | {gate['requirement']} | "
                 f"{'yes' if gate['passed'] else 'no'} |"
             )
+        lines.append("")
     if decision.get("aspect_ratio") is not None:
         aspect = mapping(decision["aspect_ratio"], "aspect")
         lines.extend(aspect_markdown(aspect))
