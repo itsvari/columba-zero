@@ -67,6 +67,14 @@ def export_candidate(arguments: argparse.Namespace) -> None:
             destination = arguments.output / arguments.recipe / f"seed{arguments.seed}" / decode
             package = destination / f"{precision}_ncnn_model"
             if package.exists():
+                settings = model_settings(package, arguments.input_hw, decode)
+                exported = read_report(package / "export.json")
+                source_sha256 = hashlib.sha256(arguments.checkpoint.read_bytes()).hexdigest()
+                if (
+                    exported.get("source_sha256") != source_sha256
+                    or settings.format != f"ncnn-{precision}"
+                ):
+                    raise ValueError(f"existing export has different source/precision: {package}")
                 continue
             command(
                 "tools.export_ncnn",
@@ -453,6 +461,18 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
         raise ValueError(f"{directory}: deployed native xcng accuracy is required")
     if latency.get("backend") != "columba_native":
         raise ValueError(f"{directory}: native end-to-end C7 is required")
+    if test.get("split") != "test":
+        raise ValueError(f"{directory}: requires test C4 metrics")
+    for report in (validation, test, latency, native):
+        if report.get("input_hw") != descriptor.get("input_hw"):
+            raise ValueError(f"{directory}: mismatched candidate input dimensions")
+    for report in (latency, native):
+        if report.get("model_id") != descriptor.get("model_id"):
+            raise ValueError(f"{directory}: mismatched candidate model identity")
+        if report.get("format") != f"ncnn-{descriptor['precision']}":
+            raise ValueError(f"{directory}: mismatched candidate precision")
+    if native.get("compute_flags") != latency.get("compute_flags"):
+        raise ValueError(f"{directory}: accuracy/latency compute flags differ")
     return {
         **descriptor,
         "directory": str(directory),
@@ -466,6 +486,8 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
         "host": native["host"],
         "parity_passed": read_report(directory / "parity.json")["passed"],
         "accuracy_gate_passed": read_report(directory / "accuracy_gate.json")["passed"],
+        "accuracy_deltas": read_report(directory / "accuracy_gate.json")["deltas"],
+        "parity_failures": read_report(directory / "parity.json")["failures"],
     }
 
 
@@ -587,6 +609,154 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
     }
 
 
+def add_candidate(arguments: argparse.Namespace) -> None:
+    import shlex
+
+    from cluster.sweep import current_queue, deploy, remote, remote_root
+
+    if not arguments.recipe or any(
+        character not in "abcdefghijklmnopqrstuvwxyz0123456789-_" for character in arguments.recipe
+    ):
+        raise ValueError("recipe must be a lower-case recipe id, without path components")
+    from cluster.recipe import component
+
+    component(arguments.dataset_name, "dataset")
+    output = arguments.output.resolve()
+    root = remote_root()
+    workspace = root / "scratch/ws7/additions" / arguments.recipe
+    checkpoint_root = output / "checkpoints" / arguments.recipe
+    checkpoint_root.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            "rsync",
+            "-a",
+            "--include=*/",
+            "--include=best.pt",
+            "--exclude=*",
+            f"columba-cluster:{root}/runs/{arguments.recipe}/",
+            str(checkpoint_root) + "/",
+        ],
+        check=True,
+    )
+    for seed in sorted(REQUIRED_SEEDS):
+        export_candidate(
+            argparse.Namespace(
+                checkpoint=checkpoint_root / f"seed{seed}/weights/best.pt",
+                recipe=arguments.recipe,
+                seed=seed,
+                input_hw=arguments.input_hw,
+                taxonomy=arguments.taxonomy,
+                decodes=arguments.decodes,
+                output=output / "exports",
+            )
+        )
+    checkout, _ = deploy(root)
+    remote(["mkdir", "-p", str(workspace / "exports"), str(workspace / "results")])
+    subprocess.run(
+        [
+            "rsync",
+            "-a",
+            str(output / "exports" / arguments.recipe),
+            f"columba-cluster:{workspace}/exports/",
+        ],
+        check=True,
+    )
+    evaluation = shlex.join(
+        [
+            "python",
+            "-m",
+            "tools.select_model",
+            "evaluate",
+            "--recipe",
+            arguments.recipe,
+            "--input-hw",
+            *map(str, arguments.input_hw),
+            "--taxonomy",
+            arguments.taxonomy,
+            "--decodes",
+            *arguments.decodes,
+        ]
+    )
+    script = f"""#!/usr/bin/env bash
+#SBATCH --partition=normal
+#SBATCH --nodelist=xcng0
+#SBATCH --nice=1000
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=12G
+#SBATCH --time=03:00:00
+set -euo pipefail
+workspace={shlex.quote(str(workspace))}
+checkout={shlex.quote(str(checkout))}
+stage="/tmp/cz-$SLURM_JOB_ID"
+mkdir -p "$stage"
+cleanup() {{
+    if [[ -d "$stage/exports" ]]; then
+        rsync -a "$stage/exports/" "$workspace/exports/"
+    fi
+    rm -rf -- "$stage"
+}}
+trap cleanup EXIT
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=4 OMP_WAIT_POLICY=PASSIVE
+export TMPDIR="$stage" YOLO_CONFIG_DIR="$stage/settings" SLURM_EXPORT_ENV=ALL
+export PATH="$HOME/columba/scratch/ws8/venv/bin:$PATH"
+export PYTHONPATH="$HOME/columba/scratch/ws8/round3/repo/native/build/linux-aarch64:$checkout"
+cd "$checkout"
+cp "$HOME/columba/data/columba-test-v2.tar.zst" "$stage/"
+tar --zstd -xf "$stage/columba-test-v2.tar.zst" -C "$stage"
+tar --zstd -xf "$HOME/columba/data/{arguments.dataset_name}.tar.zst" -C "$stage" \\
+    {arguments.dataset_name}/DATASET.json {arguments.dataset_name}/data.yaml \\
+    {arguments.dataset_name}/manifest.jsonl {arguments.dataset_name}/images/val \\
+    {arguments.dataset_name}/labels/val
+python -m tools.build_dataset verify-freeze "$stage/columba-test-v2" \\
+    data_sources/columba-test-v2.sha256
+cp -r "$workspace/exports" "$stage/exports"
+for seed in 0 1 2; do
+    taskset -c 0-3 {evaluation} --seed "$seed" \\
+        --checkpoint "$HOME/columba/runs/{arguments.recipe}/seed$seed/weights/best.pt" \\
+        --exports "$stage/exports" --output "$workspace/results" \\
+        --dataset "$stage/{arguments.dataset_name}" --test-dataset "$stage/columba-test-v2" \\
+        --prefix "$HOME/columba/scratch/ws4/ncnn-xcng"
+done
+date -u > "$workspace/DONE"
+"""
+    print(
+        json.dumps(
+            [{"job_id": job.identifier, "state": job.state} for job in current_queue() if job.owned]
+        )
+    )
+    payload = {
+        "budget": {"gpu_jobs": 8, "cpu_jobs": 2, "queued_jobs": 24},
+        "submissions": [
+            {
+                "name": "cz-ws7-add-" + hashlib.sha256(arguments.recipe.encode()).hexdigest()[:12],
+                "lane": "arm",
+                "constraint": None,
+                "script": script,
+                "run_path": str(workspace),
+            }
+        ],
+    }
+    response = remote(
+        [
+            "sh",
+            "-c",
+            (
+                f"cd {shlex.quote(str(checkout))} && python -m cluster.slurm submit "
+                f"--payload {shlex.quote(json.dumps(payload))}"
+            ),
+        ]
+    )
+    print(response)
+    write_json(
+        output / "submissions" / f"{arguments.recipe}.json",
+        {
+            "workspace": str(workspace),
+            "response": json.loads(response),
+            "script": script,
+        },
+    )
+
+
 def package_candidate(arguments: argparse.Namespace) -> None:
     from tools.prepare_models import prepare_models
 
@@ -634,6 +804,102 @@ def package_candidate(arguments: argparse.Namespace) -> None:
     print(prepare_models(repository, model_id))
 
 
+def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
+    arms = [mapping(arm, "arm") for arm in cast(list[JsonValue], decision["arms"])]
+    lines = [
+        "# WS7 provisional export decision",
+        "",
+        f"Provisional selection: `{decision['selected'] or 'HOLD: no arm passes every gate'}`.",
+        "Final selection waits for distilled and species candidates.",
+        "",
+        "Accuracy is measured using columba_native package-default compute on xcng.",
+        "Pi 5 latency is estimated with WS4 cal-v0-published, xcng times x 1.527110713.",
+        "Reaction is simulated by WS4 with 30 FPS, k2/n3, 20,000 trials, seed 42,",
+        "independent hits and per-frame recall proxied by test recall at each export's",
+        "fresh validation-selected threshold. Temporal correlation is unmeasured.",
+        "",
+        "Arms rank by three-seed mean validation R@P90; test is a promotion gate.",
+        "Every seed must pass false-alarm, parity, precision-accuracy and time gates.",
+        "FP16 and int8 each permit at most 0.01 loss in val/test R@P90, AP50 and",
+        "operating recall versus same-head rectangular PyTorch. This is an explicit",
+        "WS7 accuracy policy. Parity independently retains count equality and",
+        "compare_exports.py IoU >=0.8 / score delta <=0.05 for fp32/fp16,",
+        "documented IoU >=0.7 / score delta <=0.10 for int8, at confidence 0.25.",
+        "",
+        "Calibration uses 200 deterministic val images, centred deployment letterbox,",
+        "RGB /255 and padding 114. Selected SHA-256s are checked against frozen test.",
+        "No calibration image or operating threshold comes from test.",
+        "",
+        "## Arm results",
+        "",
+        "Accuracy values below are measured on xcng; frame p95 is estimated Pi 5;",
+        "reaction p95 is simulated. Input sizes are H x W.",
+        "",
+        (
+            "| Arm / decode / precision / input | Val R@P90 | Test R@P90 mean +/- sd | "
+            "Test AP50 | Test operating R | Pi frame p95 ms | Reaction p95 ms | Pass |"
+        ),
+        "|---|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for arm in arms:
+        lines.append(
+            f"| {arm['id']} | {number(arm['val_recall_mean'], 'val'):.4f} | "
+            f"{number(arm['test_recall_mean'], 'test'):.4f} +/- "
+            f"{number(arm['test_recall_std'], 'std'):.4f} | "
+            f"{number(arm['test_ap50_mean'], 'AP'):.4f} | "
+            f"{number(arm['test_operating_recall_mean'], 'recall'):.4f} | "
+            f"{number(arm['pi5_p95_ms'], 'latency'):.2f} | "
+            f"{number(arm['reaction_p95_ms'], 'reaction'):.2f} | "
+            f"{'yes' if arm['passes'] else 'no'} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Individual exports",
+            "",
+            "Deltas are export minus same-head rectangular PyTorch, measured on xcng.",
+            "Each export reselects its threshold on val. No square-training metric",
+            "is substituted for rectangular inference accuracy.",
+            "",
+            (
+                "| Candidate | Val R@P90 | Test R@P90 | Test R@P90 delta | Test AP50 delta | "
+                "Empty FAR | Confuser FAR | Val threshold | Parity failed images |"
+            ),
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for arm in arms:
+        for value in cast(list[JsonValue], arm["seeds"]):
+            seed = mapping(value, "seed")
+            deltas = mapping(seed["accuracy_deltas"], "deltas")
+            lines.append(
+                f"| {seed['model_id']} | {metric(seed, 'val', 'recall_at_p90'):.4f} | "
+                f"{metric(seed, 'test', 'recall_at_p90'):.4f} | "
+                f"{number(deltas['test_recall_at_p90'], 'delta'):+.4f} | "
+                f"{number(deltas['test_ap50'], 'delta'):+.4f} | "
+                f"{seed['empty_far']} | {seed['confuser_far']} | "
+                f"{number(seed['threshold'], 'threshold'):.6f} | {seed['parity_failures']} |"
+            )
+    lines.extend(["", "## Rejected gates", ""])
+    for arm in arms:
+        if not arm["passes"]:
+            lines.append(
+                f"- `{arm['id']}`: " + "; ".join(map(str, cast(list[JsonValue], arm["failures"])))
+            )
+    lines.extend(
+        [
+            "",
+            f"Admissible Pareto front: `{decision['pareto_front']}`.",
+            "",
+            "No measured Pi 5 result exists. The calibration factor and the mapping",
+            "from still-image recall to temporal hits remain estimates and assumptions.",
+            "",
+        ]
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines))
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     commands = root.add_subparsers(dest="action", required=True)
@@ -668,6 +934,17 @@ def parser() -> argparse.ArgumentParser:
             sub.add_argument("--prefix", type=Path, required=True)
             sub.add_argument("--confidence", type=float, required=True)
             sub.add_argument("--calibration", type=Path, required=True)
+    sub = commands.add_parser(
+        "add", help="fetch/export all three seeds and submit one guarded ARM bundle"
+    )
+    sub.add_argument("--recipe", required=True)
+    sub.add_argument("--input-hw", type=int, nargs=2, required=True)
+    sub.add_argument("--taxonomy", choices=("single", "species"), default="single")
+    sub.add_argument("--dataset-name", default="columba-train-v2")
+    sub.add_argument(
+        "--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11", "yolo26"]
+    )
+    sub.add_argument("--output", type=Path, default=Path("outputs/ws7"))
     sub = commands.add_parser("package")
     sub.add_argument("--decision", type=Path, required=True)
     sub.add_argument("--exports", type=Path, required=True)
@@ -678,6 +955,7 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         help="candidate directories or roots, searched recursively",
     )
+    sub.add_argument("--report", type=Path)
     sub.add_argument("--leaderboard", type=Path, default=Path("experiments/leaderboard.csv"))
     sub.add_argument("--output", type=Path, required=True)
     return root
@@ -693,6 +971,8 @@ def main() -> None:
         native_predictions(arguments)
     elif arguments.action == "benchmark-native":
         benchmark_native(arguments)
+    elif arguments.action == "add":
+        add_candidate(arguments)
     elif arguments.action == "package":
         package_candidate(arguments)
     else:
@@ -707,6 +987,8 @@ def main() -> None:
             raise SystemExit("no candidate.json files found")
         decision = select_candidates(directories, baseline_scores(arguments.leaderboard))
         write_json(arguments.output, decision)
+        if arguments.report:
+            write_decision_report(arguments.report, decision)
         print(
             json.dumps({"selected": decision["selected"], "pareto_front": decision["pareto_front"]})
         )
