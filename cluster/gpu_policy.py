@@ -42,7 +42,7 @@ class GpuPolicy:
     light_preferences: tuple[str, ...]
     heavy_preferences: tuple[str, ...]
     type_limits: Mapping[str, int]
-    array_gpu_slots: Mapping[str, int]
+    nice: int
     max_submit_jobs: int
 
     def preferences(
@@ -68,7 +68,7 @@ def load_policy(path: Path = POLICY_PATH) -> GpuPolicy:
             not isinstance(choices, list)
             or not choices
             or any(
-                not isinstance(choice, str) or choice not in {*GPU_CONSTRAINTS, "xgpj0"}
+                not isinstance(choice, str) or choice not in {*GPU_CONSTRAINTS, "xgpj0", "nv"}
                 for choice in choices
             )
         ):
@@ -92,11 +92,9 @@ def load_policy(path: Path = POLICY_PATH) -> GpuPolicy:
         value > QOS_GPU_LIMITS[key] for key, value in limits.items()
     ):
         raise ValueError("type_limits cannot raise the verified QoS caps")
-    slots = positive_limits(cast(JsonValue, values.get("array_gpu_slots")), "array_gpu_slots")
-    if sum(slots.values()) > 8 or any(
-        key not in limits or value > limits[key] for key, value in slots.items()
-    ):
-        raise ValueError("array GPU shares exceed total or per-type caps")
+    nice = values.get("nice", 0)
+    if type(nice) is not int or not 0 <= nice <= 10000:
+        raise ValueError("nice must be an integer within 0..10000")
     max_submit = values.get("max_submit_jobs")
     if type(max_submit) is not int or not 1 <= max_submit <= 32:
         raise ValueError("max_submit_jobs must be within verified association cap 32")
@@ -107,7 +105,7 @@ def load_policy(path: Path = POLICY_PATH) -> GpuPolicy:
         preferences[0],
         preferences[1],
         limits,
-        slots,
+        nice,
         max_submit,
     )
 
@@ -137,7 +135,9 @@ def available_request(
     partitions = GPU_PARTITIONS if allow_short_partition else GPU_PARTITIONS[:1]
     for preference in preferences:
         choice = "a100-80" if preference == "xgpj0" else preference
-        resource_type, feature = resource_selection(selector(choice))
+        resource_type, feature = (
+            ("nv", None) if choice == "nv" else resource_selection(selector(choice))
+        )
         eligible = [
             offer
             for offer in offers

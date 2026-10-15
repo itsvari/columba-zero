@@ -302,7 +302,7 @@ def fetch(root: Path, runs: Sequence[DesiredRun], destination: Path, leaderboard
 
 def fetch_orchestration(root: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
-    names = ("arrays", "transitions", "generated-recipes", "state")
+    names = ("arrays", "transitions", "generated-recipes", "state", "claims")
     remote(["mkdir", "-p", *(str(root / name) for name in names)])
     for name in names:
         completed = subprocess.run(
@@ -434,7 +434,13 @@ def main() -> None:
             }
             module, action = "cluster.arrays", "retarget"
         elif arguments.action == "throttle-arrays":
-            orchestration_payload = {"gpu_limit": arguments.gpu_limit}
+            if (arguments.job is None) != (arguments.throttle is None):
+                parser.error("throttle-arrays requires both --job and --throttle")
+            orchestration_payload = {
+                "gpu_limit": arguments.gpu_limit,
+                "job": arguments.job,
+                "throttle": arguments.throttle,
+            }
             module, action = "cluster.arrays", "throttle"
         elif arguments.action == "submit-arrays":
             tasks = [
@@ -519,6 +525,7 @@ def main() -> None:
                 *orchestration["transitions"],
                 *orchestration.get("bad_nodes", []),
                 *orchestration.get("device_runs", []),
+                *orchestration.get("claims", []),
             ]:
                 print(json.dumps(item))
         return

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --partition=gpu-long
 #SBATCH --gres=gpu:1
-#SBATCH --nice=1000
+#SBATCH --nice=0
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
 #SBATCH --time=00:01:00

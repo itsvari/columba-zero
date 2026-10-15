@@ -303,9 +303,9 @@ class ClusterTests(unittest.TestCase):
                         submit_pending([submission], Budget())[0]["status"], "submitted"
                     )
                 command = process.call_args.args[0]
-                request = request_for(choice or "t4", parse_inventory(GPU_INVENTORY))
+                request = request_for(choice or "titanv", parse_inventory(GPU_INVENTORY))
                 self.assertTrue(set(request.arguments()).issubset(command))
-                self.assertIn("--nice=1000", command)
+                self.assertIn("--nice=0", command)
                 self.assertIn("--nodes=1", command)
                 self.assertEqual(process.call_args.kwargs["input"], "unchanged script")
 
@@ -368,7 +368,7 @@ class ClusterTests(unittest.TestCase):
                 submit_pending([submission], Budget())
             command = process.call_args.args[0]
             node = next(argument for argument in command if argument.startswith("--nodelist="))
-            self.assertEqual(node, "--nodelist=xgpf6")
+            self.assertEqual(node, "--nodelist=xgpd2")
             self.assertNotIn(",", node)
             self.assertIn("--nodes=1", command)
             self.assertIn("--gres=gpu:nv:1", command)
@@ -695,7 +695,7 @@ class ClusterTests(unittest.TestCase):
             self.assertEqual(
                 [call.args[0][0] for call in process.call_args_list], ["squeue", "sbatch", "squeue"]
             )
-            self.assertIn("--nice=1000", process.call_args_list[1].args[0])
+            self.assertIn("--nice=0", process.call_args_list[1].args[0])
             self.assertIn("--constraint=titanv", process.call_args_list[1].args[0])
 
     def test_submit_skips_done_and_active(self) -> None:
@@ -744,7 +744,7 @@ class ClusterTests(unittest.TestCase):
             runs[2], Path("/home/user/columba"), Path("/checkout"), "commit"
         )
         self.assertIn("--gres=gpu:1", submission["script"])
-        self.assertIn("--nice=1000", submission["script"])
+        self.assertIn("--nice=0", submission["script"])
         self.assertEqual(submission["constraint"], "titanv")
         self.assertNotEqual(job_name("x" * 100 + "a", 0), job_name("x" * 100 + "b", 0))
 
@@ -1061,7 +1061,7 @@ class OrchestrationTests(unittest.TestCase):
             seeds=(0, 1, 2),
         )
 
-    def test_qos_caps_and_predeclared_slots(self) -> None:
+    def test_qos_caps_are_independent_ceilings(self) -> None:
         policy = load_policy()
         self.assertEqual(policy.type_limits["a100-40"], 4)
         self.assertEqual(policy.type_limits["a100-80"], 2)
@@ -1069,7 +1069,7 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(policy.type_limits["h100-96"], 1)
         self.assertEqual(policy.type_limits["h200-141"], 1)
         self.assertEqual(policy.max_submit_jobs, 32)
-        self.assertLessEqual(sum(policy.array_gpu_slots.values()), 8)
+        self.assertEqual(policy.type_limits["nv"], 8)
 
     def test_array_throttles_total_and_type_limits(self) -> None:
         allocation = shares({"nv": 12, "h47": 6, "h96": 3}, {"nv": 8, "h47": 2, "h96": 1}, 8)
@@ -1140,7 +1140,7 @@ class OrchestrationTests(unittest.TestCase):
             self.assertIn("--array=0-1%1", command)
             self.assertIn("--gres=gpu:nv:1", command)
             self.assertIn("--exclude=xgpe2,xgpe6", command)
-            self.assertIn("--nice=1000", command)
+            self.assertIn("--nice=0", command)
             self.assertIn("--requeue", cast(str, keywords["input"]))
             manifest = json.loads(Path(cast(str, records[0]["manifest"])).read_text())
             self.assertEqual([item["seed"] for item in manifest["tasks"]], [0, 1])
@@ -1152,7 +1152,7 @@ class OrchestrationTests(unittest.TestCase):
                 patch("cluster.arrays.subprocess.run") as control,
             ):
                 throttle_arrays(root, 4)
-            self.assertIn("ArrayTaskThrottle=2", control.call_args.args[0])
+            self.assertIn("ArrayTaskThrottle=1", control.call_args.args[0])
             state = cast(list[dict[str, JsonValue]], snapshot(root, {"700_0": "RUNNING"})["arrays"])
             self.assertEqual(state[0]["state"], "RUNNING")
 
@@ -1505,6 +1505,7 @@ class OrchestrationTests(unittest.TestCase):
             (run_path / "run.json").write_text('{"epochs_done": 0, "job_id": "713"}')
             with (
                 patch("cluster.transitions.terminal_state", return_value="FAILED"),
+                patch("cluster.transitions.queue", return_value=()),
                 patch("cluster.transitions.submit_arrays") as submission,
             ):
                 with self.assertRaisesRegex(HoldRequired, "no mechanical recovery"):
@@ -1723,7 +1724,7 @@ class DeviceFaultTests(unittest.TestCase):
                 handle_fault(root, run, "No devices were found")
             command = scheduler.call_args_list[-1].args[0]
             self.assertIn("--time=1", command)
-            self.assertIn("--nice=1000", command)
+            self.assertIn("--nice=0", command)
             self.assertIn("--dependency=afterany:800_0", command)
             with (
                 patch.dict(os.environ, {"SLURM_JOB_ID": "802"}),
@@ -2186,3 +2187,330 @@ class DeviceFaultTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FanoutTests(unittest.TestCase):
+    def test_width_respects_expanded_project_and_association_capacity(self) -> None:
+        from cluster.fanout import fanout_width
+
+        self.assertEqual(fanout_width(3, 24, 5), 5)
+        self.assertEqual(fanout_width(8, 24, 5), 3)
+        self.assertEqual(fanout_width(12, 24, 5), 2)
+        self.assertEqual(fanout_width(20, 24, 5), 1)
+        self.assertEqual(fanout_width(2, 3, 5), 1)
+        with self.assertRaisesRegex(RuntimeError, "submitted-task"):
+            fanout_width(5, 4, 5)
+
+    def test_nv_can_claim_all_eight_without_a_reserved_split(self) -> None:
+        from cluster.array_budget import allocate_throttles
+
+        self.assertEqual(allocate_throttles({"nv": 12}, {"nv": "nv"}, (), {}, 8), {"nv": 8})
+        jobs = parse_queue("10|cz-other|PENDING|gpu|gres/gpu:h100-47:2|1")
+        self.assertEqual(allocate_throttles({"nv": 12}, {"nv": "nv"}, jobs, {}, 8), {"nv": 6})
+        jobs = parse_queue("10|moonshot-other|RUNNING|gpu|gres/gpu:h100-47:2|1")
+        self.assertEqual(allocate_throttles({"nv": 12}, {"nv": "nv"}, jobs, {}, 8), {"nv": 8})
+
+    def test_typed_and_generic_tres_are_not_double_charged(self) -> None:
+        job = Job("10", "cz-double", "RUNNING", "gpu", "gres/gpu:h100-47=2,gres/gpu=2")
+        self.assertEqual(job.gpu_count, 2)
+        from cluster.slurm import resource_type_for_job
+
+        self.assertEqual(resource_type_for_job(job), "h100-47")
+
+    def test_claim_race_exactly_one_trains_and_logs_duplicate(self) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        from cluster.run_claim import acquire
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / "runs/smoke-race/seed0"
+            with (
+                patch(
+                    "cluster.run_claim.sibling_jobs",
+                    return_value=(("10_0", "RUNNING"), ("11_0", "CONFIGURING")),
+                ),
+                patch("cluster.run_claim.subprocess.run") as cancellation,
+                ThreadPoolExecutor(max_workers=2) as executor,
+            ):
+                futures = [
+                    executor.submit(acquire, root, run, identifier, "cz-race")
+                    for identifier in ("10_0", "11_0")
+                ]
+                self.assertEqual(sum(future.result() for future in futures), 1)
+            cancellation.assert_not_called()
+            events = json.loads(next((root / "claims").glob("*.json")).read_text())["events"]
+            self.assertEqual(
+                [event["event"] for event in events], ["claim_acquired", "duplicate_start"]
+            )
+
+    def test_stale_pending_owner_is_replaced_and_only_pending_siblings_cancelled(self) -> None:
+        from cluster.run_claim import acquire
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / "runs/smoke-stale/seed0"
+            with patch("cluster.run_claim.sibling_jobs", return_value=(("10_0", "RUNNING"),)):
+                self.assertTrue(acquire(root, run, "10_0", "cz-stale"))
+            with (
+                patch(
+                    "cluster.run_claim.sibling_jobs",
+                    return_value=(("10_0", "PENDING"), ("11_0", "RUNNING"), ("12_0", "COMPLETED")),
+                ),
+                patch.dict(os.environ, {"USER": "owner"}),
+                patch("cluster.run_claim.subprocess.run") as cancellation,
+            ):
+                self.assertTrue(acquire(root, run, "11_0", "cz-stale"))
+            self.assertEqual(
+                cancellation.call_args.args[0],
+                ["scancel", "--state=PENDING", "--user=owner", "--name=cz-stale"],
+            )
+            report = json.loads((run / "run.json").read_text())
+            self.assertEqual(report["fanout_claims"][-1]["cancelled_pending_siblings"], ["10_0"])
+
+    def test_fanout_sets_are_typed_and_fit_the_short_partition(self) -> None:
+        from cluster.fanout import requests_for
+
+        with tempfile.TemporaryDirectory() as directory:
+            light = OrchestrationTests().write_recipe(Path(directory) / "light.yaml")
+            heavy = OrchestrationTests().write_recipe(
+                Path(directory) / "heavy.yaml", "teacher", "yolo11x.pt"
+            )
+            offers = parse_inventory(GPU_INVENTORY)
+            requests = requests_for(task_for(light, 0), offers)
+            self.assertEqual(
+                [request.resources for request in requests],
+                ["gpu:nv:1", "gpu:a100-40:1", "gpu:h100-47:1"],
+            )
+            self.assertEqual(requests[0].constraint, "t4|titanv|titanrtx")
+            heavy_requests = requests_for(task_for(heavy, 0), offers)
+            self.assertEqual(
+                [request.resources for request in heavy_requests],
+                [
+                    "gpu:h100-47:1",
+                    "gpu:h100-96:1",
+                    "gpu:a100-40:1",
+                    "gpu:a100-80:1",
+                    "gpu:h200-141:1",
+                ],
+            )
+            self.assertEqual(heavy_requests[-1].partitions, ("gpu",))
+            self.assertTrue(
+                all(
+                    request.time_limit == "03:00:00"
+                    for request in heavy_requests
+                    if "gpu" in request.partitions
+                )
+            )
+
+    def test_fanout_submission_holds_until_copies_exist_and_preserves_shared_name(self) -> None:
+        from cluster.fanout import submit_runs
+
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            root = home / "columba"
+            checkout = root / "checkouts/pinned"
+            path = OrchestrationTests().write_recipe(checkout / "recipe.yaml", "smoke-fanout")
+            (checkout / "cluster/templates").mkdir(parents=True)
+            (checkout / "cluster/templates/nv.sbatch").write_text(
+                (REPOSITORY / "cluster/templates/nv.sbatch").read_text()
+            )
+            commands: list[Sequence[str]] = []
+
+            def scheduler(
+                command: Sequence[str], **keywords: JsonValue
+            ) -> subprocess.CompletedProcess[str]:
+                commands.append(command)
+                result = (
+                    "1 project"
+                    if command[0] == "du"
+                    else str(100 + len(commands))
+                    if command[0] == "sbatch"
+                    else ""
+                )
+                return subprocess.CompletedProcess(command, 0, result, "")
+
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch("cluster.fanout.queue", return_value=()),
+                patch("cluster.fanout.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)),
+                patch("cluster.fanout.subprocess.run", side_effect=scheduler),
+            ):
+                records = submit_runs(root, checkout, [task_for(path, 0)])
+            submitted = [command for command in commands if command[0] == "sbatch"]
+            self.assertEqual(len(submitted), 3)
+            self.assertEqual(
+                len(
+                    {
+                        next(value for value in command if value.startswith("--job-name="))
+                        for command in submitted
+                    }
+                ),
+                1,
+            )
+            self.assertTrue(
+                all(
+                    "--hold" in command and "--nice=0" in command and "--time=00:01:00" in command
+                    for command in submitted
+                )
+            )
+            self.assertEqual(
+                commands[-1],
+                ["scontrol", "release", ",".join(str(record["array_id"]) for record in records)],
+            )
+            script = (REPOSITORY / "cluster/templates/nv.sbatch").read_text()
+            self.assertLess(
+                script.index("python -m cluster.run_claim"),
+                script.index("cluster/bootstrap.sh --gpu"),
+            )
+            self.assertLess(
+                script.index("python -m cluster.run_claim"),
+                script.index("cluster.device_faults check"),
+            )
+
+    def test_targeted_throttle_cli_forwards_job_and_value(self) -> None:
+        with (
+            patch("sys.argv", ["sweep", "throttle-arrays", "--job", "951222", "--throttle", "2"]),
+            patch("cluster.sweep.remote_root", return_value=Path("/columba")),
+            patch(
+                "cluster.sweep.deploy", return_value=(Path("/columba/checkouts/pinned"), "commit")
+            ),
+            patch("cluster.sweep.remote", return_value="[]") as remote,
+            patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            sweep_main()
+        command = remote.call_args.args[0]
+        payload = json.loads(shlex.split(command[-1])[-1])
+        self.assertEqual(payload["job"], "951222")
+        self.assertEqual(payload["throttle"], 2)
+
+    def test_targeted_throttle_performs_scontrol_update(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            root = home / "columba"
+            manifest = root / "arrays/source/manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('{"tasks": []}')
+            record: dict[str, JsonValue] = {
+                "array_id": "90",
+                "task_count": 3,
+                "throttle": 1,
+                "resource_type": "nv",
+                "manifest": str(manifest),
+            }
+            (manifest.parent / "submission.json").write_text(json.dumps(record))
+            jobs = parse_queue("90_0|cz-old-array|RUNNING|gpu|gres/gpu:nv:1|1")
+            with (
+                patch("pathlib.Path.home", return_value=home),
+                patch("cluster.arrays.queue", return_value=jobs),
+                patch("cluster.arrays.owned_job", return_value={"ArrayJobId": "90"}),
+                patch("cluster.arrays.subprocess.run") as control,
+            ):
+                records = throttle_arrays(root, 8, "90", 2)
+            self.assertEqual(records[0]["throttle"], 2)
+            self.assertEqual(
+                control.call_args.args[0], ["scontrol", "update", "JobId=90", "ArrayTaskThrottle=2"]
+            )
+
+    def test_requeue_refills_before_requesting_the_same_task_again(self) -> None:
+        from cluster.requeue import main as requeue_main
+
+        with (
+            patch.dict(
+                os.environ,
+                {"SLURM_JOB_ID": "100", "SLURM_JOB_NAME": "cz-resume", "COLUMBA_FANOUT": "true"},
+            ),
+            patch(
+                "sys.argv",
+                ["requeue", "signal", "--run-path", str(Path.home() / "columba/runs/smoke/seed0")],
+            ),
+            patch("cluster.requeue.update_ledger", return_value=True),
+            patch("cluster.fanout.refanout") as refill,
+            patch("cluster.requeue.subprocess.run") as control,
+        ):
+            requeue_main()
+        refill.assert_called_once()
+        self.assertEqual(control.call_args.args[0], ["scontrol", "requeue", "100"])
+
+    def test_nice_is_configurable_without_changing_the_qos_caps(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "policy.yaml"
+            values = yaml.safe_load((REPOSITORY / "cluster/gpu_policy.yaml").read_text())
+            values["nice"] = 1000
+            path.write_text(yaml.safe_dump(values))
+            self.assertEqual(load_policy(path).nice, 1000)
+            values["nice"] = -1
+            path.write_text(yaml.safe_dump(values))
+            with self.assertRaises(ValueError):
+                load_policy(path)
+
+    def test_narrow_fanout_spreads_large_backlogs_across_free_type_caps(self) -> None:
+        from cluster.fanout import narrow_requests, requests_for
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = OrchestrationTests().write_recipe(
+                Path(directory) / "heavy.yaml", "teacher", "yolo11x.pt"
+            )
+            offers = parse_inventory(GPU_INVENTORY)
+            requests = requests_for(task_for(path, 0), offers)
+            planned: dict[str, int] = {}
+            choices = [
+                narrow_requests(requests, 1, offers, (), planned)[0].resources for _ in range(8)
+            ]
+            self.assertGreaterEqual(len(set(choices)), 3)
+            self.assertIn("gpu:a100-40:1", choices)
+            self.assertIn("gpu:a100-80:1", choices)
+
+    def test_transition_waits_for_a_new_winner_after_original_copies_end(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = OrchestrationTests().write_recipe(root / "source.yaml")
+            rules = replace(OrchestrationTests().rules(), inputs=(source,))
+            job = Job("900_0", job_name("nano", 0), "RUNNING", "gpu", "gres/gpu:a100-40:1")
+            with (
+                patch("cluster.transitions.queue", return_value=(job,)),
+                patch("cluster.transitions.submit_arrays", return_value=[]),
+                patch("cluster.transitions.arm_transition", return_value={}) as arm,
+                patch("cluster.transitions.terminal_state") as terminal,
+                patch.dict(os.environ, {"SLURM_JOB_ID": "999"}),
+            ):
+                self.assertTrue(
+                    recover_interrupted_inputs(root, root, rules, {"rules": str(source)}, root)
+                )
+            terminal.assert_not_called()
+            self.assertIn("900_0", arm.call_args.args[3])
+
+    def test_claim_report_preserves_recipe_identity_before_runner_validation(self) -> None:
+        from cluster.recipe import recipe_sha256
+        from cluster.run_claim import acquire
+        from cluster.run_job import validate_existing_run
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = OrchestrationTests().write_recipe(root / "recipe.yaml")
+            recipe = load_recipe(path)
+            run = root / "runs/nano/seed0"
+            metadata: dict[str, JsonValue] = {
+                "recipe_sha256": recipe_sha256(path),
+                "dataset": recipe.dataset,
+            }
+            with patch("cluster.run_claim.sibling_jobs", return_value=(("10_0", "RUNNING"),)):
+                self.assertTrue(acquire(root, run, "10_0", "cz-identity", metadata))
+            validate_existing_run(run, recipe, recipe_sha256(path))
+
+    def test_device_repair_replenishes_alternative_types_without_checkpoint_budget(self) -> None:
+        from cluster.device_faults import refill_device_copies
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / "runs/smoke-device/seed0"
+            event = reserve_retry(root, run, "xgpd3", "100_0", "100", 0, "No devices were found")
+            with patch(
+                "cluster.fanout.refanout_task", return_value=[{"array_id": "101"}]
+            ) as refill:
+                refill_device_copies(root, run, str(event["event_id"]), "100_0")
+            refill.assert_called_once_with(root, "100_0")
+            ledger = json.loads((run / "device_faults.json").read_text())
+            self.assertEqual(ledger["retry_count"], 1)
+            self.assertEqual(ledger["events"][0]["fanout_array_ids"], ["101"])
+            self.assertFalse((run / "requeue.json").exists())

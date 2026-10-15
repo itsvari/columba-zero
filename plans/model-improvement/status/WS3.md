@@ -819,3 +819,108 @@ state/device_faults ledgers in C6; choose when to move xgpd2 out of the static
 list. Full-node probes above normal QoS typed caps require administrator help.
 No implementation blocker remains. 947422 replacement remains the coordinator's
 explicit action.
+
+## Round 6 — dynamic GPU budget (2026-10-15)
+
+State: in progress. Branch ws3/cluster, GPT-6.1-sol via T3 delegate.
+Started from main d52f3d1. User overrides the earlier nice=1000 default to 0.
+Jobs 950409, 951220 and 951222 are protected from all mutations in this round.
+Work: remove fixed GPU shares; account for shared total and typed ceilings;
+live-capacity placement and finite automatic pending-array maintenance; targeted
+throttle CLI; configurable Nice. Validation will use mocked Slurm and read-only
+live cluster observations, with no production retargeting or job probes planned.
+
+### Round 6 complete — typed fan-out replaces automatic retargeting
+
+State: done. Agent GPT-6.1-sol via T3 delegate, 15 October 2026.
+Base main d52f3d1; branch ws3/cluster. The coordinator's later steer replaced
+item 3 with typed fan-out. The draft maintenance/polling code was removed
+before the implementation commit; no maintenance job was submitted.
+
+Implemented:
+
+- Removed array_gpu_slots. Legacy throttle allocation uses the shared eight
+  and actual remaining tasks, with independent typed ceilings. nv can use all
+  eight. Typed+generic TRES are counted once, including multi-GPU allocations.
+- New submit-arrays and transition submissions use one singleton array per
+  run/type. This keeps C6 manifests/status/dependency handling intact while
+  avoiding any fixed type share. Light types are nv (t4|titanv|titanrtx),
+  A100-40 and H100-47. Heavy types are H100-47, H100-96, A100-40, A100-80 and
+  H200-141. GPU-only nodes including xgpj0 participate via gpu-long,gpu and
+  a three-hour limit. Explicit recipe/seed/CLI pins remain pins.
+- Copies are submitted held, then released together. Before bootstrap, GPU
+  probing or staging, the NFS-locked claim checks exact-name live owners in
+  RUNNING/CONFIGURING/COMPLETING. One winner cancels only pending siblings by
+  exact cz- name and user; concurrent losers log duplicate_start and exit 0.
+  Stale and pending owners can be taken over. Claim reports carry the pinned
+  recipe identity, and events survive run_job's report updates.
+- Width fits every expanded task into project 24/account 32, with optional
+  transition reservations. Small cohorts fan out widely; cohorts above eight
+  runs narrow to one/two copies and distribute primary choices across free
+  typed headroom. QoS enforces total eight plus its independent type ceilings.
+  Partial submission releases already-created copies instead of orphaning them.
+- Checkpoint signals replenish typed copies, delayed one minute in Slurm to
+  let the current owner requeue, then requeue the original task. The existing
+  saved-epoch and ten-requeue guard stays per run. A full queue records a
+  refill error and preserves the original resume path. Device-fault repair
+  also replenishes alternatives, including when a unique H200 node is bad;
+  its separate three-retry budget and dynamic exclusions remain intact.
+- Transitions wait/re-arm against active replacement copies, even after their
+  original dependency copies have ended. No additional reasoning is automated.
+- Nice is configured by gpu_policy.yaml, default 0. All submission paths pass
+  it, and templates default to 0. README places the nice=1000 revert alongside
+  nv-only/four-GPU reversion. A lower --gpu-limit selects the bounded legacy
+  array path; retire existing pending fan-out copies before that migration.
+- throttle-arrays --job ARRAY_ID --throttle N now forwards both values and
+  performs scontrol update. Legacy retarget-array still picks from live free
+  partitions and restores ArrayTaskThrottle after GRES updates. Running arrays
+  were not used to verify either mutation path.
+
+Live verification, measured on the cluster:
+
+1. First cohort 952009/952010/952011. 952009_0 won on xgpd0 (Titan V).
+   952010_0 started concurrently on xgpg0, saw the live owner, logged
+   duplicate_start and completed in two seconds without bootstrap/training.
+   The winner cancelled pending 952011_0. Its training entry then exposed a
+   claim-report identity bug and failed after 16 seconds. Fixed in fba1785;
+   a regression test now calls validate_existing_run on the claim report.
+2. Corrected cohort 952032/952033/952034, pinned checkout a8853a8c502f013f
+   (fba1785). 952032_0 won on xgpd0, took over the stale 952009_0 claim,
+   cancelled both pending siblings and completed exit 0 in 53 seconds.
+   One synthetic smoke epoch at imgsz160, batch2, measured 11.145 s/epoch.
+   Both prediction/meta files, val/test metrics, weights, results.csv and
+   DONE exist. No accuracy claim is made for synthetic smoke data.
+3. Total measured GPU-allocation elapsed time across both attempts was
+   16+2+53=71 seconds. Each allocation had a time limit of at most one minute;
+   Slurm rounded the corrected request of 40 seconds up to one minute.
+   The final template explicitly requests one minute. No further probes or
+   smoke jobs were submitted. No WS3 smoke jobs remain in the queue.
+4. Protected arrays were never cancelled, retargeted or throttled. 951220_0
+   and 951222_0/1 remained RUNNING. 950409's tasks completed naturally with
+   exit 0 during the work. No non-cz jobs were acted on or their output read.
+
+Evidence: outputs/ws3/evidence-round6.json (C6 report, claim history, metrics,
+artifact list, sacct and final queue), live-round6-before.txt,
+fanout-round6-first-attempt.txt, live-round6-retry.txt,
+submission-round6.json and submission-round6-retry.json. Cluster artifacts:
+~/columba/runs/smoke-fanout-r6/seed0/ and ~/columba/claims/<run-hash>.json.
+Initial implementation 0fe36a0; identity correction fba1785. Final changes also
+refill device-fault alternatives and use actual remaining tasks/live types
+when managing legacy array throttles. Immutable publication metadata is stored
+in outputs/ws3/deployment-round6-published.json after the final commit.
+
+Checks: pytest 311 passed, seven skipped; unittest 318 cases, seven skipped.
+All 105 cluster tests pass, including a real two-thread claim race, stale-owner
+handoff, pending-only cancellation, submit-cap sizing, narrowed type coverage,
+C6 identity validation, device refill, replacement transition dependencies,
+TRES double-charge accounting and the targeted throttle CLI/scontrol call.
+Ruff check/format pass on 94 files; strict mypy passes on 91 files;
+git diff --check passes. Logs are outputs/ws3/{pytest,unit,ruff,mypy}-round6.log.
+
+Contract request: C5 is unchanged. C6 should permit optional run.json
+fanout_claims (claim events plus cancelled_pending_siblings) and
+fanout_refill_error (refill failure while keeping the original self-requeue).
+Device-fault events may include fanout_array_ids and fanout_refill_error.
+The adjacent claims ledger is scheduler state, not a required C6 artefact.
+No blocker remains. Existing running jobs retain their old immutable code;
+future submit-arrays/transition arming from the new checkout enables fan-out.

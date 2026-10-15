@@ -28,18 +28,22 @@ count towards our caps and cannot be cancelled by this CLI.
 
 Project caps are eight GPUs, two CPU jobs and twenty-four queued jobs including
 running jobs. GPU devices, not allocations, are counted across every GPU type
-and every allocated node. PENDING jobs reserve GPU slots. `--gpu-limit`,
+and every allocated node. Legacy single-job submission reserves GPU slots for PENDING jobs. New fan-out
+submission delegates total/type GPU admission to QoS and counts every copy
+towards the submitted-task cap. `--gpu-limit`,
 `--cpu-limit`, `--queue-limit` may lower those caps. These limits count all
 active cz- jobs, so another workstream may temporarily fill the
 chosen limit. Resubmit later to schedule runs omitted due to budget. Normal
 submission requires WS1 tools and both WS2 dataset archives; smoke recipes
 may explicitly allow missing evaluators; missing evaluation leaves `DONE` absent.
 
-Templates always request `--nice=1000`. `lane: nv` names the GPU training lane;
+`gpu_policy.yaml` sets `nice: 0` while the high-priority project is idle.
+Every submission passes that value explicitly; templates default to zero. `lane: nv` names the GPU training lane;
 it supports all user-approved GPU types, including aarch64 `xgpj0`.
 ARM CPU jobs use `normal` on xcng0. GPU templates use eight CPUs and 64 GB RAM;
 ARM CPU templates use four CPUs, 16 GB and three hours. Synthetic smoke IDs
-use four CPUs, 16 GB and ten minutes to fit short scheduling gaps.
+use four CPUs, 16 GB and ten minutes on the legacy submit path. New fan-out
+smokes use two CPUs, 8 GB and at most one minute, with no checkpoint signal.
 
 GPU requests from the verified 15 October inventory:
 
@@ -199,16 +203,21 @@ limit running GPUs to eight. This follows the approved upfront-array design.
 
 The normal QoS per-user limits verified on 15 October are GPU=8, nv=8,
 A100-40=4, A100-80=2, H100-47=2, H100-96=1, H200-141=1, H200-71=1 and CPU=256.
-Project CPU concurrency remains two. `gpu_policy.yaml` records these type caps
-and an array slot split: nv=4, H100-47=2, H100-96=1, A100-80=1. Light models use
-`gpu:nv:1` with `--constraint='t4|titanv|titanrtx'`. Heavy jobs rotate through
-those declared heavy groups; each group's throttle stays within its type cap.
-Pinned recipe/seed/CLI types remain pinned. A100-80 automatic arrays may use
-`gpu-long,gpu` with a three-hour request, allowing xgpj0 transparently. Other
-un-pinned groups request gpu-long. The scheduler rewrote the 20-minute smoke's
-GPU-long request to gpu; the submitted manifest preserves the original request.
+Project CPU concurrency remains two. These type limits are ceilings inside
+one shared allowance of eight, never reserved shares. nv may use all eight.
+The fixed `array_gpu_slots` setting has been removed.
 
-To lower all active array throttles and persist the limit for future arrays:
+`submit-arrays` and transition-generated runs now use per-run fan-out, encoded
+as singleton arrays to preserve the manifest, status and dependency interfaces.
+The light set is nv, A100-40 and H100-47. nv uses the OR constraint
+`t4|titanv|titanrtx`. The heavy set is H100-47, H100-96, A100-40, A100-80 and
+H200-141. Set these in `light_preferences` and `heavy_preferences`; `h200`
+selects GRES h200-141. An explicit recipe/seed/CLI constraint remains pinned.
+Requests span gpu-long and gpu where that type exists, with a three-hour
+limit whenever gpu is included. This covers gpu-only A100/H100 nodes, xgpj0
+and H200 without relying on a later retarget operation.
+
+For legacy multi-task arrays, lower throttles and persist their limit:
 
 ```sh
 python -m cluster.sweep throttle-arrays --gpu-limit 4
@@ -390,10 +399,9 @@ It checks the destination type cap and total active-array throttle budget.
 An array with running tasks must be targeted by a pending task ID rather than
 its root. Running jobs are not retargeted.
 
-Automatic heavy-array placement now uses live free GPU units: prefer gpu-long
+Legacy heavy-array placement uses live free GPU units: prefer gpu-long
 when that type has room, otherwise gpu with a three-hour request. This also
-applies to retarget-array. The preference order, 4/2/1/1 shares and type caps
-remain unchanged. A multi-partition request must fit every partition under
+applies to retarget-array. Type caps remain unchanged; there are no reserved 4/2/1/1 shares. A multi-partition request must fit every partition under
 EnforcePartLimits=ALL. Normal checkpoint requeue resumes across short slices.
 
 status shows active/expired/simulated ledger entries, expiry times and per-run
@@ -418,3 +426,59 @@ python -m cluster.sweep arm-transition --rules training/rounds/round2-distill.ya
 
 Verify the new job's dependencies and pinned checkout, then retire the old
 pending transition. Do not leave both armed. WS3 did not re-arm or modify 947422.
+
+
+### Fan-out claims, submit caps and checkpoint segments
+
+Each recipe/seed has one shared cz- job name. Its typed copies are submitted
+held, recorded as immutable manifests, then released together. Under the NFS
+submission lock, a copy claims `~/columba/claims/<run-hash>.json` before venv
+bootstrap, GPU checks or data staging. It checks the exact-name jobs through
+squeue. A different RUNNING, CONFIGURING or COMPLETING owner wins; the loser
+logs duplicate_start and exits successfully within seconds. A missing,
+terminal or PENDING owner is stale, so a replacement may claim it. The winner
+uses scancel with the exact shared name, account owner and state=PENDING.
+Running siblings are never cancelled. Claim history and the pending sibling
+IDs are preserved as `fanout_claims` in run.json; status/fetch include claims.
+
+Every expanded copy counts towards project MaxSubmit=24 and account
+MaxSubmit=32, including other account jobs for the latter. The account also
+has MaxJobs=16; GPU total/type QoS and the project CPU cap govern admission. At most eight new
+runs receive the widest set that fits. Larger batches use one or two copies
+per run. Narrow sets distribute their first choices across available typed
+headroom instead of parking the entire backlog on H100-47. Extra copies are
+held by QoS; there is no per-type array throttle split. If even one copy per
+run does not fit, submission refuses before sbatch and asks for a smaller
+recipe/seed batch. No idle slot or long-lived management job is created.
+
+After a checkpoint signal, the runner replenishes the same recipe/seed's
+fan-out and then requeues its existing task. New copies have BeginTime one
+minute later, allowing the checkpoint owner to leave RUNNING before a new
+copy checks the claim. The normal saved-epoch and ten-requeue guard remains
+shared by the run. A refill blocked by the submit cap records
+fanout_refill_error and keeps the existing self-requeue path. Device-fault
+quarantine/retry remains separate, uses the same exclusions and rechecks the
+claim on restart. Dependency transitions look up every active exact-name
+copy before diagnosing a missing DONE, then re-arm against replacement jobs.
+
+The existing commands remain available for old arrays:
+
+```sh
+python -m cluster.sweep throttle-arrays --job ARRAY_ID --throttle 2
+python -m cluster.sweep retarget-array --job ARRAY_ID --constraint a100-40 --throttle 2
+```
+
+The targeted throttle command now forwards both options and actually writes
+ArrayTaskThrottle. Manual retargeting still chooses the partition with live
+free units and reapplies the throttle after a GRES update. Automatic pending
+retargeting was replaced by fan-out; no hourly poller is installed.
+
+When the high-priority project returns, set `nice: 1000` in gpu_policy.yaml,
+restore nv-only preferences and the four-GPU allowance. Submit future work
+with `submit-arrays --gpu-limit 4`, which uses the bounded typed-array path.
+First retire the pending fan-out copies and allow their running owners to
+finish; legacy throttle controls alone cannot constrain existing singleton
+fan-out copies. Existing jobs remain pinned to their submitted policy/Nice;
+changing policy does not rewrite them. Restore Nice=1000 on those allocations
+through the coordinator. Default Nice=0 affects new submissions and segment
+copies from new checkouts only.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --partition=gpu-long
 #SBATCH --gres=gpu:1
-#SBATCH --nice=1000
+#SBATCH --nice=0
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=3-00:00:00
@@ -29,6 +29,15 @@ finish_job() {
 trap request_checkpoint USR1
 trap finish_job EXIT
 cd "$COLUMBA_CHECKOUT"
+if [[ "${COLUMBA_FANOUT:-}" == true ]]; then
+    if python -m cluster.run_claim; then
+        :
+    else
+        claim_exit_status=$?
+        if [[ "$claim_exit_status" == 76 ]]; then exit 0; fi
+        exit "$claim_exit_status"
+    fi
+fi
 python -m cluster.device_faults check --nvidia-only
 bash cluster/bootstrap.sh --gpu
 environment="$(bash cluster/bootstrap.sh --gpu --print-env)"

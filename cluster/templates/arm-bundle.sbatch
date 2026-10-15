@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --partition=normal
 #SBATCH --nodelist=xcng0
-#SBATCH --nice=1000
+#SBATCH --nice=0
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=03:00:00
