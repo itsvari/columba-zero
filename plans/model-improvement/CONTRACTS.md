@@ -1,9 +1,12 @@
 # Shared contracts
 
-Version: **v1.8**. Changes go through the coordinator and bump the version.
+Version: **v1.9**. Changes go through the coordinator and bump the version.
 
 Changelog:
 
+- v1.9 (2026-10-15, coordinator): optional C6 `run.json` fields
+  `fanout_claims` and `fanout_refill_error` for multi-type fan-out, plus
+  refill IDs/errors within device-fault events.
 - v1.8 (2026-10-15, coordinator): optional C6 `run.json` fields for device
   retries and test-taxonomy alignment; optional C7 `omp_wait_policy`.
 - v1.7 (2026-10-15, coordinator): C5 GPU selection covers all GPU types (user
@@ -399,6 +402,9 @@ run.json              recipe sha256, git commit, dataset name + archive sha256, 
                       (v1.8, optional: device-fault retry records written by the WS3 device check, and
                       `test_taxonomy_aligned` when a species model is scored on a single-taxonomy test set
                       by renaming only the staged class list; pigeon stays class 0)
+                      (v1.9, optional: `fanout_claims` start-claim history and cancelled pending sibling IDs,
+                      `fanout_refill_error` when a segment refill hit the submit cap; device-fault events may
+                      carry refill job IDs/errors)
 weights/best.pt, weights/last.pt
 results.csv
 predictions_val.json (+ .meta.json), predictions_test.json (+ .meta.json)
