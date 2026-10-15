@@ -601,6 +601,22 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
         raise ValueError(f"{directory}: remeasure latency with OMP_WAIT_POLICY=ACTIVE")
     if test.get("dataset") != "columba-test-v2":
         raise ValueError(f"{directory}: primary gates require frozen columba-test-v2")
+    styles = None
+    if (directory / "metrics_styles.json").exists():
+        styles = read_report(directory / "metrics_styles.json")
+        styles_meta = read_report(directory / "predictions_styles.meta.json")
+        if mapping(styles["operating_threshold"], "threshold")["value"] != threshold["value"]:
+            raise ValueError(f"{directory}: styles threshold differs from validation")
+        if styles.get("dataset") != "columba-test-v2-styles" or styles.get("split") != "test":
+            raise ValueError(f"{directory}: secondary metrics require columba-test-v2-styles")
+        for report in (styles, styles_meta):
+            if report.get("input_hw") != descriptor["input_hw"]:
+                raise ValueError(f"{directory}: styles input dimensions differ from candidate")
+        for field in ("framework", "format", "model_id", "compute_flags", "ncnn_compute"):
+            if styles_meta.get(field) != native.get(field):
+                raise ValueError(f"{directory}: styles {field} differs from native candidate")
+        if not str(styles_meta.get("host", "")).startswith("xcng"):
+            raise ValueError(f"{directory}: styles accuracy requires native xcng inference")
     return {
         **descriptor,
         "directory": os.path.relpath(directory, Path.cwd()),
@@ -621,9 +637,7 @@ def candidate_record(directory: Path) -> dict[str, JsonValue]:
         "accuracy_gate_passed": read_report(directory / "accuracy_gate.json")["passed"],
         "accuracy_deltas": read_report(directory / "accuracy_gate.json")["deltas"],
         "parity_failures": read_report(directory / "parity.json")["failures"],
-        "styles": read_report(directory / "metrics_styles.json")["pigeon"]
-        if (directory / "metrics_styles.json").exists()
-        else None,
+        "styles": styles["pigeon"] if styles is not None else None,
     }
 
 
@@ -1386,11 +1400,18 @@ def package_candidate(arguments: argparse.Namespace) -> None:
 
 def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
     arms = [mapping(arm, "arm") for arm in cast(list[JsonValue], decision["arms"])]
+    baseline = mapping(decision["baseline"], "baseline")
     lines = [
         "# WS7 provisional export decision",
         "",
         f"Provisional selection: `{decision['selected'] or 'HOLD: no arm passes every gate'}`.",
         "Final selection waits for distilled and species candidates.",
+        f"Coverage: {len(arms)} configurations and "
+        f"{sum(len(cast(list[JsonValue], arm['seeds'])) for arm in arms)} seed/export cases.",
+        f"Comparison baseline: `{baseline['recipe']}`, measured training-size test R@P90 "
+        f"{number(baseline['test_mean'], 'baseline mean'):.4f} +/- "
+        f"{number(baseline['test_std'], 'baseline sd'):.4f} from the WS5 leaderboard.",
+        "The baseline was not remeasured at rectangular input sizes in this matrix.",
         "Styles is a secondary measured column. Test-v2 still supplies every promotion",
         "gate. Paired v2/v2s arms within 0.01 validation recall and 5% measured latency",
         "use styles recall to break the tie. The 5% band treats host timing noise",

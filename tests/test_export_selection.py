@@ -293,6 +293,20 @@ class ExportSelectionTests(unittest.TestCase):
             (directory / "latency.json").write_text(json.dumps(invalid))
             with self.assertRaisesRegex(ValueError, "mismatched candidate input"):
                 candidate_record(directory)
+            invalid["input_hw"] = [384, 640]
+            (directory / "latency.json").write_text(json.dumps(invalid))
+            styles = mapping(reports["metrics_test"], "test").copy()
+            styles["dataset"] = "columba-test-v2-styles"
+            styles["operating_threshold"] = {"value": 0.6}
+            (directory / "metrics_styles.json").write_text(json.dumps(styles))
+            (directory / "predictions_styles.meta.json").write_text(
+                json.dumps(reports["predictions_test.meta"])
+            )
+            with self.assertRaisesRegex(ValueError, "styles threshold differs"):
+                candidate_record(directory)
+            styles["operating_threshold"] = {"value": 0.5}
+            (directory / "metrics_styles.json").write_text(json.dumps(styles))
+            self.assertIsNotNone(candidate_record(directory)["styles"])
 
     def test_styles_breaks_matched_data_ties_without_changing_test_gates(self) -> None:
         records = [
