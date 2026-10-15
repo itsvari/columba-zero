@@ -1,9 +1,11 @@
 # Shared contracts
 
-Version: **v1.7**. Changes go through the coordinator and bump the version.
+Version: **v1.8**. Changes go through the coordinator and bump the version.
 
 Changelog:
 
+- v1.8 (2026-10-15, coordinator): optional C6 `run.json` fields for device
+  retries and test-taxonomy alignment; optional C7 `omp_wait_policy`.
 - v1.7 (2026-10-15, coordinator): C5 GPU selection covers all GPU types (user
   lifted the nv-only restriction); `null` means the live policy in
   `cluster/gpu_policy.yaml`; `batch_override` recorded.
@@ -394,6 +396,9 @@ Evidence (Mac M2 Pro, CPU, coco8, `imgsz=320`; scripts in
 ```
 run.json              recipe sha256, git commit, dataset name + archive sha256, host, GPU name,
                       compute capability, torch/ultralytics/CUDA versions, start/end, epochs done, exit status
+                      (v1.8, optional: device-fault retry records written by the WS3 device check, and
+                      `test_taxonomy_aligned` when a species model is scored on a single-taxonomy test set
+                      by renaming only the staged class list; pigeon stays class 0)
 weights/best.pt, weights/last.pt
 results.csv
 predictions_val.json (+ .meta.json), predictions_test.json (+ .meta.json)
@@ -440,6 +445,11 @@ Optional C7 fields (v1.2, written by `tools/bench_ncnn.py`): `samples_ms`
 size, class count, confidence, model file hashes, load averages, software
 versions, raw CPU feature report, Slurm allocation, timing boundaries, and
 int8 calibration provenance (`latency-only` vs deployment calibration).
+
+Optional C7 field (v1.8): `omp_wait_policy` (`ACTIVE` or `PASSIVE`), the
+`OMP_WAIT_POLICY` in force during timing. WS7 measured PASSIVE at more than
+twice ACTIVE's NCNN time on xcng; records without the field are not comparable
+across policies.
 
 Calibration records live in `experiments/latency/calibration.json`, with
 `id`, `factor`, `method`, `source` and `date`.
