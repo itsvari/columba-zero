@@ -1,0 +1,17 @@
+{
+  "label": "measured",
+  "host": "vexcalibur",
+  "images": 319,
+  "confidence": 0.25,
+  "failures": 1,
+  "count_mismatches": 0,
+  "passed": false,
+  "minimum_iou": 0.8,
+  "maximum_confidence_delta": 0.05,
+  "maximum_matched_box_delta_px": 2.4158935546875,
+  "maximum_matched_confidence_delta": 0.01002359390258789,
+  "comparator": "tools.compare_exports.match_predictions",
+  "reference": "outputs/ws7/cpu-reference/predictions_test.json",
+  "actual": "outputs/ws7/gpu-references/yolo26n-v2s-800-round2-plain/seed0/yolo11/pt/predictions_test.json",
+  "zero_area_boxes": "excluded from both C3 files, matching WS1 positive-area contract"
+}

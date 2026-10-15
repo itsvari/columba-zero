@@ -1,0 +1,10 @@
+{
+  "label": "measured",
+  "host": "vexcalibur",
+  "candidates_verified": 54,
+  "parity_reports_reproduced": 54,
+  "int8_calibrations_verified": 18,
+  "calibration_images_each": 200,
+  "test_calibration_overlap": false,
+  "checks": "native compute, own val thresholds, C7 samples/scaling, package hashes, C3 parity, val-only calibration"
+}

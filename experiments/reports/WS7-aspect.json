@@ -1,0 +1,247 @@
+{
+  "label": "measured",
+  "host": "vexcalibur",
+  "framework": "ultralytics",
+  "device": "cpu",
+  "model_path": "/Users/vari/.t3/worktrees/columba-zero/t3-27965e4a/outputs/ws7/checkpoints/yolo26n-v2s-800-round2-plain/seed1/weights/best.pt",
+  "square_predictions": "outputs/ws7/aspect/square/predictions_test.json",
+  "rectangular_predictions": "outputs/ws7/results/yolo26n-v2s-800-round2-plain/seed1/yolo11/pt/predictions_test.json",
+  "square_input_hw": [
+    800,
+    800
+  ],
+  "rectangular_input_hw": [
+    448,
+    800
+  ],
+  "bucket_boundaries": "portrait <1; square [1,1.1547); 4:3 [1.1547,1.5396); approx-16:9 >=1.5396, includes wider images",
+  "small_definition": "WS1 projected short side <32 px; fixed cohort uses 800x800 for both",
+  "global_test_p90_thresholds_diagnostic_only": [
+    0.3655960261821747,
+    0.33649972081184387
+  ],
+  "threshold_policy": "subset R@P90 is diagnostic; no operating threshold or promotion gate changes",
+  "buckets": [
+    {
+      "bucket": "all",
+      "pigeon_images": 121,
+      "pigeon_weighted_content_scale_ratio": 0.5911107148661388,
+      "square": {
+        "recall_at_p90": 0.8016997167138811,
+        "small_recall_at_p90": 0.5850340136054422,
+        "recall_at_full_test_p90": 0.8016997167138811,
+        "counts": {
+          "images": 319,
+          "empty_images": 125,
+          "confuser_images": 73,
+          "pigeon_boxes": 353,
+          "small_pigeon_boxes": 147,
+          "groups": 295
+        }
+      },
+      "rectangular": {
+        "recall_at_p90": 0.6912181303116147,
+        "small_recall_at_p90": 0.472636815920398,
+        "recall_at_full_test_p90": 0.6912181303116147,
+        "counts": {
+          "images": 319,
+          "empty_images": 125,
+          "confuser_images": 73,
+          "pigeon_boxes": 353,
+          "small_pigeon_boxes": 201,
+          "groups": 295
+        }
+      },
+      "rectangular_fixed_square_small_cohort": {
+        "recall_at_p90": 0.6912181303116147,
+        "small_recall_at_p90": 0.40816326530612246,
+        "recall_at_full_test_p90": 0.6912181303116147,
+        "counts": {
+          "images": 319,
+          "empty_images": 125,
+          "confuser_images": 73,
+          "pigeon_boxes": 353,
+          "small_pigeon_boxes": 147,
+          "groups": 295
+        }
+      }
+    },
+    {
+      "bucket": "approx-16:9",
+      "pigeon_images": 2,
+      "pigeon_weighted_content_scale_ratio": 0.9571241830065359,
+      "square": {
+        "recall_at_p90": 1.0,
+        "small_recall_at_p90": 1.0,
+        "recall_at_full_test_p90": 1.0,
+        "counts": {
+          "images": 9,
+          "empty_images": 6,
+          "confuser_images": 1,
+          "pigeon_boxes": 17,
+          "small_pigeon_boxes": 7,
+          "groups": 9
+        }
+      },
+      "rectangular": {
+        "recall_at_p90": 1.0,
+        "small_recall_at_p90": 1.0,
+        "recall_at_full_test_p90": 1.0,
+        "counts": {
+          "images": 9,
+          "empty_images": 6,
+          "confuser_images": 1,
+          "pigeon_boxes": 17,
+          "small_pigeon_boxes": 7,
+          "groups": 9
+        }
+      },
+      "rectangular_fixed_square_small_cohort": {
+        "recall_at_p90": 1.0,
+        "small_recall_at_p90": 1.0,
+        "recall_at_full_test_p90": 1.0,
+        "counts": {
+          "images": 9,
+          "empty_images": 6,
+          "confuser_images": 1,
+          "pigeon_boxes": 17,
+          "small_pigeon_boxes": 7,
+          "groups": 9
+        }
+      }
+    },
+    {
+      "bucket": "4:3",
+      "pigeon_images": 5,
+      "pigeon_weighted_content_scale_ratio": 0.8244357022897426,
+      "square": {
+        "recall_at_p90": 0.9375,
+        "small_recall_at_p90": 0.0,
+        "recall_at_full_test_p90": 0.9375,
+        "counts": {
+          "images": 136,
+          "empty_images": 92,
+          "confuser_images": 39,
+          "pigeon_boxes": 16,
+          "small_pigeon_boxes": 0,
+          "groups": 136
+        }
+      },
+      "rectangular": {
+        "recall_at_p90": 0.875,
+        "small_recall_at_p90": 0.0,
+        "recall_at_full_test_p90": 0.875,
+        "counts": {
+          "images": 136,
+          "empty_images": 92,
+          "confuser_images": 39,
+          "pigeon_boxes": 16,
+          "small_pigeon_boxes": 0,
+          "groups": 136
+        }
+      },
+      "rectangular_fixed_square_small_cohort": {
+        "recall_at_p90": 0.875,
+        "small_recall_at_p90": 0.0,
+        "recall_at_full_test_p90": 0.875,
+        "counts": {
+          "images": 136,
+          "empty_images": 92,
+          "confuser_images": 39,
+          "pigeon_boxes": 16,
+          "small_pigeon_boxes": 0,
+          "groups": 136
+        }
+      }
+    },
+    {
+      "bucket": "square",
+      "pigeon_images": 91,
+      "pigeon_weighted_content_scale_ratio": 0.5599999999999999,
+      "square": {
+        "recall_at_p90": 0.9915254237288136,
+        "small_recall_at_p90": 0.0,
+        "recall_at_full_test_p90": 0.9915254237288136,
+        "counts": {
+          "images": 107,
+          "empty_images": 2,
+          "confuser_images": 14,
+          "pigeon_boxes": 118,
+          "small_pigeon_boxes": 0,
+          "groups": 104
+        }
+      },
+      "rectangular": {
+        "recall_at_p90": 0.9915254237288136,
+        "small_recall_at_p90": 1.0,
+        "recall_at_full_test_p90": 0.9915254237288136,
+        "counts": {
+          "images": 107,
+          "empty_images": 2,
+          "confuser_images": 14,
+          "pigeon_boxes": 118,
+          "small_pigeon_boxes": 1,
+          "groups": 104
+        }
+      },
+      "rectangular_fixed_square_small_cohort": {
+        "recall_at_p90": 0.9915254237288136,
+        "small_recall_at_p90": 0.0,
+        "recall_at_full_test_p90": 0.9915254237288136,
+        "counts": {
+          "images": 107,
+          "empty_images": 2,
+          "confuser_images": 14,
+          "pigeon_boxes": 118,
+          "small_pigeon_boxes": 0,
+          "groups": 104
+        }
+      }
+    },
+    {
+      "bucket": "portrait",
+      "pigeon_images": 23,
+      "pigeon_weighted_content_scale_ratio": 0.5599999999999999,
+      "square": {
+        "recall_at_p90": 0.5594059405940595,
+        "small_recall_at_p90": 0.42857142857142855,
+        "recall_at_full_test_p90": 0.6633663366336634,
+        "counts": {
+          "images": 67,
+          "empty_images": 25,
+          "confuser_images": 19,
+          "pigeon_boxes": 202,
+          "small_pigeon_boxes": 140,
+          "groups": 46
+        }
+      },
+      "rectangular": {
+        "recall_at_p90": 0.4158415841584158,
+        "small_recall_at_p90": 0.39378238341968913,
+        "recall_at_full_test_p90": 0.4752475247524752,
+        "counts": {
+          "images": 67,
+          "empty_images": 25,
+          "confuser_images": 19,
+          "pigeon_boxes": 202,
+          "small_pigeon_boxes": 193,
+          "groups": 46
+        }
+      },
+      "rectangular_fixed_square_small_cohort": {
+        "recall_at_p90": 0.4158415841584158,
+        "small_recall_at_p90": 0.3142857142857143,
+        "recall_at_full_test_p90": 0.4752475247524752,
+        "counts": {
+          "images": 67,
+          "empty_images": 25,
+          "confuser_images": 19,
+          "pigeon_boxes": 202,
+          "small_pigeon_boxes": 140,
+          "groups": 46
+        }
+      }
+    }
+  ],
+  "interpretation": "The geometry hypothesis is supported for this checkpoint. Square-to-rectangular content scale is 0.56 in portrait and square images, versus a pigeon-weighted 0.957 in the wide bucket. At the respective full-test P90 cuts, 38 of 39 lost matches are portrait pigeons, one is in the 4:3 bucket, and square/wide matches are unchanged. The fixed square-defined small cohort also loses recall, so this is more than a changing small-object denominator. It is an observational geometry comparison, not a controlled attribution of every error: canvas padding and sampling also change. The wide bucket contains only two positive images and 17 boxes, so unchanged recall does not establish real-camera performance. The square CPU result is 0.8017 for this seed; the approximately 0.78 WS5 value is a three-seed mean. Checked-in app/config.yaml and CameraConfig still default to 640x480. The scale-match argument requires an actual 16:9 capture stream; WS10 should verify the deployed stream geometry. No capture setting was changed."
+}

@@ -1,0 +1,17 @@
+{
+  "label": "measured",
+  "host": "xcng0",
+  "images": 319,
+  "confidence": 0.25,
+  "failures": 37,
+  "count_mismatches": 28,
+  "passed": false,
+  "minimum_iou": 0.7,
+  "maximum_confidence_delta": 0.1,
+  "maximum_matched_box_delta_px": 76.39404296875,
+  "maximum_matched_confidence_delta": 0.0952904224395752,
+  "comparator": "tools.compare_exports.match_predictions",
+  "reference": "/home/a/ashelow/columba/scratch/ws7/results/yolo26n-v2s-640-round2-plain/seed2/yolo26/pt/predictions_test.json",
+  "actual": "/home/a/ashelow/columba/scratch/ws7/results/yolo26n-v2s-640-round2-plain/seed2/yolo26/int8/predictions_test.json",
+  "zero_area_boxes": "excluded from both C3 files, matching WS1 positive-area contract"
+}

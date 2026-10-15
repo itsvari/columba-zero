@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "maximum_drop": 0.01,
+  "deltas": {
+    "val_recall_at_p90": 0.0,
+    "val_ap50": 0.00018413699181962784,
+    "val_recall_at_threshold": 0.0,
+    "test_recall_at_p90": -0.005665722379603388,
+    "test_ap50": -0.0014418972370588978,
+    "test_recall_at_threshold": 0.0
+  },
+  "rule": "each val/test R@P90, AP50 and val-threshold recall drops by at most 0.01"
+}

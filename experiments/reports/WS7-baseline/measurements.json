@@ -1,0 +1,238 @@
+{
+  "label": "measured",
+  "description": "baseline-repro-p50, 384x640, own val-selected thresholds. PyTorch CPU on Mac vexcalibur; native package-default fp32/fp16 on xcng0. Primary comparison uses native fp16, matching the provisional export. Small-object recall is zero for all three baseline seeds.",
+  "input_hw": [
+    384,
+    640
+  ],
+  "formats": {
+    "pt": {
+      "seeds": [
+        {
+          "seed": 0,
+          "test": {
+            "ap50": 0.4697524620935381,
+            "ap50_95": 0.3346315585723953,
+            "recall_at_p90": 0.23229461756373937,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.8142857142857143,
+            "recall_at_threshold": 0.32294617563739375
+          },
+          "val": {
+            "ap50": 0.7959050975705296,
+            "ap50_95": 0.5751771699080158,
+            "recall_at_p90": 0.5071428571428571,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.9044585987261147,
+            "recall_at_threshold": 0.5071428571428571
+          },
+          "empty_far": 0.0,
+          "confuser_far": 0.3013698630136986,
+          "threshold": 0.7138707637786865
+        },
+        {
+          "seed": 1,
+          "test": {
+            "ap50": 0.49329816688211536,
+            "ap50_95": 0.35639458954342346,
+            "recall_at_p90": 0.22946175637393768,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.8053691275167785,
+            "recall_at_threshold": 0.33994334277620397
+          },
+          "val": {
+            "ap50": 0.7871397752274982,
+            "ap50_95": 0.5749349039436261,
+            "recall_at_p90": 0.5214285714285715,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.9012345679012346,
+            "recall_at_threshold": 0.5214285714285715
+          },
+          "empty_far": 0.0,
+          "confuser_far": 0.3698630136986301,
+          "threshold": 0.7387794256210327
+        },
+        {
+          "seed": 2,
+          "test": {
+            "ap50": 0.5080294053156371,
+            "ap50_95": 0.35168368818166734,
+            "recall_at_p90": 0.20679886685552407,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.7607361963190185,
+            "recall_at_threshold": 0.35127478753541075
+          },
+          "val": {
+            "ap50": 0.7670830562715271,
+            "ap50_95": 0.537503397369612,
+            "recall_at_p90": 0.48214285714285715,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.9,
+            "recall_at_threshold": 0.48214285714285715
+          },
+          "empty_far": 0.008,
+          "confuser_far": 0.4657534246575342,
+          "threshold": 0.6844648718833923
+        }
+      ],
+      "test_recall_mean": 0.22285174693106705,
+      "test_recall_std": 0.013974172414493623
+    },
+    "fp32": {
+      "seeds": [
+        {
+          "seed": 0,
+          "test": {
+            "ap50": 0.4697524620935381,
+            "ap50_95": 0.33463153491850595,
+            "recall_at_p90": 0.23229461756373937,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.8142857142857143,
+            "recall_at_threshold": 0.32294617563739375
+          },
+          "val": {
+            "ap50": 0.7959050788358881,
+            "ap50_95": 0.5751771680345517,
+            "recall_at_p90": 0.5071428571428571,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.9044585987261147,
+            "recall_at_threshold": 0.5071428571428571
+          },
+          "empty_far": 0.0,
+          "confuser_far": 0.3013698630136986,
+          "threshold": 0.7138710021972656
+        },
+        {
+          "seed": 1,
+          "test": {
+            "ap50": 0.49329816688211536,
+            "ap50_95": 0.3563941879144096,
+            "recall_at_p90": 0.22946175637393768,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.8053691275167785,
+            "recall_at_threshold": 0.33994334277620397
+          },
+          "val": {
+            "ap50": 0.7871397752274982,
+            "ap50_95": 0.574934802871861,
+            "recall_at_p90": 0.5214285714285715,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.9012345679012346,
+            "recall_at_threshold": 0.5214285714285715
+          },
+          "empty_far": 0.0,
+          "confuser_far": 0.3698630136986301,
+          "threshold": 0.7387793064117432
+        },
+        {
+          "seed": 2,
+          "test": {
+            "ap50": 0.5080294123263888,
+            "ap50_95": 0.3516836888827425,
+            "recall_at_p90": 0.20679886685552407,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.7607361963190185,
+            "recall_at_threshold": 0.35127478753541075
+          },
+          "val": {
+            "ap50": 0.7670830562715271,
+            "ap50_95": 0.537503397369612,
+            "recall_at_p90": 0.48214285714285715,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.9,
+            "recall_at_threshold": 0.48214285714285715
+          },
+          "empty_far": 0.008,
+          "confuser_far": 0.4657534246575342,
+          "threshold": 0.6844649314880371
+        }
+      ],
+      "test_recall_mean": 0.22285174693106705,
+      "test_recall_std": 0.013974172414493623
+    },
+    "fp16": {
+      "seeds": [
+        {
+          "seed": 0,
+          "test": {
+            "ap50": 0.4688536600195018,
+            "ap50_95": 0.3342860689869164,
+            "recall_at_p90": 0.22946175637393768,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.8142857142857143,
+            "recall_at_threshold": 0.32294617563739375
+          },
+          "val": {
+            "ap50": 0.7958729901611944,
+            "ap50_95": 0.5753578485947618,
+            "recall_at_p90": 0.5107142857142857,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.9050632911392406,
+            "recall_at_threshold": 0.5107142857142857
+          },
+          "empty_far": 0.0,
+          "confuser_far": 0.3013698630136986,
+          "threshold": 0.7119140625
+        },
+        {
+          "seed": 1,
+          "test": {
+            "ap50": 0.49181221911524337,
+            "ap50_95": 0.35574914583050943,
+            "recall_at_p90": 0.22946175637393768,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.8066666666666666,
+            "recall_at_threshold": 0.34277620396600567
+          },
+          "val": {
+            "ap50": 0.7868632080776109,
+            "ap50_95": 0.5728155292178427,
+            "recall_at_p90": 0.5214285714285715,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.9012345679012346,
+            "recall_at_threshold": 0.5214285714285715
+          },
+          "empty_far": 0.0,
+          "confuser_far": 0.3698630136986301,
+          "threshold": 0.73974609375
+        },
+        {
+          "seed": 2,
+          "test": {
+            "ap50": 0.5066929106944537,
+            "ap50_95": 0.3506055194253267,
+            "recall_at_p90": 0.20679886685552407,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.7668711656441718,
+            "recall_at_threshold": 0.35410764872521244
+          },
+          "val": {
+            "ap50": 0.7663306801152144,
+            "ap50_95": 0.5373520360029314,
+            "recall_at_p90": 0.4857142857142857,
+            "small_recall_at_p90": 0.0,
+            "precision_at_threshold": 0.9006622516556292,
+            "recall_at_threshold": 0.4857142857142857
+          },
+          "empty_far": 0.008,
+          "confuser_far": 0.4657534246575342,
+          "threshold": 0.67919921875
+        }
+      ],
+      "test_recall_mean": 0.2219074598677998,
+      "test_recall_std": 0.013084425364070845
+    }
+  },
+  "markdown": [
+    "| Seed | PyTorch R@P90 | Native fp32 R@P90 | Native fp16 R@P90 | FP16 AP50 | FP16 operating R | FP16 empty / confuser FAR |",
+    "|---|---:|---:|---:|---:|---:|---:|",
+    "| 0 | 0.2323 | 0.2323 | 0.2295 | 0.4689 | 0.3229 | 0.000 / 0.3014 |",
+    "| 1 | 0.2295 | 0.2295 | 0.2295 | 0.4918 | 0.3428 | 0.000 / 0.3699 |",
+    "| 2 | 0.2068 | 0.2068 | 0.2068 | 0.5067 | 0.3541 | 0.008 / 0.4658 |",
+    "",
+    "Three-seed test R@P90 mean +/- SD: pt 0.222852 +/- 0.013974; fp32 0.222852 +/- 0.013974; fp16 0.221907 +/- 0.013084.",
+    ""
+  ],
+  "job_id": "951221",
+  "reference_script": "outputs/ws7/revision-measurements.sh"
+}
