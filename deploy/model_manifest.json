@@ -30,20 +30,14 @@
   ],
   "provisional_models": [
     {
-      "model_id": "yolo26n-v2s-800-round2-plain-seed1-yolo11-fp32-provisional",
+      "model_id": "yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16-provisional",
       "provisional": true,
-      "promotion_status": "blocked-by-gates",
-      "eligible": false,
-      "failed_gates": [
-        "seed0 fails confuser_far",
-        "seed0 fails reaction_p95_ms",
-        "seed1 fails reaction_p95_ms",
-        "seed2 fails confuser_far",
-        "seed2 fails reaction_p95_ms"
-      ],
+      "promotion_status": "dry-run-only",
+      "eligible": true,
+      "failed_gates": [],
       "selection": "experiments/reports/WS7-selection.json",
       "operating_threshold": {
-        "value": 0.6391871571540833,
+        "value": 0.62646484375,
         "source": "selected",
         "attainable": true,
         "precision_target": 0.9,
@@ -54,10 +48,10 @@
         448,
         800
       ],
-      "quantization": "fp32",
+      "quantization": "fp16",
       "taxonomy": "single",
-      "source": "outputs/ws7/packages/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp32-provisional",
-      "runtime_directory": "models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp32-provisional",
+      "source": "outputs/ws7/packages/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16-provisional",
+      "runtime_directory": "models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16-provisional",
       "files": [
         {
           "file": "model.ncnn.param",
@@ -66,17 +60,17 @@
         },
         {
           "file": "model.ncnn.bin",
-          "sha256": "889799017ede17447a3f2923bd66b10e31a887d8b989fd27391307acfd36a1fb",
-          "bytes": 9647548
+          "sha256": "639e90dc36ad34d1235221f4aa907fae5a434245a90883454c1ca8dd4d7ffb6e",
+          "bytes": 4885148
         },
         {
           "file": "metadata.yaml",
-          "sha256": "8251dafad8a250921fcd21022d87b07a2086f28929605492e49d65cdb8b1864d",
-          "bytes": 859
+          "sha256": "8b6acee0ede89aa09c0fddded60cd6568588048deeb26220f434041ad63162bb",
+          "bytes": 857
         },
         {
           "file": "export.json",
-          "sha256": "dbc5171e024c9fd20c058ca2074ca78ebdf584f486eb3045bc2a7031bdc429df",
+          "sha256": "c73233421eb1a6e6ef45004064019f75dd508e518ada7b4f2aa1455bc22d3897",
           "bytes": 311
         }
       ]

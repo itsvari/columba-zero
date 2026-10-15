@@ -2,11 +2,23 @@
   "provisional": true,
   "baseline": {
     "recipe": "baseline-repro-p50",
-    "test_mean": 0.24551463644948066,
-    "test_std": 0.03461813556151721
+    "test_mean": 0.2219074598677998,
+    "test_std": 0.013084425364070845,
+    "input_hw": [
+      384,
+      640
+    ],
+    "format": "ncnn-fp16",
+    "source": "rectangular native baseline C4, three seeds"
   },
   "ranking": "three-seed validation R@P90, latency tie-break; test used for promotion only",
-  "false_alarm_policy": "each seed must pass, not just the arm average",
+  "false_alarm_policy": "choose seed on val FAR and recall; gate shipped export alone",
+  "seed_selection": "highest val R@P90 among val FAR-passing seeds; no test-driven fallback",
+  "fp16_parity_policy": "same-graph strict fp32 parity and precision accuracy; strict fp16 diagnostic",
+  "excluded": [
+    "int8",
+    "decode:yolo26"
+  ],
   "precision_accuracy_gate": "each split R@P90/AP50/operating recall drop <=0.01 vs same-head rectangular PyTorch",
   "arms": [
     {
@@ -27,17 +39,13 @@
       "styles_recall_mean": 0.3581995593327038,
       "test_operating_recall_mean": 0.6241737488196412,
       "pi5_p95_ms": 36.70146878222423,
-      "reaction_p95_ms": 348.29532244152176,
+      "reaction_p95_ms": 346.83590988286767,
       "passes": false,
       "failures": [
-        "seed0 fails export parity",
-        "seed0 fails deployed precision accuracy",
-        "seed1 fails confuser_far",
-        "seed1 fails export parity",
-        "seed2 fails confuser_far",
-        "seed2 fails export parity"
+        "shipped seed2 fails confuser_far"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2-800-round2-plain/seed2/yolo11/fp16",
+      "shipped_seed": 2,
       "seeds": [
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -74,6 +82,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 36.666470409307955,
           "reaction_p95_ms": 348.29532244152176,
           "threshold": 0.62255859375,
@@ -88,6 +98,7 @@
             "precision_at_threshold": 0.9447674418604651,
             "recall_at_threshold": 0.3068932955618508
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.0034995625546806464,
             "val_ap50": -0.0013768229533023257,
@@ -104,7 +115,8 @@
             "small_recall_at_p90": 0.1234375,
             "precision_at_threshold": 0.9442815249266863,
             "recall_at_threshold": 0.3040604343720491
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -141,6 +153,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.005249343832020997,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 36.56008904036532,
           "reaction_p95_ms": 325.4838193147911,
           "threshold": 0.6123046875,
@@ -155,6 +169,7 @@
             "precision_at_threshold": 0.9204244031830239,
             "recall_at_threshold": 0.3276676109537299
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.0017497812773402677,
             "val_ap50": -0.0027486707822479417,
@@ -171,7 +186,8 @@
             "small_recall_at_p90": 0.1265625,
             "precision_at_threshold": 0.9228723404255319,
             "recall_at_threshold": 0.3276676109537299
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -208,6 +224,8 @@
           },
           "empty_far": 0.016,
           "confuser_far": 0.0821917808219178,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.022935779816513763,
           "pi5_p95_ms": 36.70146878222423,
           "reaction_p95_ms": 346.83590988286767,
           "threshold": 0.5185546875,
@@ -222,6 +240,7 @@
             "precision_at_threshold": 0.930939226519337,
             "recall_at_threshold": 0.3182247403210576
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.002624671916010457,
             "val_ap50": -0.0005302996879159583,
@@ -238,7 +257,70 @@
             "small_recall_at_p90": 0.1171875,
             "precision_at_threshold": 0.9279778393351801,
             "recall_at_threshold": 0.31633616619452315
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.4428706326723324,
+          "requirement": "> 0.020098, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.022935779816513763,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.016,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0821917808219178,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 36.70146878222423,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 346.83590988286767,
+          "requirement": "<= 500.0",
+          "passed": true
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.0028328611898016387,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo11 / fp16",
+          "requirement": "standard head; int8 excluded",
+          "passed": true
         }
       ]
     },
@@ -259,17 +341,15 @@
       "reference_styles_recall_mean": 0.3572552722694366,
       "styles_recall_mean": 0.3572552722694366,
       "test_operating_recall_mean": 0.6279508970727101,
-      "pi5_p95_ms": 69.45968218547678,
+      "pi5_p95_ms": 69.26313762907422,
       "reaction_p95_ms": 612.6697994610053,
       "passes": false,
       "failures": [
-        "seed0 fails reaction_p95_ms",
-        "seed1 fails confuser_far",
-        "seed1 fails reaction_p95_ms",
-        "seed2 fails confuser_far",
-        "seed2 fails reaction_p95_ms"
+        "shipped seed2 fails confuser_far",
+        "shipped seed2 fails reaction_p95_ms"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2-800-round2-plain/seed2/yolo11/fp32",
+      "shipped_seed": 2,
       "seeds": [
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -306,6 +386,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 69.24622696249932,
           "reaction_p95_ms": 585.6825733227944,
           "threshold": 0.6178618669509888,
@@ -320,6 +402,7 @@
             "precision_at_threshold": 0.9447674418604651,
             "recall_at_threshold": 0.3068932955618508
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -336,7 +419,8 @@
             "small_recall_at_p90": 0.1234375,
             "precision_at_threshold": 0.9447674418604651,
             "recall_at_threshold": 0.3068932955618508
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -373,6 +457,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.005249343832020997,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 69.45968218547678,
           "reaction_p95_ms": 575.5220524354797,
           "threshold": 0.6143617630004883,
@@ -387,6 +473,7 @@
             "precision_at_threshold": 0.9204244031830239,
             "recall_at_threshold": 0.3276676109537299
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -403,7 +490,8 @@
             "small_recall_at_p90": 0.1234375,
             "precision_at_threshold": 0.9204244031830239,
             "recall_at_threshold": 0.3276676109537299
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -440,6 +528,8 @@
           },
           "empty_far": 0.016,
           "confuser_far": 0.0821917808219178,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.022935779816513763,
           "pi5_p95_ms": 69.26313762907422,
           "reaction_p95_ms": 612.6697994610053,
           "threshold": 0.5219702124595642,
@@ -454,6 +544,7 @@
             "precision_at_threshold": 0.930939226519337,
             "recall_at_threshold": 0.3182247403210576
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -470,7 +561,70 @@
             "small_recall_at_p90": 0.1171875,
             "precision_at_threshold": 0.930939226519337,
             "recall_at_threshold": 0.3182247403210576
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.4419263456090652,
+          "requirement": "> 0.015602, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.022935779816513763,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.016,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0821917808219178,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 69.26313762907422,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 612.6697994610053,
+          "requirement": "<= 500.0",
+          "passed": false
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.0,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo11 / fp32",
+          "requirement": "standard head; int8 excluded",
+          "passed": true
         }
       ]
     },
@@ -491,21 +645,17 @@
       "reference_styles_recall_mean": 0.3572552722694366,
       "styles_recall_mean": 0.19987409505823103,
       "test_operating_recall_mean": 0.2870632672332389,
-      "pi5_p95_ms": 33.719699442434155,
+      "pi5_p95_ms": 33.709554656723306,
       "reaction_p95_ms": 1051.61752506029,
       "passes": false,
       "failures": [
-        "seed0 fails reaction_p95_ms",
-        "seed0 fails export parity",
-        "seed0 fails deployed precision accuracy",
-        "seed1 fails reaction_p95_ms",
-        "seed1 fails export parity",
-        "seed1 fails deployed precision accuracy",
-        "seed2 fails reaction_p95_ms",
-        "seed2 fails export parity",
-        "seed2 fails deployed precision accuracy"
+        "int8 excluded by coordinator decision",
+        "shipped seed0 fails reaction_p95_ms",
+        "shipped seed0 fails export parity",
+        "shipped seed0 fails deployed precision accuracy"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2-800-round2-plain/seed0/yolo11/int8",
+      "shipped_seed": 0,
       "seeds": [
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -542,6 +692,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.013761467889908258,
           "pi5_p95_ms": 33.709554656723306,
           "reaction_p95_ms": 1051.61752506029,
           "threshold": 0.453125,
@@ -556,6 +708,7 @@
             "precision_at_threshold": 0.9447674418604651,
             "recall_at_threshold": 0.3068932955618508
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.26509186351706027,
             "val_ap50": -0.20583736823229293,
@@ -572,7 +725,8 @@
             "small_recall_at_p90": 0.0515625,
             "precision_at_threshold": 0.9441340782122905,
             "recall_at_threshold": 0.15958451369216242
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -609,6 +763,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0136986301369863,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.01834862385321101,
           "pi5_p95_ms": 33.666253751643204,
           "reaction_p95_ms": 1030.4882122098827,
           "threshold": 0.59521484375,
@@ -623,6 +779,7 @@
             "precision_at_threshold": 0.9204244031830239,
             "recall_at_threshold": 0.3276676109537299
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.268591426071741,
             "val_ap50": -0.19377502050966333,
@@ -639,7 +796,8 @@
             "small_recall_at_p90": 0.0546875,
             "precision_at_threshold": 0.9482758620689655,
             "recall_at_threshold": 0.1558073654390935
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -676,6 +834,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.027522935779816515,
           "pi5_p95_ms": 33.719699442434155,
           "reaction_p95_ms": 1046.4309830957445,
           "threshold": 0.55078125,
@@ -690,6 +850,7 @@
             "precision_at_threshold": 0.930939226519337,
             "recall_at_threshold": 0.3182247403210576
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.28608923884514437,
             "val_ap50": -0.19762300514000342,
@@ -706,7 +867,70 @@
             "small_recall_at_p90": 0.0359375,
             "precision_at_threshold": 0.9822485207100592,
             "recall_at_threshold": 0.15675165250236073
-          }
+          },
+          "deployment_parity_passed": false
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.07648725212464591,
+          "requirement": "> 0.013084, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.013761467889908258,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 33.709554656723306,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 1051.61752506029,
+          "requirement": "<= 500.0",
+          "passed": false
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.37960339943342775,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": false
+        },
+        {
+          "gate": "Export parity",
+          "value": false,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": false
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo11 / int8",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -727,17 +951,15 @@
       "reference_styles_recall_mean": 0.3320742839156437,
       "styles_recall_mean": 0.3339628580421781,
       "test_operating_recall_mean": 0.5986779981114259,
-      "pi5_p95_ms": 36.77904716603062,
-      "reaction_p95_ms": 381.65939868140174,
+      "pi5_p95_ms": 36.60951809717549,
+      "reaction_p95_ms": 353.33475825803566,
       "passes": false,
       "failures": [
-        "seed0 fails export parity",
-        "seed1 fails export parity",
-        "seed1 fails deployed precision accuracy",
-        "seed2 fails confuser_far",
-        "seed2 fails export parity"
+        "one-to-one head excluded by coordinator decision",
+        "shipped seed2 fails confuser_far"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2-800-round2-plain/seed2/yolo26/fp16",
+      "shipped_seed": 2,
       "seeds": [
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -774,6 +996,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.027522935779816515,
           "pi5_p95_ms": 36.61632920503879,
           "reaction_p95_ms": 381.65939868140174,
           "threshold": 0.63232421875,
@@ -788,6 +1012,7 @@
             "precision_at_threshold": 0.9367469879518072,
             "recall_at_threshold": 0.29367327667610954
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.004374453193350836,
             "val_ap50": -0.0013352393839044518,
@@ -804,7 +1029,8 @@
             "small_recall_at_p90": 0.1125,
             "precision_at_threshold": 0.9382716049382716,
             "recall_at_threshold": 0.2870632672332389
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -841,6 +1067,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 36.77904716603062,
           "reaction_p95_ms": 354.409676674522,
           "threshold": 0.6123046875,
@@ -855,6 +1083,7 @@
             "precision_at_threshold": 0.9153005464480874,
             "recall_at_threshold": 0.31633616619452315
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.005249343832020914,
             "val_ap50": 0.0002655687898369674,
@@ -871,7 +1100,8 @@
             "small_recall_at_p90": 0.1078125,
             "precision_at_threshold": 0.9178082191780822,
             "recall_at_threshold": 0.31633616619452315
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -908,6 +1138,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0821917808219178,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.022935779816513763,
           "pi5_p95_ms": 36.60951809717549,
           "reaction_p95_ms": 353.33475825803566,
           "threshold": 0.498046875,
@@ -922,6 +1154,7 @@
             "precision_at_threshold": 0.9085872576177285,
             "recall_at_threshold": 0.3097261567516525
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.0017497812773403787,
             "val_ap50": 0.0001473190022216464,
@@ -938,7 +1171,70 @@
             "small_recall_at_p90": 0.096875,
             "precision_at_threshold": 0.9108635097493036,
             "recall_at_threshold": 0.3087818696883853
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.41454202077431535,
+          "requirement": "> 0.017309, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.022935779816513763,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.008,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0821917808219178,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 36.60951809717549,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 353.33475825803566,
+          "requirement": "<= 500.0",
+          "passed": true
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.005665722379603388,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo26 / fp16",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -959,16 +1255,16 @@
       "reference_styles_recall_mean": 0.3320742839156437,
       "styles_recall_mean": 0.3320742839156437,
       "test_operating_recall_mean": 0.6015108593012276,
-      "pi5_p95_ms": 69.65648324154328,
-      "reaction_p95_ms": 668.7309105698439,
+      "pi5_p95_ms": 69.50712530768337,
+      "reaction_p95_ms": 635.4012728440247,
       "passes": false,
       "failures": [
-        "seed0 fails reaction_p95_ms",
-        "seed1 fails reaction_p95_ms",
-        "seed2 fails confuser_far",
-        "seed2 fails reaction_p95_ms"
+        "one-to-one head excluded by coordinator decision",
+        "shipped seed2 fails confuser_far",
+        "shipped seed2 fails reaction_p95_ms"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2-800-round2-plain/seed2/yolo26/fp32",
+      "shipped_seed": 2,
       "seeds": [
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -1005,6 +1301,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.022935779816513763,
           "pi5_p95_ms": 69.39910133110625,
           "reaction_p95_ms": 668.7309105698439,
           "threshold": 0.6155071258544922,
@@ -1019,6 +1317,7 @@
             "precision_at_threshold": 0.9367469879518072,
             "recall_at_threshold": 0.29367327667610954
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -1035,7 +1334,8 @@
             "small_recall_at_p90": 0.1125,
             "precision_at_threshold": 0.9367469879518072,
             "recall_at_threshold": 0.29367327667610954
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -1072,6 +1372,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 69.65648324154328,
           "reaction_p95_ms": 641.4660156554703,
           "threshold": 0.6189378499984741,
@@ -1086,6 +1388,7 @@
             "precision_at_threshold": 0.9153005464480874,
             "recall_at_threshold": 0.31633616619452315
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 8.647148520557479e-07,
@@ -1102,7 +1405,8 @@
             "small_recall_at_p90": 0.103125,
             "precision_at_threshold": 0.9153005464480874,
             "recall_at_threshold": 0.31633616619452315
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -1139,6 +1443,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0821917808219178,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.022935779816513763,
           "pi5_p95_ms": 69.50712530768337,
           "reaction_p95_ms": 635.4012728440247,
           "threshold": 0.49972206354141235,
@@ -1153,6 +1459,7 @@
             "precision_at_threshold": 0.9085872576177285,
             "recall_at_threshold": 0.3097261567516525
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -1169,7 +1476,70 @@
             "small_recall_at_p90": 0.096875,
             "precision_at_threshold": 0.9085872576177285,
             "recall_at_threshold": 0.3097261567516525
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.42020774315391884,
+          "requirement": "> 0.021636, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.022935779816513763,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.008,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0821917808219178,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 69.50712530768337,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 635.4012728440247,
+          "requirement": "<= 500.0",
+          "passed": false
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.0,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo26 / fp32",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -1190,21 +1560,18 @@
       "reference_styles_recall_mean": 0.3320742839156437,
       "styles_recall_mean": 0.17311929493232608,
       "test_operating_recall_mean": 0.28328611898017,
-      "pi5_p95_ms": 33.76194220639988,
+      "pi5_p95_ms": 33.698084456821576,
       "reaction_p95_ms": 1080.5719844049713,
       "passes": false,
       "failures": [
-        "seed0 fails reaction_p95_ms",
-        "seed0 fails export parity",
-        "seed0 fails deployed precision accuracy",
-        "seed1 fails reaction_p95_ms",
-        "seed1 fails export parity",
-        "seed1 fails deployed precision accuracy",
-        "seed2 fails reaction_p95_ms",
-        "seed2 fails export parity",
-        "seed2 fails deployed precision accuracy"
+        "int8 excluded by coordinator decision",
+        "one-to-one head excluded by coordinator decision",
+        "shipped seed1 fails reaction_p95_ms",
+        "shipped seed1 fails export parity",
+        "shipped seed1 fails deployed precision accuracy"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2-800-round2-plain/seed1/yolo26/int8",
+      "shipped_seed": 1,
       "seeds": [
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -1241,6 +1608,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.013761467889908258,
           "pi5_p95_ms": 33.76194220639988,
           "reaction_p95_ms": 1063.1231800681987,
           "threshold": 0.4951171875,
@@ -1255,6 +1624,7 @@
             "precision_at_threshold": 0.9367469879518072,
             "recall_at_threshold": 0.29367327667610954
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.2825896762904637,
             "val_ap50": -0.2201155815458754,
@@ -1271,7 +1641,8 @@
             "small_recall_at_p90": 0.0359375,
             "precision_at_threshold": 0.926829268292683,
             "recall_at_threshold": 0.14353163361661944
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -1308,6 +1679,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0136986301369863,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.013761467889908258,
           "pi5_p95_ms": 33.698084456821576,
           "reaction_p95_ms": 1080.5719844049713,
           "threshold": 0.59375,
@@ -1322,6 +1695,7 @@
             "precision_at_threshold": 0.9153005464480874,
             "recall_at_threshold": 0.31633616619452315
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.27121609798775154,
             "val_ap50": -0.2102907268088975,
@@ -1338,7 +1712,8 @@
             "small_recall_at_p90": 0.040625,
             "precision_at_threshold": 0.9532163742690059,
             "recall_at_threshold": 0.153918791312559
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2-800-round2-plain",
@@ -1375,6 +1750,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.01834862385321101,
           "pi5_p95_ms": 33.70831016757195,
           "reaction_p95_ms": 1047.7763396768853,
           "threshold": 0.57421875,
@@ -1389,6 +1766,7 @@
             "precision_at_threshold": 0.9085872576177285,
             "recall_at_threshold": 0.3097261567516525
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.3088363954505687,
             "val_ap50": -0.21183247557459695,
@@ -1405,7 +1783,70 @@
             "small_recall_at_p90": 0.0265625,
             "precision_at_threshold": 0.9685534591194969,
             "recall_at_threshold": 0.14542020774315392
-          }
+          },
+          "deployment_parity_passed": false
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.06704438149197356,
+          "requirement": "> 0.013084, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.013761467889908258,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0136986301369863,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 33.698084456821576,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 1080.5719844049713,
+          "requirement": "<= 500.0",
+          "passed": false
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.38243626062322944,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": false
+        },
+        {
+          "gate": "Export parity",
+          "value": false,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": false
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo26 / int8",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -1426,18 +1867,14 @@
       "reference_styles_recall_mean": 0.5001573811772112,
       "styles_recall_mean": 0.4976392823418319,
       "test_operating_recall_mean": 0.6279508970727101,
-      "pi5_p95_ms": 25.194205247944897,
-      "reaction_p95_ms": 300.08173722455484,
+      "pi5_p95_ms": 25.162066024942284,
+      "reaction_p95_ms": 289.7632858543775,
       "passes": false,
       "failures": [
-        "seed0 fails confuser_far",
-        "seed0 fails export parity",
-        "seed1 fails confuser_far",
-        "seed1 fails export parity",
-        "seed2 fails confuser_far",
-        "seed2 fails export parity"
+        "shipped seed1 fails confuser_far"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-640-round2-plain/seed1/yolo11/fp16",
+      "shipped_seed": 1,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -1474,6 +1911,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0821917808219178,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.04128440366972477,
           "pi5_p95_ms": 25.194205247944897,
           "reaction_p95_ms": 300.08173722455484,
           "threshold": 0.5126953125,
@@ -1488,6 +1927,7 @@
             "precision_at_threshold": 0.8938356164383562,
             "recall_at_threshold": 0.49291784702549574
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.004374453193350836,
             "val_ap50": -0.0004479398620169661,
@@ -1504,7 +1944,8 @@
             "small_recall_at_p90": 0.21641791044776118,
             "precision_at_threshold": 0.8921232876712328,
             "recall_at_threshold": 0.4919735599622285
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -1541,6 +1982,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.027522935779816515,
           "pi5_p95_ms": 25.162066024942284,
           "reaction_p95_ms": 289.7632858543775,
           "threshold": 0.53564453125,
@@ -1555,6 +1998,7 @@
             "precision_at_threshold": 0.9170896785109983,
             "recall_at_threshold": 0.5118035882908404
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": -5.8964452954612945e-05,
@@ -1571,7 +2015,8 @@
             "small_recall_at_p90": 0.28955223880597014,
             "precision_at_threshold": 0.9123102866779089,
             "recall_at_threshold": 0.5108593012275732
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -1608,6 +2053,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 25.021078108186884,
           "reaction_p95_ms": 285.5678831559421,
           "threshold": 0.53662109375,
@@ -1622,6 +2069,7 @@
             "precision_at_threshold": 0.8953488372093024,
             "recall_at_threshold": 0.5089707271010387
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0008748906386700783,
             "val_ap50": -0.0012059620096368517,
@@ -1638,7 +2086,70 @@
             "small_recall_at_p90": 0.23880597014925373,
             "precision_at_threshold": 0.8942148760330578,
             "recall_at_threshold": 0.5108593012275732
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.4315391879131256,
+          "requirement": "> 0.013084, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0026246719160104987,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.027522935779816515,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0547945205479452,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 25.162066024942284,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 289.7632858543775,
+          "requirement": "<= 500.0",
+          "passed": true
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.0028328611898017497,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo11 / fp16",
+          "requirement": "standard head; int8 excluded",
+          "passed": true
         }
       ]
     },
@@ -1660,14 +2171,13 @@
       "styles_recall_mean": 0.5001573811772112,
       "test_operating_recall_mean": 0.6288951841359773,
       "pi5_p95_ms": 46.7542627766096,
-      "reaction_p95_ms": 418.898059234521,
+      "reaction_p95_ms": 417.74768444706166,
       "passes": false,
       "failures": [
-        "seed0 fails confuser_far",
-        "seed1 fails confuser_far",
-        "seed2 fails confuser_far"
+        "shipped seed1 fails confuser_far"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-640-round2-plain/seed1/yolo11/fp32",
+      "shipped_seed": 1,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -1704,6 +2214,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0821917808219178,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.04128440366972477,
           "pi5_p95_ms": 46.470472316421606,
           "reaction_p95_ms": 418.898059234521,
           "threshold": 0.5096358060836792,
@@ -1718,6 +2230,7 @@
             "precision_at_threshold": 0.8938356164383562,
             "recall_at_threshold": 0.49291784702549574
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": -3.6874219166982414e-07,
@@ -1734,7 +2247,8 @@
             "small_recall_at_p90": 0.21791044776119403,
             "precision_at_threshold": 0.8938356164383562,
             "recall_at_threshold": 0.49291784702549574
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -1771,6 +2285,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.027522935779816515,
           "pi5_p95_ms": 46.7542627766096,
           "reaction_p95_ms": 417.74768444706166,
           "threshold": 0.537163257598877,
@@ -1785,6 +2301,7 @@
             "precision_at_threshold": 0.9170896785109983,
             "recall_at_threshold": 0.5118035882908404
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -1801,7 +2318,8 @@
             "small_recall_at_p90": 0.29850746268656714,
             "precision_at_threshold": 0.9170896785109983,
             "recall_at_threshold": 0.5118035882908404
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -1838,6 +2356,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 46.54868956714813,
           "reaction_p95_ms": 397.9970831601317,
           "threshold": 0.5459266304969788,
@@ -1852,6 +2372,7 @@
             "precision_at_threshold": 0.8953488372093024,
             "recall_at_threshold": 0.5089707271010387
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -1868,7 +2389,70 @@
             "small_recall_at_p90": 0.23880597014925373,
             "precision_at_threshold": 0.8953488372093024,
             "recall_at_threshold": 0.5089707271010387
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.43437204910292726,
+          "requirement": "> 0.013084, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0026246719160104987,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.027522935779816515,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0547945205479452,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 46.7542627766096,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 417.74768444706166,
+          "requirement": "<= 500.0",
+          "passed": true
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.0,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo11 / fp32",
+          "requirement": "standard head; int8 excluded",
+          "passed": true
         }
       ]
     },
@@ -1889,18 +2473,16 @@
       "reference_styles_recall_mean": 0.5001573811772112,
       "styles_recall_mean": 0.4825306893295562,
       "test_operating_recall_mean": 0.607176581680831,
-      "pi5_p95_ms": 23.553932315078026,
-      "reaction_p95_ms": 322.5893302684218,
+      "pi5_p95_ms": 23.45603360406822,
+      "reaction_p95_ms": 293.585549603551,
       "passes": false,
       "failures": [
-        "seed0 fails export parity",
-        "seed0 fails deployed precision accuracy",
-        "seed1 fails export parity",
-        "seed1 fails deployed precision accuracy",
-        "seed2 fails export parity",
-        "seed2 fails deployed precision accuracy"
+        "int8 excluded by coordinator decision",
+        "shipped seed1 fails export parity",
+        "shipped seed1 fails deployed precision accuracy"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-640-round2-plain/seed1/yolo11/int8",
+      "shipped_seed": 1,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -1937,6 +2519,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.009174311926605505,
           "pi5_p95_ms": 23.553932315078026,
           "reaction_p95_ms": 322.5893302684218,
           "threshold": 0.427978515625,
@@ -1951,6 +2535,7 @@
             "precision_at_threshold": 0.8938356164383562,
             "recall_at_threshold": 0.49291784702549574
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.04199475065616798,
             "val_ap50": -0.023569873879390135,
@@ -1967,7 +2552,8 @@
             "small_recall_at_p90": 0.2298507462686567,
             "precision_at_threshold": 0.9130434782608695,
             "recall_at_threshold": 0.45609065155807366
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2004,6 +2590,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.01834862385321101,
           "pi5_p95_ms": 23.45603360406822,
           "reaction_p95_ms": 293.585549603551,
           "threshold": 0.39990234375,
@@ -2018,6 +2606,7 @@
             "precision_at_threshold": 0.9170896785109983,
             "recall_at_threshold": 0.5118035882908404
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.03324584426946631,
             "val_ap50": -0.02373972009567915,
@@ -2034,7 +2623,8 @@
             "small_recall_at_p90": 0.25970149253731345,
             "precision_at_threshold": 0.9230769230769231,
             "recall_at_threshold": 0.47592067988668557
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2071,6 +2661,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.013761467889908258,
           "pi5_p95_ms": 23.457903697819965,
           "reaction_p95_ms": 298.9012014218244,
           "threshold": 0.482177734375,
@@ -2085,6 +2677,7 @@
             "precision_at_threshold": 0.8953488372093024,
             "recall_at_threshold": 0.5089707271010387
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.045494313210848736,
             "val_ap50": -0.02422008859799063,
@@ -2101,7 +2694,70 @@
             "small_recall_at_p90": 0.24477611940298508,
             "precision_at_threshold": 0.92,
             "recall_at_threshold": 0.47780925401322
-          }
+          },
+          "deployment_parity_passed": false
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.4192634560906515,
+          "requirement": "> 0.018862, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0026246719160104987,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.01834862385321101,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0410958904109589,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 23.45603360406822,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 293.585549603551,
+          "requirement": "<= 500.0",
+          "passed": true
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.03324584426946631,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": false
+        },
+        {
+          "gate": "Export parity",
+          "value": false,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": false
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo11 / int8",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -2123,17 +2779,16 @@
       "styles_recall_mean": 0.4711992445703494,
       "test_operating_recall_mean": 0.5873465533522191,
       "pi5_p95_ms": 25.138780342599784,
-      "reaction_p95_ms": 339.88858635901306,
+      "reaction_p95_ms": 321.10936493476794,
       "passes": false,
       "failures": [
-        "seed0 fails confuser_far",
-        "seed0 fails export parity",
-        "seed1 fails confuser_far",
-        "seed1 fails export parity",
-        "seed1 fails deployed precision accuracy",
-        "seed2 fails export parity"
+        "one-to-one head excluded by coordinator decision",
+        "shipped seed1 fails confuser_far",
+        "shipped seed1 fails export parity",
+        "shipped seed1 fails deployed precision accuracy"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-640-round2-plain/seed1/yolo26/fp16",
+      "shipped_seed": 1,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2170,6 +2825,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0684931506849315,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.04128440366972477,
           "pi5_p95_ms": 25.064897061520902,
           "reaction_p95_ms": 339.88858635901306,
           "threshold": 0.52490234375,
@@ -2184,6 +2841,7 @@
             "precision_at_threshold": 0.9044943820224719,
             "recall_at_threshold": 0.45609065155807366
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0003846488767581535,
@@ -2200,7 +2858,8 @@
             "small_recall_at_p90": 0.19850746268656716,
             "precision_at_threshold": 0.9063670411985019,
             "recall_at_threshold": 0.45703493862134087
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2237,6 +2896,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.027522935779816515,
           "pi5_p95_ms": 25.138780342599784,
           "reaction_p95_ms": 321.10936493476794,
           "threshold": 0.5615234375,
@@ -2251,6 +2912,7 @@
             "precision_at_threshold": 0.9089253187613844,
             "recall_at_threshold": 0.4711992445703494
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.01049868766404205,
             "val_ap50": 0.00112413937886513,
@@ -2267,7 +2929,8 @@
             "small_recall_at_p90": 0.22388059701492538,
             "precision_at_threshold": 0.9056261343012704,
             "recall_at_threshold": 0.4711992445703494
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2304,6 +2967,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 25.12982255228418,
           "reaction_p95_ms": 315.36510932455377,
           "threshold": 0.55224609375,
@@ -2318,6 +2983,7 @@
             "precision_at_threshold": 0.8992932862190812,
             "recall_at_threshold": 0.4806421152030217
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.0008748906386701893,
             "val_ap50": -0.0003816562263558865,
@@ -2334,7 +3000,70 @@
             "small_recall_at_p90": 0.21492537313432836,
             "precision_at_threshold": 0.8987566607460036,
             "recall_at_threshold": 0.47780925401322
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.4032105760151087,
+          "requirement": "> 0.013084, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0026246719160104987,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.027522935779816515,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0547945205479452,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 25.138780342599784,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 321.10936493476794,
+          "requirement": "<= 500.0",
+          "passed": true
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.014164305949008416,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": false
+        },
+        {
+          "gate": "Export parity",
+          "value": false,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": false
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo26 / fp16",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -2355,14 +3084,15 @@
       "reference_styles_recall_mean": 0.4765502045955304,
       "styles_recall_mean": 0.4765502045955304,
       "test_operating_recall_mean": 0.591123701605288,
-      "pi5_p95_ms": 46.46443422757604,
+      "pi5_p95_ms": 46.43651850229761,
       "reaction_p95_ms": 465.1225499314474,
       "passes": false,
       "failures": [
-        "seed0 fails confuser_far",
-        "seed1 fails confuser_far"
+        "one-to-one head excluded by coordinator decision",
+        "shipped seed0 fails confuser_far"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-640-round2-plain/seed0/yolo26/fp32",
+      "shipped_seed": 0,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2399,6 +3129,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0684931506849315,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 46.43651850229761,
           "reaction_p95_ms": 465.1225499314474,
           "threshold": 0.5166711807250977,
@@ -2413,6 +3145,7 @@
             "precision_at_threshold": 0.9044943820224719,
             "recall_at_threshold": 0.45609065155807366
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -2429,7 +3162,8 @@
             "small_recall_at_p90": 0.208955223880597,
             "precision_at_threshold": 0.9044943820224719,
             "recall_at_threshold": 0.45609065155807366
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2466,6 +3200,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.027522935779816515,
           "pi5_p95_ms": 46.46443422757604,
           "reaction_p95_ms": 440.98173492863816,
           "threshold": 0.5794254541397095,
@@ -2480,6 +3216,7 @@
             "precision_at_threshold": 0.9089253187613844,
             "recall_at_threshold": 0.4711992445703494
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -2496,7 +3233,8 @@
             "small_recall_at_p90": 0.23283582089552238,
             "precision_at_threshold": 0.9089253187613844,
             "recall_at_threshold": 0.4711992445703494
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2533,6 +3271,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 46.43475617822724,
           "reaction_p95_ms": 434.0214408865915,
           "threshold": 0.5495747327804565,
@@ -2547,6 +3287,7 @@
             "precision_at_threshold": 0.8992932862190812,
             "recall_at_threshold": 0.4806421152030217
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -2563,7 +3304,70 @@
             "small_recall_at_p90": 0.21940298507462686,
             "precision_at_threshold": 0.8992932862190812,
             "recall_at_threshold": 0.4806421152030217
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.40793201133144474,
+          "requirement": "> 0.018862, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.03669724770642202,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.008,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0684931506849315,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 46.43651850229761,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 465.1225499314474,
+          "requirement": "<= 500.0",
+          "passed": true
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.0,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo26 / fp32",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -2584,18 +3388,17 @@
       "reference_styles_recall_mean": 0.4765502045955304,
       "styles_recall_mean": 0.4491658797607806,
       "test_operating_recall_mean": 0.5429650613786591,
-      "pi5_p95_ms": 23.454163688095562,
+      "pi5_p95_ms": 23.447808050248234,
       "reaction_p95_ms": 379.96283933500575,
       "passes": false,
       "failures": [
-        "seed0 fails export parity",
-        "seed0 fails deployed precision accuracy",
-        "seed1 fails export parity",
-        "seed1 fails deployed precision accuracy",
-        "seed2 fails export parity",
-        "seed2 fails deployed precision accuracy"
+        "int8 excluded by coordinator decision",
+        "one-to-one head excluded by coordinator decision",
+        "shipped seed0 fails export parity",
+        "shipped seed0 fails deployed precision accuracy"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-640-round2-plain/seed0/yolo26/int8",
+      "shipped_seed": 0,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2632,6 +3435,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.009174311926605505,
           "pi5_p95_ms": 23.447808050248234,
           "reaction_p95_ms": 379.96283933500575,
           "threshold": 0.467041015625,
@@ -2646,6 +3451,7 @@
             "precision_at_threshold": 0.9044943820224719,
             "recall_at_threshold": 0.45609065155807366
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.04811898512685908,
             "val_ap50": -0.03318634837426093,
@@ -2662,7 +3468,8 @@
             "small_recall_at_p90": 0.15970149253731344,
             "precision_at_threshold": 0.8981670061099797,
             "recall_at_threshold": 0.4164305949008499
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2699,6 +3506,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.013761467889908258,
           "pi5_p95_ms": 23.45148917953966,
           "reaction_p95_ms": 362.2177588804478,
           "threshold": 0.50439453125,
@@ -2713,6 +3522,7 @@
             "precision_at_threshold": 0.9089253187613844,
             "recall_at_threshold": 0.4711992445703494
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.055993000874890564,
             "val_ap50": -0.03560710709281334,
@@ -2729,7 +3539,8 @@
             "small_recall_at_p90": 0.2253731343283582,
             "precision_at_threshold": 0.9226069246435845,
             "recall_at_threshold": 0.42776203966005666
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2s-640-round2-plain",
@@ -2766,6 +3577,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.009174311926605505,
           "pi5_p95_ms": 23.454163688095562,
           "reaction_p95_ms": 354.55600813099863,
           "threshold": 0.52294921875,
@@ -2780,6 +3593,7 @@
             "precision_at_threshold": 0.8992932862190812,
             "recall_at_threshold": 0.4806421152030217
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.04986876640419946,
             "val_ap50": -0.03197432098613617,
@@ -2796,7 +3610,70 @@
             "small_recall_at_p90": 0.21641791044776118,
             "precision_at_threshold": 0.9189723320158103,
             "recall_at_threshold": 0.43909348441926344
-          }
+          },
+          "deployment_parity_passed": false
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.38243626062322944,
+          "requirement": "> 0.028376, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.009174311926605505,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0273972602739726,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 23.447808050248234,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 379.96283933500575,
+          "requirement": "<= 500.0",
+          "passed": true
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.04815864022662886,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": false
+        },
+        {
+          "gate": "Export parity",
+          "value": false,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": false
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo26 / int8",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -2817,17 +3694,12 @@
       "reference_styles_recall_mean": 0.5187283600881334,
       "styles_recall_mean": 0.5218759836323575,
       "test_operating_recall_mean": 0.6298394711992445,
-      "pi5_p95_ms": 36.79195296760017,
+      "pi5_p95_ms": 36.543667408497654,
       "reaction_p95_ms": 345.3639649591854,
-      "passes": false,
-      "failures": [
-        "seed0 fails confuser_far",
-        "seed0 fails export parity",
-        "seed1 fails export parity",
-        "seed2 fails confuser_far",
-        "seed2 fails export parity"
-      ],
+      "passes": true,
+      "failures": [],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed1/yolo11/fp16",
+      "shipped_seed": 1,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -2864,6 +3736,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0821917808219178,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.045871559633027525,
           "pi5_p95_ms": 36.35239254417914,
           "reaction_p95_ms": 329.95978087492597,
           "threshold": 0.56640625,
@@ -2878,6 +3752,7 @@
             "precision_at_threshold": 0.8979933110367893,
             "recall_at_threshold": 0.5070821529745042
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.00018413699181962784,
@@ -2894,7 +3769,8 @@
             "small_recall_at_p90": 0.2359375,
             "precision_at_threshold": 0.8996655518394648,
             "recall_at_threshold": 0.5080264400377715
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -2931,6 +3807,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.03211009174311927,
           "pi5_p95_ms": 36.543667408497654,
           "reaction_p95_ms": 345.3639649591854,
           "threshold": 0.62646484375,
@@ -2945,6 +3823,7 @@
             "precision_at_threshold": 0.9293286219081273,
             "recall_at_threshold": 0.4966949952785647
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.006999125109361404,
             "val_ap50": 0.00016147188797766,
@@ -2961,7 +3840,8 @@
             "small_recall_at_p90": 0.3078125,
             "precision_at_threshold": 0.9285714285714286,
             "recall_at_threshold": 0.5033050047214354
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -2998,6 +3878,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0684931506849315,
+          "val_empty_far": 0.005249343832020997,
+          "val_confuser_far": 0.04128440366972477,
           "pi5_p95_ms": 36.79195296760017,
           "reaction_p95_ms": 332.7684597310073,
           "threshold": 0.587890625,
@@ -3012,6 +3894,7 @@
             "precision_at_threshold": 0.8993174061433447,
             "recall_at_threshold": 0.4976392823418319
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.004374453193350836,
             "val_ap50": -5.96019498242395e-05,
@@ -3028,7 +3911,70 @@
             "small_recall_at_p90": 0.2265625,
             "precision_at_threshold": 0.8974789915966387,
             "recall_at_threshold": 0.5042492917847026
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.4636449480642115,
+          "requirement": "> 0.013084, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.03211009174311927,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0410958904109589,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 36.543667408497654,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 345.3639649591854,
+          "requirement": "<= 500.0",
+          "passed": true
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 5.120128417135383e-06,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo11 / fp16",
+          "requirement": "standard head; int8 excluded",
+          "passed": true
         }
       ]
     },
@@ -3049,17 +3995,14 @@
       "reference_styles_recall_mean": 0.5187283600881334,
       "styles_recall_mean": 0.5187283600881334,
       "test_operating_recall_mean": 0.6279508970727101,
-      "pi5_p95_ms": 69.43809671119232,
+      "pi5_p95_ms": 68.6203961560047,
       "reaction_p95_ms": 609.2905576403887,
       "passes": false,
       "failures": [
-        "seed0 fails confuser_far",
-        "seed0 fails reaction_p95_ms",
-        "seed1 fails reaction_p95_ms",
-        "seed2 fails confuser_far",
-        "seed2 fails reaction_p95_ms"
+        "shipped seed1 fails reaction_p95_ms"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed1/yolo11/fp32",
+      "shipped_seed": 1,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3096,6 +4039,8 @@
           },
           "empty_far": 0.008,
           "confuser_far": 0.0821917808219178,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.045871559633027525,
           "pi5_p95_ms": 68.48190863096929,
           "reaction_p95_ms": 585.0521199663838,
           "threshold": 0.5676605701446533,
@@ -3110,6 +4055,7 @@
             "precision_at_threshold": 0.8979933110367893,
             "recall_at_threshold": 0.5070821529745042
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -3126,7 +4072,8 @@
             "small_recall_at_p90": 0.221875,
             "precision_at_threshold": 0.8979933110367893,
             "recall_at_threshold": 0.5070821529745042
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3163,6 +4110,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.03211009174311927,
           "pi5_p95_ms": 68.6203961560047,
           "reaction_p95_ms": 609.2905576403887,
           "threshold": 0.6391871571540833,
@@ -3177,6 +4126,7 @@
             "precision_at_threshold": 0.9293286219081273,
             "recall_at_threshold": 0.4966949952785647
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -3193,7 +4143,8 @@
             "small_recall_at_p90": 0.3078125,
             "precision_at_threshold": 0.9293286219081273,
             "recall_at_threshold": 0.4966949952785647
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3230,6 +4181,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0684931506849315,
+          "val_empty_far": 0.005249343832020997,
+          "val_confuser_far": 0.04128440366972477,
           "pi5_p95_ms": 69.43809671119232,
           "reaction_p95_ms": 583.5385704364388,
           "threshold": 0.5973009467124939,
@@ -3244,6 +4197,7 @@
             "precision_at_threshold": 0.8993174061433447,
             "recall_at_threshold": 0.4976392823418319
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -3260,7 +4214,70 @@
             "small_recall_at_p90": 0.225,
             "precision_at_threshold": 0.8993174061433447,
             "recall_at_threshold": 0.4976392823418319
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.4664778092540133,
+          "requirement": "> 0.013084, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.03211009174311927,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0410958904109589,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 68.6203961560047,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 609.2905576403887,
+          "requirement": "<= 500.0",
+          "passed": false
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.0,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo11 / fp32",
+          "requirement": "standard head; int8 excluded",
+          "passed": true
         }
       ]
     },
@@ -3281,22 +4298,18 @@
       "reference_styles_recall_mean": 0.5187283600881334,
       "styles_recall_mean": 0.32451998740950583,
       "test_operating_recall_mean": 0.3276676109537299,
-      "pi5_p95_ms": 33.688728014685594,
-      "reaction_p95_ms": 882.9645655307089,
+      "pi5_p95_ms": 33.3894190048263,
+      "reaction_p95_ms": 809.9670017779159,
       "passes": false,
       "failures": [
-        "seed0 fails confuser_far",
-        "seed0 fails reaction_p95_ms",
-        "seed0 fails export parity",
-        "seed0 fails deployed precision accuracy",
-        "seed1 fails reaction_p95_ms",
-        "seed1 fails export parity",
-        "seed1 fails deployed precision accuracy",
-        "seed2 fails reaction_p95_ms",
-        "seed2 fails export parity",
-        "seed2 fails deployed precision accuracy"
+        "int8 excluded by coordinator decision",
+        "shipped seed0 fails confuser_far",
+        "shipped seed0 fails reaction_p95_ms",
+        "shipped seed0 fails export parity",
+        "shipped seed0 fails deployed precision accuracy"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed0/yolo11/int8",
+      "shipped_seed": 0,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3333,6 +4346,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.005249343832020997,
+          "val_confuser_far": 0.013761467889908258,
           "pi5_p95_ms": 33.3894190048263,
           "reaction_p95_ms": 809.9670017779159,
           "threshold": 0.462890625,
@@ -3347,6 +4362,7 @@
             "precision_at_threshold": 0.8979933110367893,
             "recall_at_threshold": 0.5070821529745042
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.23447069116360453,
             "val_ap50": -0.18251414544340538,
@@ -3363,7 +4379,8 @@
             "small_recall_at_p90": 0.103125,
             "precision_at_threshold": 0.8861386138613861,
             "recall_at_threshold": 0.3380547686496695
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3400,6 +4417,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.005249343832020997,
+          "val_confuser_far": 0.009174311926605505,
           "pi5_p95_ms": 33.57056184797228,
           "reaction_p95_ms": 882.9645655307089,
           "threshold": 0.452392578125,
@@ -3414,6 +4433,7 @@
             "precision_at_threshold": 0.9293286219081273,
             "recall_at_threshold": 0.4966949952785647
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.25984251968503935,
             "val_ap50": -0.17819038117619934,
@@ -3430,7 +4450,8 @@
             "small_recall_at_p90": 0.084375,
             "precision_at_threshold": 0.912568306010929,
             "recall_at_threshold": 0.3153918791312559
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3467,6 +4488,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0410958904109589,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.027522935779816515,
           "pi5_p95_ms": 33.688728014685594,
           "reaction_p95_ms": 843.9914764666332,
           "threshold": 0.51708984375,
@@ -3481,6 +4504,7 @@
             "precision_at_threshold": 0.8993174061433447,
             "recall_at_threshold": 0.4976392823418319
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.2292213473315835,
             "val_ap50": -0.16697390357696584,
@@ -3497,7 +4521,70 @@
             "small_recall_at_p90": 0.078125,
             "precision_at_threshold": 0.8756218905472637,
             "recall_at_threshold": 0.3323890462700661
-          }
+          },
+          "deployment_parity_passed": false
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.10387157695939564,
+          "requirement": "> 0.013084, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.005249343832020997,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.013761467889908258,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0547945205479452,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 33.3894190048263,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 809.9670017779159,
+          "requirement": "<= 500.0",
+          "passed": false
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.3626062322946176,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": false
+        },
+        {
+          "gate": "Export parity",
+          "value": false,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": false
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo11 / int8",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -3518,17 +4605,14 @@
       "reference_styles_recall_mean": 0.49071451054453885,
       "styles_recall_mean": 0.493862134088763,
       "test_operating_recall_mean": 0.5996222851746931,
-      "pi5_p95_ms": 36.78268612612307,
-      "reaction_p95_ms": 371.60299365168277,
+      "pi5_p95_ms": 36.531362144677495,
+      "reaction_p95_ms": 360.40014810057227,
       "passes": false,
       "failures": [
-        "seed0 fails confuser_far",
-        "seed0 fails export parity",
-        "seed1 fails export parity",
-        "seed2 fails confuser_far",
-        "seed2 fails export parity"
+        "one-to-one head excluded by coordinator decision"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed1/yolo26/fp16",
+      "shipped_seed": 1,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3565,6 +4649,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.04128440366972477,
           "pi5_p95_ms": 36.45624984122766,
           "reaction_p95_ms": 371.60299365168277,
           "threshold": 0.57958984375,
@@ -3579,6 +4665,7 @@
             "precision_at_threshold": 0.8956521739130435,
             "recall_at_threshold": 0.48630783758262514
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0006653929111571921,
@@ -3595,7 +4682,8 @@
             "small_recall_at_p90": 0.1921875,
             "precision_at_threshold": 0.8939130434782608,
             "recall_at_threshold": 0.48536355051935787
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3632,6 +4720,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.027522935779816515,
           "pi5_p95_ms": 36.531362144677495,
           "reaction_p95_ms": 360.40014810057227,
           "threshold": 0.62353515625,
@@ -3646,6 +4736,7 @@
             "precision_at_threshold": 0.9181494661921709,
             "recall_at_threshold": 0.48725212464589235
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0017497812773403787,
             "val_ap50": 0.00042276560754128667,
@@ -3662,7 +4753,8 @@
             "small_recall_at_p90": 0.2671875,
             "precision_at_threshold": 0.9200710479573713,
             "recall_at_threshold": 0.48914069877242683
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3699,6 +4791,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.005249343832020997,
+          "val_confuser_far": 0.03669724770642202,
           "pi5_p95_ms": 36.78268612612307,
           "reaction_p95_ms": 354.0938703358249,
           "threshold": 0.6298828125,
@@ -3713,6 +4807,7 @@
             "precision_at_threshold": 0.8944543828264758,
             "recall_at_threshold": 0.4721435316336166
           },
+          "fp32_parity_passed": true,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.002624671916010568,
             "val_ap50": 0.0002469679459040641,
@@ -3729,7 +4824,70 @@
             "small_recall_at_p90": 0.1890625,
             "precision_at_threshold": 0.9023508137432188,
             "recall_at_threshold": 0.4711992445703494
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.43437204910292726,
+          "requirement": "> 0.021450, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.027522935779816515,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0273972602739726,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 36.531362144677495,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 360.40014810057227,
+          "requirement": "<= 500.0",
+          "passed": true
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.0,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo26 / fp16",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -3750,17 +4908,15 @@
       "reference_styles_recall_mean": 0.49071451054453885,
       "styles_recall_mean": 0.49071451054453885,
       "test_operating_recall_mean": 0.6015108593012276,
-      "pi5_p95_ms": 69.51109422575772,
+      "pi5_p95_ms": 69.49600181255335,
       "reaction_p95_ms": 650.0737647744563,
       "passes": false,
       "failures": [
-        "seed0 fails confuser_far",
-        "seed0 fails reaction_p95_ms",
-        "seed1 fails reaction_p95_ms",
-        "seed2 fails confuser_far",
-        "seed2 fails reaction_p95_ms"
+        "one-to-one head excluded by coordinator decision",
+        "shipped seed1 fails reaction_p95_ms"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed1/yolo26/fp32",
+      "shipped_seed": 1,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3797,6 +4953,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.05045871559633028,
           "pi5_p95_ms": 68.771457924616,
           "reaction_p95_ms": 635.1089790025599,
           "threshold": 0.5780104398727417,
@@ -3811,6 +4969,7 @@
             "precision_at_threshold": 0.8956521739130435,
             "recall_at_threshold": 0.48630783758262514
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -3827,7 +4986,8 @@
             "small_recall_at_p90": 0.190625,
             "precision_at_threshold": 0.8956521739130435,
             "recall_at_threshold": 0.48630783758262514
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3864,6 +5024,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.027522935779816515,
           "pi5_p95_ms": 69.49600181255335,
           "reaction_p95_ms": 650.0737647744563,
           "threshold": 0.6256572604179382,
@@ -3878,6 +5040,7 @@
             "precision_at_threshold": 0.9181494661921709,
             "recall_at_threshold": 0.48725212464589235
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -3894,7 +5057,8 @@
             "small_recall_at_p90": 0.265625,
             "precision_at_threshold": 0.9181494661921709,
             "recall_at_threshold": 0.48725212464589235
-          }
+          },
+          "deployment_parity_passed": true
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -3931,6 +5095,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0684931506849315,
+          "val_empty_far": 0.005249343832020997,
+          "val_confuser_far": 0.03211009174311927,
           "pi5_p95_ms": 69.51109422575772,
           "reaction_p95_ms": 633.4072464990309,
           "threshold": 0.6281607747077942,
@@ -3945,6 +5111,7 @@
             "precision_at_threshold": 0.8944543828264758,
             "recall_at_threshold": 0.4721435316336166
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": 0.0,
             "val_ap50": 0.0,
@@ -3961,7 +5128,70 @@
             "small_recall_at_p90": 0.184375,
             "precision_at_threshold": 0.8944543828264758,
             "recall_at_threshold": 0.4721435316336166
-          }
+          },
+          "deployment_parity_passed": true
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.43437204910292726,
+          "requirement": "> 0.021450, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.027522935779816515,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0273972602739726,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 69.49600181255335,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 650.0737647744563,
+          "requirement": "<= 500.0",
+          "passed": false
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.0,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": true
+        },
+        {
+          "gate": "Export parity",
+          "value": true,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": true
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo26 / fp32",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     },
@@ -3982,22 +5212,19 @@
       "reference_styles_recall_mean": 0.49071451054453885,
       "styles_recall_mean": 0.3005980484734026,
       "test_operating_recall_mean": 0.3153918791312559,
-      "pi5_p95_ms": 33.69048770762551,
-      "reaction_p95_ms": 908.7928667268228,
+      "pi5_p95_ms": 33.54762294151313,
+      "reaction_p95_ms": 882.2183858978668,
       "passes": false,
       "failures": [
-        "seed0 fails confuser_far",
-        "seed0 fails reaction_p95_ms",
-        "seed0 fails export parity",
-        "seed0 fails deployed precision accuracy",
-        "seed1 fails reaction_p95_ms",
-        "seed1 fails export parity",
-        "seed1 fails deployed precision accuracy",
-        "seed2 fails reaction_p95_ms",
-        "seed2 fails export parity",
-        "seed2 fails deployed precision accuracy"
+        "int8 excluded by coordinator decision",
+        "one-to-one head excluded by coordinator decision",
+        "shipped seed0 fails confuser_far",
+        "shipped seed0 fails reaction_p95_ms",
+        "shipped seed0 fails export parity",
+        "shipped seed0 fails deployed precision accuracy"
       ],
       "representative": "experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed0/yolo26/int8",
+      "shipped_seed": 0,
       "seeds": [
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -4034,6 +5261,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0547945205479452,
+          "val_empty_far": 0.005249343832020997,
+          "val_confuser_far": 0.009174311926605505,
           "pi5_p95_ms": 33.54762294151313,
           "reaction_p95_ms": 882.2183858978668,
           "threshold": 0.50927734375,
@@ -4048,6 +5277,7 @@
             "precision_at_threshold": 0.8956521739130435,
             "recall_at_threshold": 0.48630783758262514
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.24146981627296582,
             "val_ap50": -0.19352216560157998,
@@ -4064,7 +5294,8 @@
             "small_recall_at_p90": 0.08125,
             "precision_at_threshold": 0.894878706199461,
             "recall_at_threshold": 0.31350330500472146
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -4101,6 +5332,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.009174311926605505,
           "pi5_p95_ms": 33.668816294931325,
           "reaction_p95_ms": 908.7928667268228,
           "threshold": 0.468017578125,
@@ -4115,6 +5348,7 @@
             "precision_at_threshold": 0.9181494661921709,
             "recall_at_threshold": 0.48725212464589235
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.28171478565179353,
             "val_ap50": -0.20272165542670573,
@@ -4131,7 +5365,8 @@
             "small_recall_at_p90": 0.0734375,
             "precision_at_threshold": 0.9072463768115943,
             "recall_at_threshold": 0.295561850802644
-          }
+          },
+          "deployment_parity_passed": false
         },
         {
           "recipe": "yolo26n-v2s-800-round2-plain",
@@ -4168,6 +5403,8 @@
           },
           "empty_far": 0.0,
           "confuser_far": 0.0273972602739726,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.022935779816513763,
           "pi5_p95_ms": 33.69048770762551,
           "reaction_p95_ms": 886.7532665349489,
           "threshold": 0.57763671875,
@@ -4182,6 +5419,7 @@
             "precision_at_threshold": 0.8944543828264758,
             "recall_at_threshold": 0.4721435316336166
           },
+          "fp32_parity_passed": false,
           "accuracy_deltas": {
             "val_recall_at_p90": -0.23447069116360464,
             "val_ap50": -0.19101040520911416,
@@ -4198,41 +5436,584 @@
             "small_recall_at_p90": 0.06875,
             "precision_at_threshold": 0.8746666666666667,
             "recall_at_threshold": 0.3097261567516525
-          }
+          },
+          "deployment_parity_passed": false
+        }
+      ],
+      "gates": [
+        {
+          "gate": "Three-seed test improvement",
+          "value": 0.09254013220018886,
+          "requirement": "> 0.013084, larger seed SD",
+          "passed": true
+        },
+        {
+          "gate": "Val empty FAR",
+          "value": 0.005249343832020997,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Val confuser FAR",
+          "value": 0.009174311926605505,
+          "requirement": "<= 0.05",
+          "passed": true
+        },
+        {
+          "gate": "Test empty FAR",
+          "value": 0.0,
+          "requirement": "<= 0.02",
+          "passed": true
+        },
+        {
+          "gate": "Test confuser FAR",
+          "value": 0.0547945205479452,
+          "requirement": "<= 0.05",
+          "passed": false
+        },
+        {
+          "gate": "Estimated Pi frame p95 ms",
+          "value": 33.54762294151313,
+          "requirement": "<= 100.0",
+          "passed": true
+        },
+        {
+          "gate": "Simulated reaction p95 ms",
+          "value": 882.2183858978668,
+          "requirement": "<= 500.0",
+          "passed": false
+        },
+        {
+          "gate": "Precision accuracy maximum drop",
+          "value": 0.3242729046379968,
+          "requirement": "<= 0.01 in each val/test R@P90, AP50, operating recall",
+          "passed": false
+        },
+        {
+          "gate": "Export parity",
+          "value": false,
+          "requirement": "strict same-graph fp32 + accuracy for fp16",
+          "passed": false
+        },
+        {
+          "gate": "Deployment policy",
+          "value": "yolo26 / int8",
+          "requirement": "standard head; int8 excluded",
+          "passed": false
         }
       ]
     }
   ],
   "pareto_front": [
-    "yolo26n-v2-800-round2-plain/yolo11/fp16/[448, 800]",
     "yolo26n-v2s-640-round2-plain/yolo11/fp16/[384, 640]",
     "yolo26n-v2s-640-round2-plain/yolo11/int8/[384, 640]",
     "yolo26n-v2s-640-round2-plain/yolo26/fp16/[384, 640]",
     "yolo26n-v2s-640-round2-plain/yolo26/int8/[384, 640]",
     "yolo26n-v2s-800-round2-plain/yolo11/fp16/[448, 800]"
   ],
-  "admissible_front": [],
-  "styles_tie_break": "paired v2/v2s, val recall within 0.01, same decode/precision, latency within 5%",
-  "selected": null,
-  "package_candidate": null,
-  "diagnostic_candidate": "experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed1/yolo11/fp32",
-  "diagnostic_failures": [
-    "seed0 fails confuser_far",
-    "seed0 fails reaction_p95_ms",
-    "seed1 fails reaction_p95_ms",
-    "seed2 fails confuser_far",
-    "seed2 fails reaction_p95_ms"
+  "admissible_front": [
+    "yolo26n-v2s-800-round2-plain/yolo11/fp16/[448, 800]"
   ],
+  "styles_tie_break": "paired v2/v2s, val recall within 0.01, same decode/precision, latency within 5%",
+  "selected": "yolo26n-v2s-800-round2-plain/yolo11/fp16/[448, 800]",
+  "package_candidate": "experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed1/yolo11/fp16",
+  "diagnostic_candidate": "experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed1/yolo11/fp16",
+  "diagnostic_failures": [],
   "awaiting": [
     "round2-distill",
     "round3-species"
   ],
+  "baseline_measurements": {
+    "label": "measured",
+    "description": "baseline-repro-p50, 384x640, own val-selected thresholds. PyTorch CPU on Mac vexcalibur; native package-default fp32/fp16 on xcng0. Primary comparison uses native fp16, matching the provisional export. Small-object recall is zero for all three baseline seeds.",
+    "input_hw": [
+      384,
+      640
+    ],
+    "formats": {
+      "pt": {
+        "seeds": [
+          {
+            "seed": 0,
+            "test": {
+              "ap50": 0.4697524620935381,
+              "ap50_95": 0.3346315585723953,
+              "recall_at_p90": 0.23229461756373937,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.8142857142857143,
+              "recall_at_threshold": 0.32294617563739375
+            },
+            "val": {
+              "ap50": 0.7959050975705296,
+              "ap50_95": 0.5751771699080158,
+              "recall_at_p90": 0.5071428571428571,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.9044585987261147,
+              "recall_at_threshold": 0.5071428571428571
+            },
+            "empty_far": 0.0,
+            "confuser_far": 0.3013698630136986,
+            "threshold": 0.7138707637786865
+          },
+          {
+            "seed": 1,
+            "test": {
+              "ap50": 0.49329816688211536,
+              "ap50_95": 0.35639458954342346,
+              "recall_at_p90": 0.22946175637393768,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.8053691275167785,
+              "recall_at_threshold": 0.33994334277620397
+            },
+            "val": {
+              "ap50": 0.7871397752274982,
+              "ap50_95": 0.5749349039436261,
+              "recall_at_p90": 0.5214285714285715,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.9012345679012346,
+              "recall_at_threshold": 0.5214285714285715
+            },
+            "empty_far": 0.0,
+            "confuser_far": 0.3698630136986301,
+            "threshold": 0.7387794256210327
+          },
+          {
+            "seed": 2,
+            "test": {
+              "ap50": 0.5080294053156371,
+              "ap50_95": 0.35168368818166734,
+              "recall_at_p90": 0.20679886685552407,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.7607361963190185,
+              "recall_at_threshold": 0.35127478753541075
+            },
+            "val": {
+              "ap50": 0.7670830562715271,
+              "ap50_95": 0.537503397369612,
+              "recall_at_p90": 0.48214285714285715,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.9,
+              "recall_at_threshold": 0.48214285714285715
+            },
+            "empty_far": 0.008,
+            "confuser_far": 0.4657534246575342,
+            "threshold": 0.6844648718833923
+          }
+        ],
+        "test_recall_mean": 0.22285174693106705,
+        "test_recall_std": 0.013974172414493623
+      },
+      "fp32": {
+        "seeds": [
+          {
+            "seed": 0,
+            "test": {
+              "ap50": 0.4697524620935381,
+              "ap50_95": 0.33463153491850595,
+              "recall_at_p90": 0.23229461756373937,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.8142857142857143,
+              "recall_at_threshold": 0.32294617563739375
+            },
+            "val": {
+              "ap50": 0.7959050788358881,
+              "ap50_95": 0.5751771680345517,
+              "recall_at_p90": 0.5071428571428571,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.9044585987261147,
+              "recall_at_threshold": 0.5071428571428571
+            },
+            "empty_far": 0.0,
+            "confuser_far": 0.3013698630136986,
+            "threshold": 0.7138710021972656
+          },
+          {
+            "seed": 1,
+            "test": {
+              "ap50": 0.49329816688211536,
+              "ap50_95": 0.3563941879144096,
+              "recall_at_p90": 0.22946175637393768,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.8053691275167785,
+              "recall_at_threshold": 0.33994334277620397
+            },
+            "val": {
+              "ap50": 0.7871397752274982,
+              "ap50_95": 0.574934802871861,
+              "recall_at_p90": 0.5214285714285715,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.9012345679012346,
+              "recall_at_threshold": 0.5214285714285715
+            },
+            "empty_far": 0.0,
+            "confuser_far": 0.3698630136986301,
+            "threshold": 0.7387793064117432
+          },
+          {
+            "seed": 2,
+            "test": {
+              "ap50": 0.5080294123263888,
+              "ap50_95": 0.3516836888827425,
+              "recall_at_p90": 0.20679886685552407,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.7607361963190185,
+              "recall_at_threshold": 0.35127478753541075
+            },
+            "val": {
+              "ap50": 0.7670830562715271,
+              "ap50_95": 0.537503397369612,
+              "recall_at_p90": 0.48214285714285715,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.9,
+              "recall_at_threshold": 0.48214285714285715
+            },
+            "empty_far": 0.008,
+            "confuser_far": 0.4657534246575342,
+            "threshold": 0.6844649314880371
+          }
+        ],
+        "test_recall_mean": 0.22285174693106705,
+        "test_recall_std": 0.013974172414493623
+      },
+      "fp16": {
+        "seeds": [
+          {
+            "seed": 0,
+            "test": {
+              "ap50": 0.4688536600195018,
+              "ap50_95": 0.3342860689869164,
+              "recall_at_p90": 0.22946175637393768,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.8142857142857143,
+              "recall_at_threshold": 0.32294617563739375
+            },
+            "val": {
+              "ap50": 0.7958729901611944,
+              "ap50_95": 0.5753578485947618,
+              "recall_at_p90": 0.5107142857142857,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.9050632911392406,
+              "recall_at_threshold": 0.5107142857142857
+            },
+            "empty_far": 0.0,
+            "confuser_far": 0.3013698630136986,
+            "threshold": 0.7119140625
+          },
+          {
+            "seed": 1,
+            "test": {
+              "ap50": 0.49181221911524337,
+              "ap50_95": 0.35574914583050943,
+              "recall_at_p90": 0.22946175637393768,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.8066666666666666,
+              "recall_at_threshold": 0.34277620396600567
+            },
+            "val": {
+              "ap50": 0.7868632080776109,
+              "ap50_95": 0.5728155292178427,
+              "recall_at_p90": 0.5214285714285715,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.9012345679012346,
+              "recall_at_threshold": 0.5214285714285715
+            },
+            "empty_far": 0.0,
+            "confuser_far": 0.3698630136986301,
+            "threshold": 0.73974609375
+          },
+          {
+            "seed": 2,
+            "test": {
+              "ap50": 0.5066929106944537,
+              "ap50_95": 0.3506055194253267,
+              "recall_at_p90": 0.20679886685552407,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.7668711656441718,
+              "recall_at_threshold": 0.35410764872521244
+            },
+            "val": {
+              "ap50": 0.7663306801152144,
+              "ap50_95": 0.5373520360029314,
+              "recall_at_p90": 0.4857142857142857,
+              "small_recall_at_p90": 0.0,
+              "precision_at_threshold": 0.9006622516556292,
+              "recall_at_threshold": 0.4857142857142857
+            },
+            "empty_far": 0.008,
+            "confuser_far": 0.4657534246575342,
+            "threshold": 0.67919921875
+          }
+        ],
+        "test_recall_mean": 0.2219074598677998,
+        "test_recall_std": 0.013084425364070845
+      }
+    },
+    "markdown": [
+      "| Seed | PyTorch R@P90 | Native fp32 R@P90 | Native fp16 R@P90 | FP16 AP50 | FP16 operating R | FP16 empty / confuser FAR |",
+      "|---|---:|---:|---:|---:|---:|---:|",
+      "| 0 | 0.2323 | 0.2323 | 0.2295 | 0.4689 | 0.3229 | 0.000 / 0.3014 |",
+      "| 1 | 0.2295 | 0.2295 | 0.2295 | 0.4918 | 0.3428 | 0.000 / 0.3699 |",
+      "| 2 | 0.2068 | 0.2068 | 0.2068 | 0.5067 | 0.3541 | 0.008 / 0.4658 |",
+      "",
+      "Three-seed test R@P90 mean +/- SD: pt 0.222852 +/- 0.013974; fp32 0.222852 +/- 0.013974; fp16 0.221907 +/- 0.013084.",
+      ""
+    ],
+    "job_id": "951221",
+    "reference_script": "outputs/ws7/revision-measurements.sh"
+  },
+  "aspect_ratio": {
+    "label": "measured",
+    "host": "vexcalibur",
+    "framework": "ultralytics",
+    "device": "cpu",
+    "model_path": "/Users/vari/.t3/worktrees/columba-zero/t3-27965e4a/outputs/ws7/checkpoints/yolo26n-v2s-800-round2-plain/seed1/weights/best.pt",
+    "square_predictions": "outputs/ws7/aspect/square/predictions_test.json",
+    "rectangular_predictions": "outputs/ws7/results/yolo26n-v2s-800-round2-plain/seed1/yolo11/pt/predictions_test.json",
+    "square_input_hw": [
+      800,
+      800
+    ],
+    "rectangular_input_hw": [
+      448,
+      800
+    ],
+    "bucket_boundaries": "portrait <1; square [1,1.1547); 4:3 [1.1547,1.5396); approx-16:9 >=1.5396, includes wider images",
+    "small_definition": "WS1 projected short side <32 px; fixed cohort uses 800x800 for both",
+    "global_test_p90_thresholds_diagnostic_only": [
+      0.3655960261821747,
+      0.33649972081184387
+    ],
+    "threshold_policy": "subset R@P90 is diagnostic; no operating threshold or promotion gate changes",
+    "buckets": [
+      {
+        "bucket": "all",
+        "pigeon_images": 121,
+        "pigeon_weighted_content_scale_ratio": 0.5911107148661388,
+        "square": {
+          "recall_at_p90": 0.8016997167138811,
+          "small_recall_at_p90": 0.5850340136054422,
+          "recall_at_full_test_p90": 0.8016997167138811,
+          "counts": {
+            "images": 319,
+            "empty_images": 125,
+            "confuser_images": 73,
+            "pigeon_boxes": 353,
+            "small_pigeon_boxes": 147,
+            "groups": 295
+          }
+        },
+        "rectangular": {
+          "recall_at_p90": 0.6912181303116147,
+          "small_recall_at_p90": 0.472636815920398,
+          "recall_at_full_test_p90": 0.6912181303116147,
+          "counts": {
+            "images": 319,
+            "empty_images": 125,
+            "confuser_images": 73,
+            "pigeon_boxes": 353,
+            "small_pigeon_boxes": 201,
+            "groups": 295
+          }
+        },
+        "rectangular_fixed_square_small_cohort": {
+          "recall_at_p90": 0.6912181303116147,
+          "small_recall_at_p90": 0.40816326530612246,
+          "recall_at_full_test_p90": 0.6912181303116147,
+          "counts": {
+            "images": 319,
+            "empty_images": 125,
+            "confuser_images": 73,
+            "pigeon_boxes": 353,
+            "small_pigeon_boxes": 147,
+            "groups": 295
+          }
+        }
+      },
+      {
+        "bucket": "approx-16:9",
+        "pigeon_images": 2,
+        "pigeon_weighted_content_scale_ratio": 0.9571241830065359,
+        "square": {
+          "recall_at_p90": 1.0,
+          "small_recall_at_p90": 1.0,
+          "recall_at_full_test_p90": 1.0,
+          "counts": {
+            "images": 9,
+            "empty_images": 6,
+            "confuser_images": 1,
+            "pigeon_boxes": 17,
+            "small_pigeon_boxes": 7,
+            "groups": 9
+          }
+        },
+        "rectangular": {
+          "recall_at_p90": 1.0,
+          "small_recall_at_p90": 1.0,
+          "recall_at_full_test_p90": 1.0,
+          "counts": {
+            "images": 9,
+            "empty_images": 6,
+            "confuser_images": 1,
+            "pigeon_boxes": 17,
+            "small_pigeon_boxes": 7,
+            "groups": 9
+          }
+        },
+        "rectangular_fixed_square_small_cohort": {
+          "recall_at_p90": 1.0,
+          "small_recall_at_p90": 1.0,
+          "recall_at_full_test_p90": 1.0,
+          "counts": {
+            "images": 9,
+            "empty_images": 6,
+            "confuser_images": 1,
+            "pigeon_boxes": 17,
+            "small_pigeon_boxes": 7,
+            "groups": 9
+          }
+        }
+      },
+      {
+        "bucket": "4:3",
+        "pigeon_images": 5,
+        "pigeon_weighted_content_scale_ratio": 0.8244357022897426,
+        "square": {
+          "recall_at_p90": 0.9375,
+          "small_recall_at_p90": 0.0,
+          "recall_at_full_test_p90": 0.9375,
+          "counts": {
+            "images": 136,
+            "empty_images": 92,
+            "confuser_images": 39,
+            "pigeon_boxes": 16,
+            "small_pigeon_boxes": 0,
+            "groups": 136
+          }
+        },
+        "rectangular": {
+          "recall_at_p90": 0.875,
+          "small_recall_at_p90": 0.0,
+          "recall_at_full_test_p90": 0.875,
+          "counts": {
+            "images": 136,
+            "empty_images": 92,
+            "confuser_images": 39,
+            "pigeon_boxes": 16,
+            "small_pigeon_boxes": 0,
+            "groups": 136
+          }
+        },
+        "rectangular_fixed_square_small_cohort": {
+          "recall_at_p90": 0.875,
+          "small_recall_at_p90": 0.0,
+          "recall_at_full_test_p90": 0.875,
+          "counts": {
+            "images": 136,
+            "empty_images": 92,
+            "confuser_images": 39,
+            "pigeon_boxes": 16,
+            "small_pigeon_boxes": 0,
+            "groups": 136
+          }
+        }
+      },
+      {
+        "bucket": "square",
+        "pigeon_images": 91,
+        "pigeon_weighted_content_scale_ratio": 0.5599999999999999,
+        "square": {
+          "recall_at_p90": 0.9915254237288136,
+          "small_recall_at_p90": 0.0,
+          "recall_at_full_test_p90": 0.9915254237288136,
+          "counts": {
+            "images": 107,
+            "empty_images": 2,
+            "confuser_images": 14,
+            "pigeon_boxes": 118,
+            "small_pigeon_boxes": 0,
+            "groups": 104
+          }
+        },
+        "rectangular": {
+          "recall_at_p90": 0.9915254237288136,
+          "small_recall_at_p90": 1.0,
+          "recall_at_full_test_p90": 0.9915254237288136,
+          "counts": {
+            "images": 107,
+            "empty_images": 2,
+            "confuser_images": 14,
+            "pigeon_boxes": 118,
+            "small_pigeon_boxes": 1,
+            "groups": 104
+          }
+        },
+        "rectangular_fixed_square_small_cohort": {
+          "recall_at_p90": 0.9915254237288136,
+          "small_recall_at_p90": 0.0,
+          "recall_at_full_test_p90": 0.9915254237288136,
+          "counts": {
+            "images": 107,
+            "empty_images": 2,
+            "confuser_images": 14,
+            "pigeon_boxes": 118,
+            "small_pigeon_boxes": 0,
+            "groups": 104
+          }
+        }
+      },
+      {
+        "bucket": "portrait",
+        "pigeon_images": 23,
+        "pigeon_weighted_content_scale_ratio": 0.5599999999999999,
+        "square": {
+          "recall_at_p90": 0.5594059405940595,
+          "small_recall_at_p90": 0.42857142857142855,
+          "recall_at_full_test_p90": 0.6633663366336634,
+          "counts": {
+            "images": 67,
+            "empty_images": 25,
+            "confuser_images": 19,
+            "pigeon_boxes": 202,
+            "small_pigeon_boxes": 140,
+            "groups": 46
+          }
+        },
+        "rectangular": {
+          "recall_at_p90": 0.4158415841584158,
+          "small_recall_at_p90": 0.39378238341968913,
+          "recall_at_full_test_p90": 0.4752475247524752,
+          "counts": {
+            "images": 67,
+            "empty_images": 25,
+            "confuser_images": 19,
+            "pigeon_boxes": 202,
+            "small_pigeon_boxes": 193,
+            "groups": 46
+          }
+        },
+        "rectangular_fixed_square_small_cohort": {
+          "recall_at_p90": 0.4158415841584158,
+          "small_recall_at_p90": 0.3142857142857143,
+          "recall_at_full_test_p90": 0.4752475247524752,
+          "counts": {
+            "images": 67,
+            "empty_images": 25,
+            "confuser_images": 19,
+            "pigeon_boxes": 202,
+            "small_pigeon_boxes": 140,
+            "groups": 46
+          }
+        }
+      }
+    ],
+    "interpretation": "The geometry hypothesis is supported for this checkpoint. Square-to-rectangular content scale is 0.56 in portrait and square images, versus a pigeon-weighted 0.957 in the wide bucket. At the respective full-test P90 cuts, 38 of 39 lost matches are portrait pigeons, one is in the 4:3 bucket, and square/wide matches are unchanged. The fixed square-defined small cohort also loses recall, so this is more than a changing small-object denominator. It is an observational geometry comparison, not a controlled attribution of every error: canvas padding and sampling also change. The wide bucket contains only two positive images and 17 boxes, so unchanged recall does not establish real-camera performance. The square CPU result is 0.8017 for this seed; the approximately 0.78 WS5 value is a three-seed mean. Checked-in app/config.yaml and CameraConfig still default to 640x480. The scale-match argument requires an actual 16:9 capture stream; WS10 should verify the deployed stream geometry. No capture setting was changed."
+  },
   "package_verification": {
-    "model_id": "yolo26n-v2s-800-round2-plain-seed1-yolo11-fp32-provisional",
-    "eligible": false,
+    "model_id": "yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16-provisional",
+    "eligible": true,
     "provisional": true,
-    "directory": "models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp32-provisional",
-    "source": "outputs/ws7/packages/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp32-provisional",
+    "directory": "models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16-provisional",
+    "source": "outputs/ws7/packages/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16-provisional",
     "manifest": "deploy/model_manifest.json",
     "status": "SHA-256 and byte counts verified"
   }

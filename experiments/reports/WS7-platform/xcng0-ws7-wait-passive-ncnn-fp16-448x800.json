@@ -277,5 +277,6 @@
     "calibration_id": "cal-v0-published",
     "factor": 1.5271107126389931,
     "label": "estimated"
-  }
+  },
+  "omp_wait_policy": "PASSIVE"
 }
