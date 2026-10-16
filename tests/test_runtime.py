@@ -36,7 +36,6 @@ from app.detector import (
     DetectorError,
     FrameDetector,
     UltralyticsDetector,
-    check_model,
     load_model_info,
     validate_names,
 )
@@ -106,7 +105,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.output.recording_fps, 15)
         self.assertEqual(config.confirmation, ConfirmationConfig(enabled=True, k=2, n=3))
         source = repository / cast(str, manifest["source"])
-        self.assertEqual(check_model(str(source), config.model.image_size), source)
+        self.assertEqual(load_model_info(str(source), config.model.image_size).path, source)
 
     def test_obsolete_and_malformed_config_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -165,23 +164,23 @@ class DetectorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             with self.assertRaisesRegex(DetectorError, "incomplete"):
-                check_model(str(path), 640)
+                load_model_info(str(path), 640)
             for name in ("model.ncnn.bin", "model.ncnn.param"):
                 (path / name).write_bytes(b"test")
             (path / "metadata.yaml").write_text(
                 yaml.safe_dump({"task": "detect", "names": {0: "pigeon"}, "imgsz": [640, 640]})
             )
-            self.assertEqual(check_model(str(path), 640), path)
+            self.assertEqual(load_model_info(str(path), 640).path, path)
             with self.assertRaisesRegex(DetectorError, "export size"):
-                check_model(str(path), 416)
+                load_model_info(str(path), 416)
 
     def test_rectangular_export_size(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = write_package(Path(directory), image_size=[384, 640])
-            self.assertEqual(check_model(str(path), (384, 640)), path)
+            self.assertEqual(load_model_info(str(path), (384, 640)).path, path)
             for size in (640, (640, 384)):
                 with self.subTest(size=size), self.assertRaisesRegex(DetectorError, "export size"):
-                    check_model(str(path), size)
+                    load_model_info(str(path), size)
 
     def test_class_mapping(self) -> None:
         validate_names({0: "pigeon"})

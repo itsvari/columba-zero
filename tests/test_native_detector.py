@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import json
 import sys
 import tempfile
 import unittest
@@ -19,7 +18,6 @@ from app.detector import DetectorError
 from app.main import create_detector
 from app.models import FramePacket
 from app.native_detector import MetadataValue, NativeDetector
-from native.rescore_parity import rescore_report
 from native.verify_native import match_clipped_boxes
 from tools.compare_exports import ExportPrediction
 
@@ -247,7 +245,7 @@ class NativeDetectorTests(unittest.TestCase):
         low_score: ExportPrediction = {**rounded, "confidence": 0.7}
         self.assertEqual(match_clipped_boxes([expected], [low_score]), [])
 
-    def test_rescore_preserves_linux_predictions_and_uses_relative_rounding_bound(self) -> None:
+    def test_matching_uses_relative_rounding_bound(self) -> None:
         expected: ExportPrediction = {
             "label": "pigeon",
             "confidence": 0.2612849473953247,
@@ -261,28 +259,6 @@ class NativeDetectorTests(unittest.TestCase):
         self.assertEqual(len(match_clipped_boxes([expected], [actual])), 1)
         shifted: ExportPrediction = {**actual, "box": [0.0, 7.4, 0.0, 1276.990966796875]}
         self.assertEqual(match_clipped_boxes([expected], [shifted]), [])
-        source = self.model / "original-parity.json"
-        destination = self.model / "rescored-parity.json"
-        source.write_text(
-            json.dumps(
-                {
-                    "min_iou": 0.8,
-                    "max_confidence_delta": 0.05,
-                    "informational": False,
-                    "records": [
-                        {"image": "image.jpg", "reference": [expected], "native": [actual]}
-                    ],
-                }
-            )
-        )
-        original = source.read_bytes()
-        rescored = rescore_report(source, destination)
-        self.assertEqual(rescored["failures"], 0)
-        self.assertEqual(source.read_bytes(), original)
-        output = json.loads(destination.read_text())
-        self.assertEqual(output["records"][0]["reference"], [expected])
-        self.assertEqual(output["records"][0]["native"], [actual])
-        self.assertEqual(len(output["rescore"]["prediction_sha256"]), 64)
 
 
 @unittest.skipIf(columba_native is None, "columba_native is not built")

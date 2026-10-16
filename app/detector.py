@@ -143,10 +143,6 @@ def load_model_info(path: str, image_size: ImageSize) -> ModelInfo:
     return ModelInfo(model, {})
 
 
-def check_model(path: str, image_size: ImageSize) -> Path:
-    return load_model_info(path, image_size).path
-
-
 def stage_timings(speed: object) -> dict[str, float | None]:
     """Read Ultralytics' per-result `speed` (milliseconds), ignoring anything malformed."""
     timings: dict[str, float | None] = dict.fromkeys(STAGE_NAMES)

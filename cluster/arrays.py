@@ -144,21 +144,6 @@ def active_run_names(root: Path, jobs: Sequence[Job]) -> set[str]:
     return names
 
 
-def shares(counts: dict[str, int], limits: dict[str, int], total: int) -> dict[str, int]:
-    if not 0 < total <= GPU_RUNNING_LIMIT:
-        raise ValueError("array concurrency must be within 1..8")
-    allocated = dict.fromkeys(counts, 0)
-    while sum(allocated.values()) < total:
-        eligible = [key for key in counts if allocated[key] < min(counts[key], limits[key])]
-        if not eligible:
-            break
-        for key in eligible:
-            if sum(allocated.values()) >= total:
-                break
-            allocated[key] += 1
-    return allocated
-
-
 def place_request(
     request: GpuRequest,
     offers: Sequence[GpuOffer],

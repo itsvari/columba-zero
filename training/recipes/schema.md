@@ -82,7 +82,7 @@ Neither is a Pi latency result.
 training size and val-selected threshold. WS5/WS7 evaluate exported candidates
 at their deployment size separately.
 
-`framework: ultralytics` is implemented. To add another framework, WS6 creates
+`framework: ultralytics` is the only implemented framework. To add another, create
 `training/adapters/<framework>/__init__.py` exposing `adapter` with
 `train(context: cluster.run_job.TrainingContext, report: dict[str, JsonValue])`.
 The adapter writes the C6 weights/results into `context.local_run`. Evaluation

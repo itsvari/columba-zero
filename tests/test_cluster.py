@@ -27,7 +27,6 @@ from cluster.arrays import (
     active_run_names,
     group_tasks,
     retarget_array,
-    shares,
     submit_arrays,
     task_for,
     throttle_arrays,
@@ -1070,15 +1069,6 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(policy.type_limits["h200-141"], 1)
         self.assertEqual(policy.max_submit_jobs, 32)
         self.assertEqual(policy.type_limits["nv"], 8)
-
-    def test_array_throttles_total_and_type_limits(self) -> None:
-        allocation = shares({"nv": 12, "h47": 6, "h96": 3}, {"nv": 8, "h47": 2, "h96": 1}, 8)
-        self.assertEqual(sum(allocation.values()), 8)
-        self.assertLessEqual(allocation["h47"], 2)
-        self.assertEqual(allocation["h96"], 1)
-        self.assertEqual(sum(shares({"nv": 12, "h47": 6}, {"nv": 8, "h47": 2}, 4).values()), 4)
-        with self.assertRaises(ValueError):
-            shares({}, {}, 9)
 
     def test_arrays_group_light_or_features_and_heavy_types(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
