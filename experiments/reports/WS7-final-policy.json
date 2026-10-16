@@ -1,0 +1,39 @@
+{
+  "decision_recorded_utc": "2026-10-16T08:36:11.859661+00:00",
+  "policy": "Coordinator confirmed deploy-size val takes precedence over WS5 square-val seed nominations. Apply identical val eligibility, R@P90 and ties to every arm. Test gates apply chosen seed only; no test fallback. Three-seed arm rule unchanged.",
+  "timing": "Confirmed before inspecting deploy-size test metrics for any switched seed. First distilled ARM job 958128 just submitted; no new native test metrics inspected.",
+  "tie_break": [
+    "highest val R@P90",
+    "lowest val confuser FAR",
+    "lowest val empty FAR",
+    "highest val AP50",
+    "lowest seed index"
+  ],
+  "square_val_nominations": [
+    {
+      "recipe": "yolo26n-v2s-800-round2-distill",
+      "seed": 1,
+      "val_recall_at_p90": 0.815,
+      "threshold": 0.5846
+    },
+    {
+      "recipe": "yolo26n-v2s-800-round2-plain",
+      "seed": 1,
+      "val_recall_at_p90": 0.801,
+      "threshold": 0.634
+    },
+    {
+      "recipe": "yolo26n-v2s-species-800-r3",
+      "seed": 2,
+      "val_recall_at_p90": 0.822,
+      "threshold": 0.6098
+    },
+    {
+      "recipe": "yolo26n-v2s-800-r3-control-b16",
+      "seed": 2,
+      "val_recall_at_p90": 0.808,
+      "threshold": 0.5751
+    }
+  ],
+  "nomination_source": "experiments/reports/WS5-final.md, rounded square-val metrics; never reused as deploy thresholds"
+}
