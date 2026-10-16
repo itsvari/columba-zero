@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 from app.json_data import JsonValue
@@ -167,6 +168,32 @@ class ExportSelectionTests(unittest.TestCase):
             )
             self.assertFalse(accuracy_gate(reference, exported)["passed"])
 
+    def test_validation_ties_use_false_alarms_then_ap50_before_seed_index(self) -> None:
+        records = [candidate("arm", seed) for seed in range(3)]
+        records[2]["val_confuser_far"] = 0.03
+        self.assertEqual(
+            mapping(cast(list[JsonValue], self.selection(records)["arms"])[0], "arm")[
+                "shipped_seed"
+            ],
+            2,
+        )
+        records[1]["val_confuser_far"] = 0.03
+        records[2]["val_empty_far"] = 0.01
+        self.assertEqual(
+            mapping(cast(list[JsonValue], self.selection(records)["arms"])[0], "arm")[
+                "shipped_seed"
+            ],
+            1,
+        )
+        records[2]["val_empty_far"] = 0.0
+        mapping(records[2]["val"], "val")["ap50"] = 0.86
+        self.assertEqual(
+            mapping(cast(list[JsonValue], self.selection(records)["arms"])[0], "arm")[
+                "shipped_seed"
+            ],
+            2,
+        )
+
     def test_int8_parity_has_documented_tolerances_and_still_requires_equal_counts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             reference, exported = Path(temporary) / "pt.json", Path(temporary) / "int8.json"
@@ -276,7 +303,7 @@ class ExportSelectionTests(unittest.TestCase):
             (source / "model.ncnn.bin").write_bytes(b"corrupt")
             with self.assertRaisesRegex(SystemExit, "source checksum mismatch"):
                 prepare_models(repository, "candidate-provisional")
-            with self.assertRaisesRegex(SystemExit, "expected one provisional model entry"):
+            with self.assertRaisesRegex(SystemExit, "expected one model entry"):
                 prepare_models(repository, "unknown")
 
     def test_species_taxonomy_view_preserves_immutable_dataset(self) -> None:

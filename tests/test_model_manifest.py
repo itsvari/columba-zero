@@ -78,6 +78,37 @@ class ModelManifestTests(unittest.TestCase):
                 if record["file"] == METADATA_FILE:
                     self.assertNotIn(b"\r", content)
 
+    def test_flat_selected_package_and_named_fallback_use_manifest_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            entries = []
+            for model_id in ("selected", "fallback"):
+                source = repository / model_id
+                source.mkdir()
+                payload = model_id.encode()
+                (source / "model.ncnn.bin").write_bytes(payload)
+                entries.append(
+                    {
+                        "model_id": model_id,
+                        "source": model_id,
+                        "runtime_directory": f"models/{model_id}",
+                        "files": [
+                            {
+                                "file": "model.ncnn.bin",
+                                "bytes": len(payload),
+                                "sha256": hashlib.sha256(payload).hexdigest(),
+                            }
+                        ],
+                    }
+                )
+            manifest = {**entries[0], "fallback_models": [entries[1]]}
+            (repository / "deploy").mkdir()
+            (repository / "deploy/model_manifest.json").write_text(json.dumps(manifest))
+            selected = prepare_models.prepare_models(repository)
+            fallback = prepare_models.prepare_models(repository, "fallback")
+            self.assertEqual((selected / "model.ncnn.bin").read_bytes(), b"selected")
+            self.assertEqual((fallback / "model.ncnn.bin").read_bytes(), b"fallback")
+
     def test_preparation_rejects_changed_source_and_copy(self) -> None:
         for corruption in ("source", "copy"):
             with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as directory:

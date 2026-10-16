@@ -1469,10 +1469,105 @@ srun --cpu-bind=cores python -m tools.select_model styles --candidates "$workspa
     )
 
 
+def durable_package_entry(
+    candidate: Path, exports: Path, decision_path: Path, repository: Path
+) -> dict[str, JsonValue]:
+    import yaml
+
+    descriptor = read_report(candidate / "candidate.json")
+    model_id = str(descriptor["model_id"]).replace("/", "-")
+    source = (
+        exports
+        / str(descriptor["recipe"])
+        / f"seed{descriptor['seed']}"
+        / str(descriptor["decode"])
+        / f"{descriptor['precision']}_ncnn_model"
+    )
+    destination = repository / "runs/detect/pigeon_detector" / model_id / "weights/best_ncnn_model"
+    destination.mkdir(parents=True, exist_ok=True)
+    files: list[JsonValue] = []
+    for name in ("model.ncnn.param", "model.ncnn.bin", "metadata.yaml"):
+        payload = (source / name).read_bytes()
+        if name == "metadata.yaml":
+            metadata = mapping(yaml.safe_load(payload), "metadata")
+            columba = mapping(metadata["columba"], "columba")
+            columba["model_id"] = model_id
+            metadata["columba"] = columba
+            payload = yaml.safe_dump(metadata, sort_keys=False).encode()
+        (destination / name).write_bytes(payload)
+        files.append(
+            {"file": name, "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
+        )
+    model_settings(destination, cast(list[int], descriptor["input_hw"]), str(descriptor["decode"]))
+    return {
+        "model_id": model_id,
+        "provisional": False,
+        "source": str(destination.relative_to(repository)),
+        "runtime_directory": f"models/{model_id}",
+        "selection": str(decision_path.resolve().relative_to(repository)),
+        "checkpoint_sha256": read_report(source / "export.json")["source_sha256"],
+        "operating_threshold": read_report(candidate / "metrics_val.json")["operating_threshold"],
+        "decode": descriptor["decode"],
+        "input_hw": descriptor["input_hw"],
+        "quantization": descriptor["precision"],
+        "taxonomy": descriptor["taxonomy"],
+        "files": files,
+    }
+
+
+def package_final_candidate(arguments: argparse.Namespace, decision: dict[str, JsonValue]) -> None:
+    from tools.prepare_models import prepare_models
+
+    if decision["provisional"] is not False or not isinstance(decision["package_candidate"], str):
+        raise ValueError("final packaging requires a final decision with every gate passing")
+    repository = Path(__file__).resolve().parents[1]
+    entry = durable_package_entry(
+        Path(decision["package_candidate"]), arguments.exports, arguments.decision, repository
+    )
+    fallback_entries: list[JsonValue] = []
+    if arguments.fallback_candidate:
+        fallback = candidate_record(arguments.fallback_candidate)
+        if not any(
+            mapping(arm, "arm")["passes"] is True
+            and mapping(arm, "arm")["representative"] == fallback["directory"]
+            for arm in cast(list[JsonValue], decision["arms"])
+        ):
+            raise ValueError("fallback must be a val-chosen seed of a passing arm")
+        fallback_entries.append(
+            durable_package_entry(
+                arguments.fallback_candidate,
+                arguments.fallback_exports or arguments.exports,
+                arguments.decision,
+                repository,
+            )
+        )
+    entry["fallback_models"] = fallback_entries
+    write_json(repository / "deploy/model_manifest.json", entry)
+    for package in [entry, *[mapping(value, "fallback") for value in fallback_entries]]:
+        prepare_models(repository, str(package["model_id"]))
+    verified = prepare_models(repository)
+    decision["package_verification"] = {
+        "model_id": entry["model_id"],
+        "eligible": True,
+        "provisional": False,
+        "directory": str(verified.relative_to(repository)),
+        "source": entry["source"],
+        "manifest": "deploy/model_manifest.json",
+        "status": "SHA-256 and byte counts verified",
+    }
+    write_json(arguments.decision, decision)
+    if arguments.report:
+        write_decision_report(arguments.report, decision)
+    print(verified)
+
+
 def package_candidate(arguments: argparse.Namespace) -> None:
     from tools.prepare_models import prepare_models
 
     decision = read_report(arguments.decision)
+    if arguments.final:
+        package_final_candidate(arguments, decision)
+        return
     selected = decision.get("package_candidate")
     eligible = isinstance(selected, str)
     if not eligible and arguments.diagnostic:
@@ -1560,10 +1655,14 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
     arms = [mapping(arm, "arm") for arm in cast(list[JsonValue], decision["arms"])]
     baseline = mapping(decision["baseline"], "baseline")
     lines = [
-        "# WS7 provisional export decision",
+        "# WS7 final export decision"
+        if decision["provisional"] is False
+        else "# WS7 provisional export decision",
         "",
-        f"Provisional selection: `{decision['selected'] or 'HOLD: no arm passes every gate'}`.",
-        "Final selection waits for distilled and species candidates.",
+        f"Selection: `{decision['selected'] or 'HOLD: no arm passes every gate'}`.",
+        "All training candidates are available; deploy-size evidence decides the final pick."
+        if decision["provisional"] is False
+        else "Final selection waits for distilled and species candidates.",
         f"Coverage: {len(arms)} configurations and "
         f"{sum(len(cast(list[JsonValue], arm['seeds'])) for arm in arms)} seed/export cases.",
         f"Comparison baseline: `{baseline['recipe']}`, measured native fp16 384x640 test R@P90 "
@@ -1575,7 +1674,7 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         "use styles recall to break the tie. The 5% band treats host timing noise",
         "as equal latency.",
         "",
-        "Primary accuracy is measured using columba_native package-default compute on xcng0.",
+        "Primary accuracy is measured using columba_native package-default compute on xcng0/xcng1.",
         "Native styles accuracy and ACTIVE latency use xcng0/xcng1; C3/C7 record each host.",
         "Val/test CPU PyTorch references use xcng0 for the first seed's two heads, then Mac",
         "vexcalibur. Mac versus xcng0 passes all 1,408 first-reference image comparisons.",
@@ -1767,9 +1866,10 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         verified = mapping(decision["package_verification"], "package verification")
         lines.extend(
             [
-                "## Package dry run",
+                "## Durable package" if verified["provisional"] is False else "## Package dry run",
                 "",
-                f"`{verified['model_id']}` is provisional. {verified['status']}.",
+                f"`{verified['model_id']}`. Provisional: {verified['provisional']}. "
+                f"{verified['status']}.",
                 f"Package source: `{verified['source']}`. "
                 f"Verified copy: `{verified['directory']}`.",
                 f"Manifest: `{verified['manifest']}`. "
@@ -2182,6 +2282,9 @@ def parser() -> argparse.ArgumentParser:
         help="package a blocked candidate for hash-check dry run while selection stays HOLD",
     )
     sub.add_argument("--exports", type=Path, required=True)
+    sub.add_argument("--final", action="store_true")
+    sub.add_argument("--fallback-candidate", type=Path)
+    sub.add_argument("--fallback-exports", type=Path)
     sub = commands.add_parser("aspect")
     sub.add_argument("--dataset", type=Path, required=True)
     sub.add_argument("--square-predictions", type=Path, required=True)
@@ -2203,6 +2306,7 @@ def parser() -> argparse.ArgumentParser:
         "--aspect-report", type=Path, default=Path("experiments/reports/WS7-aspect.json")
     )
     sub.add_argument("--output", type=Path, required=True)
+    sub.add_argument("--final", action="store_true")
     return root
 
 
@@ -2243,6 +2347,9 @@ def main() -> None:
         if not directories:
             raise SystemExit("no candidate.json files found")
         decision = select_candidates(directories, baseline_scores(arguments.baseline_metrics))
+        if arguments.final:
+            decision["provisional"] = False
+            decision["awaiting"] = []
         baseline_summary = arguments.baseline_metrics.parent / "measurements.json"
         if baseline_summary.exists():
             decision["baseline_measurements"] = read_report(baseline_summary)
