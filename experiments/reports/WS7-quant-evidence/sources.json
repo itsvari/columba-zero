@@ -1,0 +1,29 @@
+{
+  "ncnn_commit": "e54f7b1f88434e1d844ea0551b880a1cfb079ce1",
+  "version": "1.0.20260526",
+  "source_archive_sha256": "7d871b4311fd554736569053a666329e091d3a29e229488e02b335745972207f",
+  "files": {
+    "tools/quantize/ncnn2table.cpp": "e9a5237151eb486ebc4d80c6868e606a0bfa4e6e38383401df739a8169ee9161",
+    "tools/quantize/ncnn2int8.cpp": "01d104a5e08852ac4aec54182c13048964a5ef6fdc8153d8f464de0944b38340",
+    "tools/quantize/imreadwrite.cpp": "fa865b0b74393025585fe92529a6c24fc707e7f55ad912f642a7f90e72467228",
+    "src/mat_pixel.cpp": "1c1e2456c17026aadaf9ef371aa571c9bf676402959bbe1e3e075957755b986a",
+    "src/layer/arm/convolution_arm.cpp": "8aad61cac6e6f975820456a6d70293adb384f9806a4fa26aff272f2b566c17fe"
+  },
+  "observations": {
+    "image_loading": "STB imread converts RGB file bytes to BGR; PIXEL_BGR2RGB reverses to RGB",
+    "resize": "read_and_resize_image calls from_pixels_resize for [800,448,3]; mat_pixel.cpp bypasses interpolation when dimensions match",
+    "normalisation": "ncnn2table uses supplied float32 norm; native preprocess uses 1/255 for each RGB channel",
+    "eq": "quantize_EQ indexes input arrays by channel j and image list by layer i inside loops whose intended indices are jj and ii; suspect out-of-bounds access",
+    "weights": "Convolution int8 weights use one scale for each output channel",
+    "activations": "Convolution ARM forward uses bottom_blob_int8_scales[0] across channels; no per-block mode used",
+    "winograd_weight_range": "Stock KL/ACIQ assigns scale 31/absmax, signed 6-bit weights, to 3x3 stride-1 dilation-1 convolutions for int8 Winograd F43; other Convolution scales use 127/absmax. Both remain per-output-channel.",
+    "first_activation_bounds_by_export": {
+      "640-seed0": 0.9978027048797133,
+      "640-seed1": 0.9978027048797133,
+      "640-seed2": 0.9978027048797133,
+      "800-seed0": 0.44799806385819435,
+      "800-seed1": 0.44799806385819435,
+      "800-seed2": 0.44799806385819435
+    }
+  }
+}
