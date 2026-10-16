@@ -23,6 +23,7 @@ from tools.select_model import (
     baseline_scores,
     candidate_record,
     latest_frame_rate,
+    package_final_candidate,
     parity,
     reaction_for_recall,
     select_candidates,
@@ -314,6 +315,43 @@ class ExportSelectionTests(unittest.TestCase):
         records = [candidate("arm", seed) for seed in range(3)]
         records[0]["reaction_p95_ms"] = None
         self.assertIsNone(self.selection(records)["selected"])
+
+    def test_primary_plain_pick_is_not_duplicated_as_its_own_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary).resolve()
+            arguments = argparse.Namespace(
+                exports=Path("exports"),
+                decision=repository / "decision.json",
+                report=None,
+                fallback_candidate=Path("plain/seed1"),
+                fallback_exports=Path("old-exports"),
+            )
+            decision: dict[str, JsonValue] = {
+                "provisional": False,
+                "package_candidate": "plain/seed1",
+                "arms": [],
+            }
+            entry: dict[str, JsonValue] = {
+                "model_id": "plain-seed1",
+                "measured_model_id": "plain/seed1",
+                "source": "tracked/plain",
+                "runtime_directory": "models/plain",
+                "files": [],
+            }
+            with (
+                patch("tools.select_model.__file__", str(repository / "tools/select_model.py")),
+                patch("tools.select_model.durable_package_entry", return_value=entry) as package,
+                patch(
+                    "tools.select_model.candidate_record", return_value={"model_id": "plain/seed1"}
+                ),
+                patch(
+                    "tools.prepare_models.prepare_models", return_value=repository / "models/plain"
+                ),
+            ):
+                package_final_candidate(arguments, decision)
+            package.assert_called_once()
+            manifest = json.loads((repository / "deploy/model_manifest.json").read_text())
+            self.assertEqual(manifest["fallback_models"], [])
 
     def test_provisional_manifest_verifies_c8_without_switching_default(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

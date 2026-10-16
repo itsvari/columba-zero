@@ -1667,8 +1667,10 @@ def package_final_candidate(arguments: argparse.Namespace, decision: dict[str, J
         Path(decision["package_candidate"]), arguments.exports, arguments.decision, repository
     )
     fallback_entries: list[JsonValue] = []
-    if arguments.fallback_candidate:
-        fallback = candidate_record(arguments.fallback_candidate)
+    fallback = (
+        candidate_record(arguments.fallback_candidate) if arguments.fallback_candidate else None
+    )
+    if fallback is not None and fallback["model_id"] != entry["measured_model_id"]:
         if not any(
             mapping(arm, "arm")["passes"] is True
             and mapping(arm, "arm")["representative"] == fallback["directory"]
