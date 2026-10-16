@@ -2,15 +2,27 @@
 
 Detection-only pigeon prototype for **Raspberry Pi 5, 64-bit Raspberry Pi OS,
 CSI camera, and a connected monitor**. It displays pigeon boxes, confidence,
-current-frame count, capture FPS, and processing FPS. There is no GPIO or
-actuation code, calibration, or unique-bird counting. Per-track trigger
-confirmation is available but off by default.
+current-frame count, capture FPS, and processing FPS, and logs confirmed
+per-track triggers. There is no GPIO or actuation code, calibration, or
+unique-bird counting.
 
-The runtime uses the existing `pigeon_baseline_v1-2` YOLO11n single-class model.
-The original training notebook, results, and weights remain intact. The
-[notebook](docs/history/pigeon_detection_training.ipynb) and
-[GEN2002Y report](docs/history/GEN2002Y%20Report.md) describe historical work; the current application is
-specified here and in [the acceptance guide](RASPBERRY_PI_PROTOTYPE_PLAN.md).
+The shipped model is `yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16`, a
+single-class YOLO26n NCNN package: 448×800, fp16, yolo11 decode, threshold
+0.62646484375. It runs on the native C++ backend with k2/n3 confirmation and an
+800×450 camera stream at 30 FPS ([WS7 report](experiments/reports/WS7-final.md)).
+The earlier `pigeon_baseline_v1-2` YOLO11n 640 model stays as the comparison
+baseline and fallback.
+
+Further documents:
+
+- [Pi acceptance checklist](RASPBERRY_PI_PROTOTYPE_PLAN.md) and
+  [validation results](deploy/VALIDATION.md).
+- [Model-improvement plan](plans/model-improvement/PLAN.md) (closed except WS10,
+  Pi hardware acceptance) and its [contracts](plans/model-improvement/CONTRACTS.md).
+- [Experiment reports](experiments/README.md), the [native backend](native/README.md)
+  and [cluster tooling](cluster/README.md).
+- History: the original [training notebook](docs/history/pigeon_detection_training.ipynb)
+  and [GEN2002Y report](docs/history/GEN2002Y%20Report.md).
 
 ## Model preparation
 
@@ -20,18 +32,22 @@ From the repository root:
 python tools/prepare_models.py
 ```
 
-This copies `best.pt` and the complete `best_ncnn_model` directory from
-`runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/` into ignored
-`models/pigeon_baseline_v1-2/`, checking SHA-256 against
-[the tracked manifest](deploy/model_manifest.json). Original artifacts are never
-modified. When transferring to the Pi, copy `models/pigeon_baseline_v1-2/` as
-well as the application; ignored model binaries do not arrive via Git alone.
-Keep original training artifacts backed up separately.
+This verifies and copies both packages listed in
+[the tracked manifest](deploy/model_manifest.json) into ignored `models/`:
 
-Git checks out the NCNN `metadata.yaml` with LF line endings on every platform.
-Its manifest entry hashes the tracked 427-byte file. The other four manifest
-files retain their exact bytes during checkout. Preparation verifies both file
-size and SHA-256 before copying and again after copying.
+- the shipped package from
+  `runs/detect/pigeon_detector/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16/weights/best_ncnn_model/`
+  to `models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16/`;
+- the fallback `best.pt` and `best_ncnn_model/` from
+  `runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/` to
+  `models/pigeon_baseline_v1-2/`.
+
+`--model-id <id>` prepares one entry only. Preparation checks file size and
+SHA-256 before and after copying; tracked originals are never modified. When
+transferring to the Pi, copy `models/` as well as the application, since
+ignored model files do not arrive via Git alone. Git checks out each NCNN
+`metadata.yaml` with LF line endings and the other package files with their
+exact bytes (`.gitattributes`), so the manifest hashes hold on every platform.
 
 ## Pi setup
 
@@ -56,32 +72,56 @@ python -c "import cv2, picamera2, ncnn, ultralytics; print(cv2.__file__); print(
 python -m pip freeze > outputs/setup/installed.txt
 ```
 
-This Pi-specific install intentionally retains OS NumPy, OpenCV, and libcamera
-bindings. Ultralytics is installed without dependency resolution to avoid replacing
-OS OpenCV. Its remaining runtime dependencies are explicitly installed above.
-`pip check` may report the OS OpenCV distribution as missing or too old even when
-`cv2` works: verify imports, GUI build information, and actual predictions.
-Do not install `opencv-python-headless` or combine multiple pip OpenCV variants.
-If OS NumPy is older than 1.24, use a newer supported Pi OS image. Resolve any
-missing ARM wheels before proceeding; this setup has not yet been verified on a Pi.
+PyTorch, Ultralytics and pip `ncnn` serve the Ultralytics backend, `.pt`
+checkpoints and the tools; the native backend does not import them. This install
+keeps OS NumPy, OpenCV and libcamera bindings; Ultralytics is installed without
+dependency resolution so it cannot replace OS OpenCV. `pip check` may report OS
+OpenCV as missing or too old even when `cv2` works: verify imports, GUI build
+information and predictions. Do not install `opencv-python-headless` or combine
+pip OpenCV variants. If OS NumPy is older than 1.24, use a newer Pi OS image.
+This setup has not yet been verified on a Pi.
 
-The model was exported with Ultralytics 8.4.175; that version and the locally tested
-NCNN version are pinned. Camera format `RGB888` provides BGR bytes for OpenCV
-(despite its name). See the [official Picamera2 manual](https://datasheets.raspberrypi.com/camera/picamera2-manual.pdf)
-for OS packages, virtual environments, and pixel formats, and the
-[Ultralytics Pi guide](https://docs.ultralytics.com/guides/raspberry-pi/) for NCNN support.
+Ultralytics 8.4.175 and ncnn 1.0.20260526 are pinned; the models were exported
+with them. Camera format `RGB888` provides BGR bytes for OpenCV (despite its
+name). See the [official Picamera2 manual](https://datasheets.raspberrypi.com/camera/picamera2-manual.pdf)
+for OS packages, virtual environments, and pixel formats.
+
+## Native backend
+
+The shipped configuration uses `model.backend: native`, the `columba_native`
+C++ extension (NCNN tag `20260526`, OpenCV core/imgproc, nanobind). The app
+exits with an error if the module cannot be imported. On the Pi, inside the
+venv above:
+
+```bash
+sudo apt install libopencv-dev
+python -m pip install nanobind 'cmake>=3.26'
+bash tools/build_ncnn_a76.sh --profile pi5 --jobs 4
+cmake -S native -B native/build/pi5 -DCMAKE_BUILD_TYPE=Release \
+    -DPython_EXECUTABLE="$(command -v python)" \
+    -Dncnn_DIR="$PWD/native/build/ncnn-pi5/lib/cmake/ncnn"
+cmake --build native/build/pi5 --parallel 4
+ctest --test-dir native/build/pi5 --output-on-failure
+cmake --install native/build/pi5 --prefix "$(python -c 'import sysconfig; print(sysconfig.get_path("platlib"))')"
+```
+
+The Pi build has not been run yet (WS10). [native/README.md](native/README.md)
+covers the macOS and cluster builds, the Python API, decoding and parity
+tools. To use the Ultralytics backend instead, set `model.backend: ultralytics`;
+it only supports yolo11-decode packages and applies its own NMS.
 
 ## Run
 
 Launch from the repository root; configuration paths are relative to the current
-working directory. Default live settings: 640x480 capture, requested 15 FPS,
-640x640 model input, confidence 0.5, recording off.
+working directory. [app/config.yaml](app/config.yaml) runs the shipped model:
+800×450 lores capture at 30 FPS, 448×800 native inference, threshold
+0.62646484375, confirmation k2/n3, recording off.
 
 ```bash
 columba-zero
-columba-zero --confidence 0.6 --record
+columba-zero --record
 columba-zero --video sample.mp4 --max-frames 300
-columba-zero --model models/pigeon_baseline_v1-2/best.pt --video sample.mp4
+columba-zero --config outputs/baseline.yaml
 ```
 
 Press **q**, close the window, or press **Ctrl+C** to stop. SIGTERM also requests
@@ -89,17 +129,18 @@ shutdown. Capture timeouts and inference failures exit nonzero after cleanup.
 A termination request waits for the current capture/inference call to return;
 there is no hard watchdog for a hung native backend.
 
-`--config` selects a YAML file. [app/config.yaml](app/config.yaml) contains all
-settings. CLI model/confidence values override YAML; `--record` enables recording.
-Set `display.enabled: false` for headless replay or tests. Old actuation config
-sections (including `tracking:`) and CLI switches are rejected with migration
-guidance.
+`--config` selects a YAML file. `--model` and `--confidence` override the YAML
+values and `--record` enables recording. Set `display.enabled: false` for
+headless replay or tests. Old actuation config sections (including `tracking:`)
+and CLI switches are rejected with migration guidance.
 
-An NCNN export has a fixed input size. To benchmark a different inference size,
-export a separate model with `tools/export_ncnn.py` and use a matching
-`model.image_size`. Camera FPS is not inference FPS. Live capture discards old
-buffered frames when inference falls behind; video replay processes every decoded
-frame sequentially, without real-time pacing or frame dropping.
+To run the fallback, copy `app/config.yaml` (for example to `outputs/baseline.yaml`)
+and set `model.path: models/pigeon_baseline_v1-2/best_ncnn_model`,
+`model.image_size: 640` and `model.confidence: 0.5`. An NCNN export has a fixed
+input size, so `model.image_size` must equal the export's `imgsz`; export another
+size with `tools/export_ncnn.py`. Camera FPS is not inference FPS. Live capture
+discards old buffered frames when inference falls behind; video replay processes
+every decoded frame sequentially, without real-time pacing or frame dropping.
 
 Capture, inference and confirmation run on a processing thread. The main thread
 draws the window and records; a separate log-writer thread writes the JSONL log,
@@ -120,17 +161,20 @@ log, still closes the camera and recording, and exits nonzero.
 
 ### Configuration reference
 
-Defaults (in brackets) keep the behaviour of earlier versions; every new feature
-is off until configured.
+The tables give the values in `app/config.yaml`. An omitted key takes the schema
+default, which keeps the behaviour of earlier versions: 640×480 at 15 FPS on the
+`main` stream, `models/pigeon_baseline_v1-2/best_ncnn_model` at 640 with
+confidence 0.5 on the `ultralytics` backend, and confirmation off. Other
+defaults equal the values shown.
 
 `camera:`
 
-| Key | Default | Meaning |
+| Key | config.yaml | Meaning |
 |---|---|---|
-| `width`, `height` | 640, 480 | Frame size delivered to the model. 16:9 sizes such as 640x360 suit rectangular models. |
-| `fps` | 15 | Requested camera frame rate. |
+| `width`, `height` | 800, 450 | Frame size delivered to the model. |
+| `fps` | 30 | Requested camera frame rate. |
 | `frame_timeout_s` | 2.0 | Capture timeout; exceeding it stops the run with an error. |
-| `stream` | `main` | `lores` makes the camera hardware scale the full field of view down to `width` x `height`. Where the low-resolution stream cannot be RGB (Pi 4 and earlier), it is captured as YUV420 and converted. |
+| `stream` | `lores` | `lores` makes the camera hardware scale the full field of view down to `width` x `height`. Where the low-resolution stream cannot be RGB (Pi 4 and earlier), it is captured as YUV420 and converted. |
 | `main_size` | null | With `lores`: size of the main stream that sets the field of view. Null picks half the sensor resolution at the frame's aspect ratio (a 2x2 binned mode). |
 | `lens_position` | null | Manual focus in dioptres (0 = infinity), clamped to the camera's range. Without `LensPosition` support the camera keeps its default (continuous autofocus when `AfMode` exists, else fixed focus) and a warning is printed. |
 | `max_exposure_us` | null | Caps automatic exposure (e.g. 16666 for 1/60 s) by clamping the AGC exposure modes of the sensor's tuning, as described in the Picamera2 manual. |
@@ -140,12 +184,12 @@ is off until configured.
 
 `model:`
 
-| Key | Default | Meaning |
+| Key | config.yaml | Meaning |
 |---|---|---|
-| `path` | `models/pigeon_baseline_v1-2/best_ncnn_model` | `.pt` checkpoint or NCNN package directory. |
-| `image_size` | 640 | An integer for a square input, or `[height, width]` (e.g. `[384, 640]`), both multiples of 32. Must equal the export's `imgsz`. |
-| `confidence` | 0.5 | Per-frame detection threshold. |
-| `backend` | `ultralytics` | `native` uses the `columba_native` C++ detector (`app/native_detector.py`); it fails with an error if that module is not built. |
+| `path` | `models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16` | `.pt` checkpoint or NCNN package directory. |
+| `image_size` | `[448, 800]` | An integer for a square input, or `[height, width]`, both multiples of 32. Must equal the export's `imgsz`. |
+| `confidence` | 0.62646484375 | Per-frame detection threshold (the shipped model's val-selected operating threshold). |
+| `backend` | `native` | `native` uses the `columba_native` C++ detector (`app/native_detector.py`); `ultralytics` uses Ultralytics `YOLO.predict`. |
 | `threads` | 4 | CPU threads for the native backend. |
 
 Class names and trigger classes come from the package's `metadata.yaml`
@@ -157,16 +201,18 @@ a YOLO11 export with trigger class `pigeon`. Other classes are drawn in orange
 and logged, but never trigger. The Ultralytics backend always applies NMS, so
 packages with `columba.decode: yolo26` (NMS-free) need `model.backend: native`.
 
-`confirmation:` (off by default)
+`confirmation:`
 
-| Key | Default | Meaning |
+| Key | config.yaml | Meaning |
 |---|---|---|
-| `enabled` | false | Track detections and log `trigger` events. |
+| `enabled` | true | Track detections and log `trigger` events. |
 | `k`, `n` | 2, 3 | A track confirms when k of its last n frames had a trigger-class detection. |
 | `iou` | 0.3 | Minimum box overlap to continue a track (greedy, highest overlap first, class ignored). |
 | `max_age_frames` | 2 | A track ends after this many consecutive frames without a match. |
 
-Each track confirms at most once. Confirmed tracks are drawn in red.
+Each track confirms at most once. Confirmed tracks are drawn in red. `output:`
+sets `directory` [`outputs`], `record` [false], `recording_fps` [15] and
+`health_interval_s` [30]; `display.enabled` defaults to true.
 
 `cameras:` and `camera_switch:` (off unless `cameras` is given)
 
@@ -195,9 +241,9 @@ it writes `reaction_test.json` and a `reaction_test` log record: per-trial time
 from display to confirmed trigger and to first pigeon detection, misses, and
 triggers outside trials. Results are matched by timestamps after the run, so the
 order in which records reach the log does not matter. Display times are taken
-when OpenCV finishes drawing, so
-monitor latency makes the results slight overestimates. No image ships with the
-repository; use a pigeon photo whose licence you have checked.
+when OpenCV finishes drawing, so monitor latency makes the results slight
+overestimates. No image ships with the repository; use a pigeon photo whose
+licence you have checked.
 
 ## Outputs
 
@@ -207,17 +253,16 @@ zero-based source frame number, Unix frame-delivery timestamp, inference seconds
 pigeon count, detections (label, confidence, original-frame pixel box,
 `class_id`, and `track_id` when confirmation is on), cumulative live buffer
 drops, and capture/processing FPS. Timing fields: `stage_ms` (`wait` from frame
-delivery to pickup, `preprocess`, `inference` and `postprocess` from
-Ultralytics' per-result timings, `track`; a backend without stage timings reports
-its whole detect call as `inference`), `delivery_ms` (start of sensor exposure
-to delivery, live cameras only), `decided_at` and `decision_ms` (delivery to
-decision). Frames also record `camera` and its `lux` estimate. `trigger`
-records carry the track id, class, first-seen frame and time, confirmation time,
-frames seen, and k/n. Drops measure this application's buffer, not
-camera driver losses. Replay timestamps reflect decoding time, not the recording's
-original capture time. Health samples include RSS, CPU use, and Pi temperature
-when available. `run_end` records completion or failure; a forcibly killed process
-may have no final record.
+delivery to pickup, `preprocess`, `inference` and `postprocess` from the backend,
+`track`; a backend without stage timings reports its whole detect call as
+`inference`), `delivery_ms` (start of sensor exposure to delivery, live cameras
+only), `decided_at` and `decision_ms` (delivery to decision). Frames also record
+`camera` and its `lux` estimate. `trigger` records carry the track id, class,
+first-seen frame and time, confirmation time, frames seen, and k/n. Drops measure
+this application's buffer, not camera driver losses. Replay timestamps reflect
+decoding time, not the recording's original capture time. Health samples include
+RSS, CPU use, and Pi temperature when available. `run_end` records completion or
+failure; a forcibly killed process may have no final record.
 
 Recording and display cleanup finishes before `run_end` is written. Cleanup
 failures appear in that record and cause a nonzero exit.
@@ -243,38 +288,37 @@ them); past that, affected percentiles are reported as 10000 ms and listed under
 ```bash
 python -m venv .venv
 # Activate .venv using your shell's activation script.
-python -m pip install -e '.[vision,metrics,dev]'
-python -m unittest discover -s tests -v
-python -m ruff check app tests tools
-python -m ruff format --check app tests tools
+python -m pip install -e '.[vision,metrics,eval,data,native,dev]'
+python -m pytest
+python -m ruff check app tests tools cluster training native
+python -m ruff format --check app tests tools cluster training native
 python -m mypy
 python tools/prepare_models.py
-python tools/compare_exports.py models/pigeon_baseline_v1-2/best.pt models/pigeon_baseline_v1-2/best_ncnn_model /path/to/test/images --output outputs/validation/export_comparison.json
-python tools/evaluate_model.py models/pigeon_baseline_v1-2/best.pt /path/to/data.yaml --output outputs/validation/pt_test_metrics.json
 ```
 
-For clean desktop environments use GUI-capable `opencv-python`. The Pi-specific
-installation above deliberately uses OS OpenCV instead of the desktop extra.
-The runtime CLI is also available as `python -m app.main`.
+`python -m unittest discover -s tests -v` runs the same suite. Tests that need
+`columba_native` skip unless it is built and on `PYTHONPATH`; C++ tests run with
+`ctest`. Strict mypy covers all six source directories. Ultralytics and the Pi
+camera bindings lack complete type information, so the detector adapter uses
+explicit prediction protocols and camera imports are deferred until use. Desktop
+environments use GUI-capable `opencv-python`; the Pi install deliberately uses
+OS OpenCV. The runtime CLI is also available as `python -m app.main`.
 
-Strict type checking covers application code, tests, and tools. Ultralytics and
-the Pi camera bindings lack complete type information; the detector adapter uses
-explicit prediction protocols, and camera imports remain deferred until use.
+Model tools for square Ultralytics exports, such as the baseline:
 
-Export comparison uses matching CPU, 640-square preprocessing, confidence 0.5,
-and NMS IoU 0.7. It records counts, boxes, matched IoUs, and confidence deltas;
-acceptance defaults are IoU >=0.8, confidence delta <=0.05, and equal counts.
-Matching finds the maximum number of one-to-one, same-class assignments that meet
-both tolerances, so detection ordering cannot change acceptance.
-Test-set evaluation uses confidence floor 0.001 for AP curves; reported precision
-and recall are Ultralytics' curve-selected metrics, not necessarily the deployment
-threshold 0.5. Review continuous negative and positive footage before tuning that
-threshold. Dataset metrics and desktop timing cannot establish Pi performance.
+```bash
+python tools/compare_exports.py models/pigeon_baseline_v1-2/best.pt models/pigeon_baseline_v1-2/best_ncnn_model /path/to/test/images --output outputs/validation/export_comparison.json
+python tools/evaluate_model.py models/pigeon_baseline_v1-2/best.pt /path/to/data.yaml --output outputs/validation/pt_test_metrics.json
+python tools/benchmark_detector.py models/pigeon_baseline_v1-2/best_ncnn_model sample.mp4 --sizes 640
+```
 
-`tools/benchmark_detector.py` warms up each input size on the first decoded frame,
-then reopens the video to measure every frame from the beginning. The requested
-frame limit must be positive. Empty videos and decoder failures before the
-declared end cause a nonzero exit instead of a successful benchmark report.
-
-[Local validation results](deploy/VALIDATION.md) separate completed software/model
-checks from pending Pi camera and one-hour endurance acceptance.
+Export comparison uses CPU, square preprocessing (`--imgsz`, default 640),
+confidence 0.5 and NMS IoU 0.7. It accepts IoU >=0.8, confidence delta <=0.05
+and equal counts, with one-to-one same-class matching so detection order cannot
+change the result. Evaluation uses confidence floor 0.001 for AP curves; its
+precision and recall are curve-selected, not at the deployment threshold. The
+benchmark warms up, then reopens the video to time every frame; empty videos and
+decoder failures exit nonzero. Rectangular fp16 packages such as the shipped
+model are scored with `tools/select_model.py` and `native.verify_native`
+([WS7 methods](experiments/reports/WS7-methods.md)). Dataset metrics and desktop
+timing cannot establish Pi performance.

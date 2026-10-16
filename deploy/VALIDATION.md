@@ -1,6 +1,38 @@
-# Validation status — 10 October 2026
+# Validation status
 
-## Completed on Windows desktop
+## Shipped model — 16 October 2026
+
+The deployed package is `yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16`
+(448×800, fp16, yolo11 decode, threshold 0.62646484375, native backend, k2/n3,
+800×450 lores capture at 30 FPS). Selection evidence is in the
+[WS7 report](../experiments/reports/WS7-final.md); highlights:
+
+- Test R@P90 at deploy size 0.686 ± 0.008 (3-seed mean, **measured** on xcng
+  with `columba_native`), against 0.222 ± 0.013 for the baseline reproduction.
+  Shipped seed: test empty FAR 0, confuser FAR 3/73.
+- Pi 5 frame p95 36.5 ms (**estimated** from xcng with the published
+  calibration factor) and reaction p95 345 ms at 30 FPS, k2/n3 (**simulated**).
+- fp16 passes the export gate: its fp32 sibling passes strict parity and fp16
+  loses at most 0.01 of val/test R@P90, AP50 and operating recall. Int8 was
+  studied and rejected ([WS7-quant](../experiments/reports/WS7-quant.md)).
+- On Mac vexcalibur, `prepare_models.py` verified the package bytes and C8
+  metadata, and a native replay processed 20 frames with one confirmed trigger.
+  Unpaced replay proves loading and pipeline operation, not camera reaction time.
+
+`pigeon_baseline_v1-2` stays in the manifest as the fallback and is verified by
+the same command. Reproduce the automated checks from the repository root:
+
+```bash
+python -m pytest
+python -m ruff check app tests tools cluster training native
+python -m ruff format --check app tests tools cluster training native
+python -m mypy
+python tools/prepare_models.py
+```
+
+The sections below record the earlier validation of `pigeon_baseline_v1-2`.
+
+## Baseline v1-2: completed on Windows desktop, 10 October 2026
 
 - 25 automated unittest cases passed: configuration and old CLI rejection, model
   metadata/files/classes, inference filtering/warmup, sequential video completion,
@@ -35,7 +67,7 @@ only one GUI-capable OpenCV provider.
 The evaluator could not write its optional label cache outside the workspace;
 validation completed successfully without it. Original labels were unchanged.
 
-## Deployment fix and cleanup checks on 12 October 2026
+## Baseline v1-2: deployment fix and cleanup checks, 12 October 2026
 
 The manifest originally hashed the Windows CRLF copy of NCNN `metadata.yaml`,
 447 bytes with SHA-256
@@ -89,7 +121,7 @@ python -m mypy
 python tools/prepare_models.py
 ```
 
-## Review fixes verified on 12 October 2026
+## Baseline v1-2: review fixes verified, 12 October 2026
 
 - All 41 unittest cases passed. New regression cases reproduced the failures
   before the fixes: an incorrect post-training checkpoint path, an autofocus
@@ -124,11 +156,15 @@ These smoke clips reuse existing derived imagery. They do not add independent
 accuracy evidence or establish Pi performance. Reproduce automated checks with
 the commands above; hardware and field-footage acceptance remains pending below.
 
-## Pending on physical Pi 5
+## Pending on physical Pi 5 (WS10)
 
-Pi OS installation and ARM dependency compatibility, CSI colors and box alignment,
-actual monitor interaction, camera restart/shutdown, recording overhead,
-one-hour memory/thermal/throttling behavior, and representative positive/negative
-footage review. No Raspberry Pi or camera is connected to this workspace, so no
-Pi performance or hardware acceptance is claimed. Follow
-`../RASPBERRY_PI_PROTOTYPE_PLAN.md` and append actual measurements here.
+Pi OS installation, the NCNN and native extension builds, and ARM dependency
+compatibility; measured latency calibration; 800×450 lores capture geometry,
+CSI colours and box alignment; monitor interaction, camera restart/shutdown and
+recording overhead; one-hour memory/thermal/throttling behaviour; reaction time
+for both cameras by day and night; the OpenMP wait policy; and site footage
+(`columba-test-site-v1`), the site fine-tune and the final threshold and k/n.
+No Raspberry Pi or camera is connected to this workspace, so no Pi performance
+or hardware acceptance is claimed. Follow the
+[Pi acceptance checklist](../RASPBERRY_PI_PROTOTYPE_PLAN.md) and append actual
+measurements here.
