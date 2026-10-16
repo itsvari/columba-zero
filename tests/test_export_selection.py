@@ -37,7 +37,7 @@ def candidate(recipe: str, seed: int, validation_recall: float = 0.8) -> dict[st
         "decode": "yolo11",
         "precision": "fp16",
         "input_hw": [448, 800],
-        "val": {"recall_at_p90": validation_recall},
+        "val": {"recall_at_p90": validation_recall, "ap50": 0.85},
         "test": {"recall_at_p90": 0.78, "ap50": 0.85, "recall_at_threshold": 0.75},
         "empty_far": 0.0,
         "confuser_far": 0.04,
@@ -188,6 +188,8 @@ class ExportSelectionTests(unittest.TestCase):
                 decodes=["yolo11", "yolo26"],
                 output=Path(temporary),
                 reference_data_root=None,
+                precisions=["fp32", "fp16"],
+                node="xcng1",
                 single_recipe="yolo26n-v2s-800-round2-plain",
             )
             with (
@@ -210,6 +212,8 @@ class ExportSelectionTests(unittest.TestCase):
             script = payload["submissions"][0]["script"]
             subprocess.run(["bash", "-n"], input=script, text=True, check=True, capture_output=True)
             self.assertIn("OMP_WAIT_POLICY=ACTIVE", script)
+            self.assertIn("--precisions fp32 fp16", script)
+            self.assertIn("#SBATCH --nodelist=xcng1", script)
             self.assertIn("--single-recipe yolo26n-v2s-800-round2-plain", script)
             self.assertIn("tools.select_model styles", script)
             self.assertIn("#SBATCH --nice=1000", script)

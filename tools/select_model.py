@@ -469,7 +469,7 @@ def evaluate_aligned_candidate(arguments: argparse.Namespace) -> None:
             )
             if styles_threshold["value"] != reference_threshold["value"]:
                 raise ValueError("cached PyTorch styles threshold differs from its val threshold")
-        for precision in ("fp32", "fp16", "int8"):
+        for precision in arguments.precisions:
             package = source / decode / f"{precision}_ncnn_model"
             if precision == "int8" and not package.exists():
                 command(
@@ -904,7 +904,13 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
             reasons.append("three-seed test accuracy does not beat baseline by seed uncertainty")
         representative = max(
             (seed for seed in seeds if passes_validation_false_alarms(seed)),
-            key=lambda seed: (metric(seed, "val", "recall_at_p90"), -cast(int, seed["seed"])),
+            key=lambda seed: (
+                metric(seed, "val", "recall_at_p90"),
+                -number(seed["val_confuser_far"], "val confuser FAR"),
+                -number(seed["val_empty_far"], "val empty FAR"),
+                metric(seed, "val", "ap50"),
+                -cast(int, seed["seed"]),
+            ),
             default=None,
         )
         if representative is None:
@@ -1367,13 +1373,15 @@ def add_candidate(arguments: argparse.Namespace) -> None:
             arguments.taxonomy,
             "--decodes",
             *arguments.decodes,
+            "--precisions",
+            *arguments.precisions,
             *single_recipe_arguments,
             *reference_arguments,
         ]
     )
     script = f"""#!/usr/bin/env bash
 #SBATCH --partition=normal
-#SBATCH --nodelist=xcng0
+#SBATCH --nodelist={arguments.node}
 #SBATCH --nice=1000
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=12G
@@ -2084,11 +2092,15 @@ def parser() -> argparse.ArgumentParser:
         sub.add_argument("--seed", type=int, required=True)
         sub.add_argument("--input-hw", type=int, nargs=2, required=True)
         sub.add_argument("--taxonomy", choices=("single", "species"), default="single")
-        sub.add_argument(
-            "--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11", "yolo26"]
-        )
+        sub.add_argument("--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11"])
         sub.add_argument("--output", type=Path, required=True)
         if action == "evaluate":
+            sub.add_argument(
+                "--precisions",
+                nargs="+",
+                choices=("fp32", "fp16", "int8"),
+                default=["fp32", "fp16"],
+            )
             sub.add_argument("--exports", type=Path, required=True)
             sub.add_argument("--references", type=Path)
             sub.add_argument("--single-recipe", help="matched single-taxonomy arm for PLAN 5.4")
@@ -2130,9 +2142,9 @@ def parser() -> argparse.ArgumentParser:
         default=Path.home() / "columba-data",
         help="optional Mac C1 root for CPU reference precomputation",
     )
-    sub.add_argument(
-        "--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11", "yolo26"]
-    )
+    sub.add_argument("--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11"])
+    sub.add_argument("--precisions", nargs="+", choices=("fp32", "fp16"), default=["fp32", "fp16"])
+    sub.add_argument("--node", choices=("xcng0", "xcng1"), default="xcng0")
     sub.add_argument("--output", type=Path, default=Path("outputs/ws7"))
     sub = commands.add_parser("audit", help="verify saved C3/C4/C7 data and real package bytes")
     sub.add_argument("--candidates", type=Path, required=True)

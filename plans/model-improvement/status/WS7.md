@@ -1,10 +1,10 @@
 # WS7 — Export, quantisation and selection
 
-- State: provisional scope complete; selected export passes revised gates
+- State: in progress, final deploy-size candidate evaluation
 - Branch: `ws7/export`
 - Agent: gpt-6.1-sol via T3 delegate
-- Last updated: 2026-10-15
-- Contracts: v1.8; coordinator main 8aeef6c merged
+- Last updated: 2026-10-16
+- Contracts: v1.9; rebased onto coordinator main 47a9b8b
 
 ## Done when
 
