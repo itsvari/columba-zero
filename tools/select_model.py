@@ -1763,7 +1763,8 @@ def final_gate_markdown(decision: dict[str, JsonValue]) -> list[str]:
                 str(policy["policy"]),
                 str(policy["timing"]),
                 f"Policy recorded UTC: {policy['decision_recorded_utc']}. "
-                "WS5 values below are rounded square-input context; deploy values are measured native fp16.",
+                "WS5 values below are rounded square-input context; "
+                "deploy values are measured native fp16.",
                 "",
                 "| Arm | WS5 seed | Square val R@P90 | Deploy seed | Deploy val R@P90 | "
                 "Nominated seed at deploy val | Fresh deploy threshold |",
