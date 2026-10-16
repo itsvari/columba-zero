@@ -87,6 +87,27 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.model.confidence, 0.5)
         self.assertTrue(config.display.enabled)
 
+    def test_deployment_config_matches_the_selected_tracked_package(self) -> None:
+        repository = Path(__file__).resolve().parents[1]
+        manifest = cast(
+            dict[str, JsonValue],
+            json.loads((repository / "deploy/model_manifest.json").read_text()),
+        )
+        config = AppConfig.load(repository / "app/config.yaml")
+        threshold = cast(dict[str, JsonValue], manifest["operating_threshold"])
+        self.assertEqual(config.model.path, manifest["runtime_directory"])
+        self.assertEqual(config.model.image_size, tuple(cast(list[int], manifest["input_hw"])))
+        self.assertEqual(config.model.confidence, threshold["value"])
+        self.assertEqual((config.model.backend, config.model.threads), ("native", 4))
+        self.assertEqual(
+            (config.camera.width, config.camera.height, config.camera.fps), (800, 450, 30)
+        )
+        self.assertEqual(config.camera.stream, "lores")
+        self.assertEqual(config.output.recording_fps, 15)
+        self.assertEqual(config.confirmation, ConfirmationConfig(enabled=True, k=2, n=3))
+        source = repository / cast(str, manifest["source"])
+        self.assertEqual(check_model(str(source), config.model.image_size), source)
+
     def test_obsolete_and_malformed_config_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.yaml"
@@ -978,7 +999,7 @@ class ReactionTests(unittest.TestCase):
             image = Path(directory) / "pigeon.jpg"
             image.write_bytes(b"jpeg")
             with (
-                patch("app.main.UltralyticsDetector", return_value=detector),
+                patch("app.main.create_detector", return_value=(detector, ("pigeon",))),
                 patch("app.main.Picamera2Capture", return_value=Camera()),
                 patch("app.main.RunOutput", return_value=output),
                 patch("app.main.ReactionTest", return_value=reaction) as factory,
@@ -1412,7 +1433,7 @@ class RuntimeTests(unittest.TestCase):
         detector.detect.side_effect = detect
         with (
             patch("app.main.signal.signal", side_effect=install),
-            patch("app.main.UltralyticsDetector", return_value=detector),
+            patch("app.main.create_detector", return_value=(detector, ("pigeon",))),
             patch("app.main.VideoFileCapture", return_value=source),
             patch("app.main.RunOutput", return_value=output),
             patch("app.main.health_snapshot", return_value={}),
@@ -1432,16 +1453,19 @@ class RuntimeTests(unittest.TestCase):
         source.get.return_value = FramePacket(0, 0, create_test_frame())
         source.dropped_frames, source.capture_fps = 0, 15.0
         with (
-            patch("app.main.UltralyticsDetector") as detector,
+            patch("app.main.create_detector", return_value=(Mock(), ("pigeon",))) as detector,
             patch("app.main.RunOutput", return_value=output) as factory,
             patch("app.main.health_snapshot", return_value={}),
         ):
-            detector.return_value.detect.return_value = []
+            detector.return_value[0].detect.return_value = []
             # patching video construction leaves the live stream class available for type checks.
             arguments.video = "fake.avi"
             with patch("app.main.VideoFileCapture", return_value=source):
                 self.assertEqual(run(arguments), 0)
-            detector.assert_called_once_with("override.pt", 640, 0.7)
+            self.assertEqual(detector.call_count, 1)
+            configured_model = detector.call_args.args[0]
+            self.assertEqual(configured_model.path, "override.pt")
+            self.assertEqual(configured_model.confidence, 0.7)
             self.assertTrue(factory.call_args.args[0].output.record)
         arguments.max_frames = -1
         with self.assertRaises(ConfigError):
@@ -1452,7 +1476,7 @@ class RuntimeTests(unittest.TestCase):
         source.get.side_effect = EndOfStream()
         source.close.side_effect = RuntimeError("release failed")
         with (
-            patch("app.main.UltralyticsDetector"),
+            patch("app.main.create_detector", return_value=(Mock(), ("pigeon",))),
             patch("app.main.VideoFileCapture", return_value=source),
             patch("app.main.RunOutput", return_value=output),
             patch("app.main.health_snapshot", return_value={}),

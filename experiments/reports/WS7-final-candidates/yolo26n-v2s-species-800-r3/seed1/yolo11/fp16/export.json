@@ -1,0 +1,7 @@
+{
+  "source": "/Users/vari/.t3/worktrees/columba-zero/t3-27965e4a/outputs/ws7-final/checkpoints/yolo26n-v2s-species-800-r3/seed1/weights/best.pt",
+  "source_sha256": "a1af7a76798c72bf0dd64119bad62dc0260fd768ea55a0c32dceb543cd9631ac",
+  "decode": "yolo11",
+  "quantization": "fp16",
+  "transformation": "standard"
+}

@@ -1,10 +1,24 @@
 # WS7 — Export, quantisation and selection
 
-- State: in progress, tunnel restored and final ARM bundles resumed
+- State: WIP, paused explicitly by coordinator after final selection/config replay
 - Branch: `ws7/export`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-16
 - Contracts: v1.9; rebased onto coordinator main `47a9b8b`
+
+## Current pause checkpoint
+
+Paused explicitly by coordinator. Selection is complete: plain-800 seed1,
+yolo11 decode,fp16,448x800. All jobs958128/958260/958304 completed and were
+fetched; last queue observation was empty. No jobs are in flight. All18 new
+exports and their native val/test/styles results are audited. The winner is
+packaged durably and promoted in the manifest. Its authorised config edit is
+complete and passed a real20-frame native replay with one confirmed trigger.
+All 60 runtime tests, touched-code Ruff and full mypy pass for this config
+step; full post-config suite/report clean-up remains for resumption. Exact ordered commands, paths
+and remaining work are in the Resume section of `WS7-methods.md`. No new
+cluster submission is needed. Historical material below still describes the
+prior tunnel interruption and must be consolidated on resume.
 
 ## Resume after tunnel restoration
 

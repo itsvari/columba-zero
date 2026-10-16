@@ -1,0 +1,18 @@
+{
+  "recipe": "yolo26n-v2s-800-r3-control-b16",
+  "seed": 1,
+  "decode": "yolo11",
+  "precision": "fp32",
+  "input_hw": [
+    448,
+    800
+  ],
+  "model_id": "yolo26n-v2s-800-r3-control-b16/seed1/yolo11/fp32",
+  "package": "/tmp/cz-958304/exports/yolo26n-v2s-800-r3-control-b16/seed1/yolo11/fp32_ncnn_model",
+  "reference": "/home/a/ashelow/columba/scratch/ws7/additions/yolo26n-v2s-800-r3-control-b16/results/yolo26n-v2s-800-r3-control-b16/seed1/yolo11/pt",
+  "taxonomy": "single",
+  "single_recipe": null,
+  "provisional": true,
+  "accuracy_gate_passed": true,
+  "parity_passed": true
+}

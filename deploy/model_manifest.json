@@ -1,75 +1,41 @@
 {
-  "source": "runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights",
-  "runtime_directory": "models/pigeon_baseline_v1-2",
+  "model_id": "yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16",
+  "provisional": false,
+  "source": "runs/detect/pigeon_detector/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16/weights/best_ncnn_model",
+  "runtime_directory": "models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16",
+  "selection": "experiments/reports/WS7-final-selection.json",
+  "checkpoint_sha256": "4b753fef63b230c0808f7d5c831f6a0951e059db095746f9ccc9188cee9aa53d",
+  "measured_model_id": "yolo26n-v2s-800-round2-plain/seed1/yolo11/fp16",
+  "operating_threshold": {
+    "value": 0.62646484375,
+    "source": "selected",
+    "attainable": true,
+    "precision_target": 0.9,
+    "split": "val"
+  },
+  "decode": "yolo11",
+  "input_hw": [
+    448,
+    800
+  ],
+  "quantization": "fp16",
+  "taxonomy": "single",
   "files": [
     {
-      "file": "best.pt",
-      "sha256": "35f7f55cabfe709c5a0cd825610928b369eb7ff97a1354bbdb1c485cddc1704c",
-      "bytes": 5486106
+      "file": "model.ncnn.param",
+      "sha256": "bd6201ead99a645b200d84ec76222c24475324f8be2f90d9de9e5b5513fba8f0",
+      "bytes": 26392
     },
     {
-      "file": "best_ncnn_model/metadata.yaml",
-      "sha256": "180b7e93ae87e5fa4848da6a598c06001362c3b3c410c8bf9412cae8158bae65",
-      "bytes": 427
+      "file": "model.ncnn.bin",
+      "sha256": "639e90dc36ad34d1235221f4aa907fae5a434245a90883454c1ca8dd4d7ffb6e",
+      "bytes": 4885148
     },
     {
-      "file": "best_ncnn_model/model.ncnn.bin",
-      "sha256": "50463d299ed5d373aa6a32f23e58f603a67f3c214718242678911e4f677776e6",
-      "bytes": 10489356
-    },
-    {
-      "file": "best_ncnn_model/model.ncnn.param",
-      "sha256": "a7e8830c0a6ec552fcbcd5b5f52b61e6a33173a0b15bc5dde5df7acfe5d30f64",
-      "bytes": 22701
-    },
-    {
-      "file": "best_ncnn_model/model_ncnn.py",
-      "sha256": "503c73a7c162469ee4f04824011103371bd3cd59e5155bd3f4ac717fc6c2db4d",
-      "bytes": 783
+      "file": "metadata.yaml",
+      "sha256": "051f3facc7f1bd9385221496329c99acc7fe22a250fe3cec339b4e3452d9bd1f",
+      "bytes": 845
     }
   ],
-  "fallback_models": [
-    {
-      "model_id": "yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16",
-      "provisional": false,
-      "source": "runs/detect/pigeon_detector/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16/weights/best_ncnn_model",
-      "runtime_directory": "models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16",
-      "selection": "experiments/reports/WS7-selection.json",
-      "checkpoint_sha256": "4b753fef63b230c0808f7d5c831f6a0951e059db095746f9ccc9188cee9aa53d",
-      "measured_model_id": "yolo26n-v2s-800-round2-plain/seed1/yolo11/fp16",
-      "operating_threshold": {
-        "value": 0.62646484375,
-        "source": "selected",
-        "attainable": true,
-        "precision_target": 0.9,
-        "split": "val"
-      },
-      "decode": "yolo11",
-      "input_hw": [
-        448,
-        800
-      ],
-      "quantization": "fp16",
-      "taxonomy": "single",
-      "files": [
-        {
-          "file": "model.ncnn.param",
-          "sha256": "bd6201ead99a645b200d84ec76222c24475324f8be2f90d9de9e5b5513fba8f0",
-          "bytes": 26392
-        },
-        {
-          "file": "model.ncnn.bin",
-          "sha256": "639e90dc36ad34d1235221f4aa907fae5a434245a90883454c1ca8dd4d7ffb6e",
-          "bytes": 4885148
-        },
-        {
-          "file": "metadata.yaml",
-          "sha256": "051f3facc7f1bd9385221496329c99acc7fe22a250fe3cec339b4e3452d9bd1f",
-          "bytes": 845
-        }
-      ],
-      "role": "validated plain fallback; final primary selection blocked by SSH",
-      "eligible": true
-    }
-  ]
+  "fallback_models": []
 }
