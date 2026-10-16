@@ -168,6 +168,19 @@ class ExportSelectionTests(unittest.TestCase):
             )
             self.assertFalse(accuracy_gate(reference, exported)["passed"])
 
+    def test_final_selection_keeps_fp32_as_companion_only(self) -> None:
+        records = [candidate("arm", seed) for seed in range(3)]
+        companions = [candidate("arm", seed, 0.81) for seed in range(3)]
+        for record in companions:
+            record["precision"] = "fp32"
+        with patch("tools.select_model.candidate_record", side_effect=records + companions):
+            decision = select_candidates(
+                [Path(str(index)) for index in range(6)], BASELINE, final=True
+            )
+        self.assertIn("/fp16/", str(decision["selected"]))
+        self.assertFalse(decision["provisional"])
+        self.assertEqual(decision["awaiting"], [])
+
     def test_validation_ties_use_false_alarms_then_ap50_before_seed_index(self) -> None:
         records = [candidate("arm", seed) for seed in range(3)]
         records[2]["val_confuser_far"] = 0.03

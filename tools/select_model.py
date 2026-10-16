@@ -881,7 +881,9 @@ def arm_gates(arm: dict[str, JsonValue], baseline: tuple[float, ...]) -> list[Js
     return gates
 
 
-def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> dict[str, JsonValue]:
+def select_candidates(
+    directories: list[Path], baseline: tuple[float, ...], *, final: bool = False
+) -> dict[str, JsonValue]:
     candidates = [candidate_record(directory) for directory in directories]
     for candidate in candidates:
         candidate["deployment_parity_passed"] = deployment_parity(candidate)
@@ -915,6 +917,8 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
         )
         if representative is None:
             reasons.append("no seed passes validation false-alarm gates")
+        if final and key[2] == "fp32":
+            reasons.append("fp32 is the strict parity companion; final deployment uses fp16")
         if key[2] == "int8":
             reasons.append("int8 excluded by coordinator decision")
         if key[1] == "yolo26":
@@ -996,7 +1000,7 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
     ]
     diagnostic = styles_tie_break(comparable)
     return {
-        "provisional": True,
+        "provisional": not final,
         "baseline": {
             "recipe": "baseline-repro-p50",
             "test_mean": baseline_mean,
@@ -1025,7 +1029,7 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
         "package_candidate": selected["representative"] if selected else None,
         "diagnostic_candidate": diagnostic["representative"] if diagnostic else None,
         "diagnostic_failures": diagnostic["failures"] if diagnostic else [],
-        "awaiting": ["round2-distill", "round3-species"],
+        "awaiting": [] if final else ["round2-distill", "round3-species"],
     }
 
 
@@ -1467,6 +1471,38 @@ srun --cpu-bind=cores python -m tools.select_model styles --candidates "$workspa
             "script": script,
         },
     )
+
+
+def collect_evidence(arguments: argparse.Namespace) -> None:
+    count = 0
+    for marker in sorted(arguments.candidates.rglob("candidate.json")):
+        directory = marker.parent
+        candidate_record(directory)
+        for evidence_directory in (directory, directory.parent / "pt"):
+            for source in evidence_directory.glob("*.json"):
+                if source.name.startswith("predictions_") and not source.name.endswith(
+                    ".meta.json"
+                ):
+                    continue
+                destination = arguments.output / source.relative_to(arguments.candidates)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+        descriptor = read_report(marker)
+        package = (
+            arguments.exports
+            / str(descriptor["recipe"])
+            / f"seed{descriptor['seed']}"
+            / str(descriptor["decode"])
+            / f"{descriptor['precision']}_ncnn_model"
+        )
+        for name in ("export.json", "calibration.json"):
+            if (package / name).is_file():
+                shutil.copy2(
+                    package / name,
+                    arguments.output / directory.relative_to(arguments.candidates) / name,
+                )
+        count += 1
+    print(json.dumps({"evidence_cases": count, "output": str(arguments.output)}))
 
 
 def durable_package_entry(
@@ -2273,6 +2309,12 @@ def parser() -> argparse.ArgumentParser:
         choices=("fp32", "fp16", "int8"),
         default=["fp32", "fp16", "int8"],
     )
+    sub = commands.add_parser(
+        "evidence", help="collect C4/C7 and provenance without raw predictions"
+    )
+    sub.add_argument("--candidates", type=Path, required=True)
+    sub.add_argument("--exports", type=Path, required=True)
+    sub.add_argument("--output", type=Path, required=True)
     sub = commands.add_parser("package")
     sub.add_argument("--decision", type=Path, required=True)
     sub.add_argument("--report", type=Path)
@@ -2332,6 +2374,8 @@ def main() -> None:
         fetch_candidate(arguments)
     elif arguments.action == "audit":
         audit_candidates(arguments)
+    elif arguments.action == "evidence":
+        collect_evidence(arguments)
     elif arguments.action == "package":
         package_candidate(arguments)
     elif arguments.action == "aspect":
@@ -2346,10 +2390,9 @@ def main() -> None:
         )
         if not directories:
             raise SystemExit("no candidate.json files found")
-        decision = select_candidates(directories, baseline_scores(arguments.baseline_metrics))
-        if arguments.final:
-            decision["provisional"] = False
-            decision["awaiting"] = []
+        decision = select_candidates(
+            directories, baseline_scores(arguments.baseline_metrics), final=arguments.final
+        )
         baseline_summary = arguments.baseline_metrics.parent / "measurements.json"
         if baseline_summary.exists():
             decision["baseline_measurements"] = read_report(baseline_summary)
