@@ -1,0 +1,292 @@
+{
+  "pigeon": {
+    "ap50": 0.6398904203387824,
+    "ap50_95": 0.417336869453541,
+    "recall_at_p90": 0.5372993389990557,
+    "small_recall_at_p90": 0.2765625,
+    "precision_at_threshold": 0.9190556492411467,
+    "recall_at_threshold": 0.5146364494806421
+  },
+  "pigeon_recall_at_p90": 0.5372993389990557,
+  "empty_false_alarm_rate": 0.0026666666666666666,
+  "confuser_false_alarm_rate": 0.1278538812785388,
+  "per_class_ap50": {
+    "pigeon": 0.6398904203387824,
+    "spotted_dove": null,
+    "zebra_dove": null,
+    "pink_necked_green_pigeon": null,
+    "javan_myna": null,
+    "house_crow": null,
+    "asian_glossy_starling": null,
+    "eurasian_tree_sparrow": null,
+    "yellow_vented_bulbul": null,
+    "asian_koel": null,
+    "other_bird": null
+  },
+  "counts": {
+    "images": 957,
+    "empty_images": 375,
+    "confuser_images": 219,
+    "pigeon_boxes": 1059,
+    "small_pigeon_boxes": 640,
+    "groups": 295
+  },
+  "dataset": "columba-test-v2-styles",
+  "split": "test",
+  "predictions": "/Users/vari/.t3/worktrees/columba-zero/t3-27965e4a/outputs/ws7-final/references/yolo26n-v2s-species-800-r3/seed2/yolo11/pt/predictions_styles.json",
+  "input_hw": [
+    448,
+    800
+  ],
+  "operating_threshold": {
+    "value": 0.6096760034561157,
+    "source": "/Users/vari/.t3/worktrees/columba-zero/t3-27965e4a/outputs/ws7-final/references/yolo26n-v2s-species-800-r3/seed2/yolo11/pt/metrics_val.json"
+  },
+  "image_id_source": "manifest",
+  "label": "measured",
+  "host": "vexcalibur",
+  "definitions": "AP uses pycocotools: 101 recall points, IoU 0.50:0.05:0.95, all areas,\nmaxDets=300. AP50 is at IoU 0.50. Matching for operating metrics is greedy,\nper image/class, descending score, one-to-one, IoU >= 0.50. Equal-score\npredictions use file order within an image and enter a threshold together.\nrecall_at_p90 is the highest pigeon recall at a score threshold with overall\npigeon precision >= 0.90. small_recall_at_p90 uses the same eligible thresholds\nand matching, counting only matched small pigeon ground truths; large matches\nstill contribute to overall precision. Small means min(GT width, GT height)\nmultiplied by min(input_height/image_height, input_width/image_width) < 32 pixels.\nThresholds include predictions with score >= threshold. Selection chooses the\nlowest observed score meeting precision >= 0.90, on val only. Test selection\nis refused. If unattainable, selection writes a finite threshold just above 1,\nattainable=false, and recall_at_p90=0. --threshold-from reuses a selected val\nthreshold, including this no-detection sentinel. Default threshold is 0.5,\nexplicitly recorded as default; supply a selected val file for test comparisons.\nNo ground truths: AP=null, recall=0. No predictions: precision=0, recall=0.\nEmpty/confuser FAR counts images with >=1 pigeon prediction at the operating\nthreshold, divided by images with no birds / only non-pigeon birds respectively,\nas defined by manifest classes_present, even for unlabelled single-taxonomy\nconfusers. A missing denominator gives null. Missing predictions are fine;\nunknown image/category IDs, malformed boxes and non-finite numbers are errors.\nby_style/by_source recompute metrics within each group at the shared operating\nthreshold, with each group's own PR curve. Counts include manifest group IDs.\nWithout manifest.jsonl, IDs are unique image stems; style/source are unknown\nand bird presence is inferred from labels, so unlabelled confusers are unknown.\n--subset FILE evaluates only manifest IDs listed one per line. Predictions are\nfirst validated against the full split, then restricted to the subset. An empty\nsubset or unknown subset ID is an error. Threshold selection on a subset is\nstill restricted to val. Subset test metrics retain the supplied val threshold.",
+  "subset": null,
+  "by_style": {
+    "noir_day": {
+      "pigeon": {
+        "ap50": 0.7256812193129366,
+        "ap50_95": 0.46824865656552506,
+        "recall_at_p90": 0.6345609065155807,
+        "small_recall_at_p90": 0.38308457711442784,
+        "precision_at_threshold": 0.9342105263157895,
+        "recall_at_threshold": 0.603399433427762
+      },
+      "pigeon_recall_at_p90": 0.6345609065155807,
+      "empty_false_alarm_rate": 0.008,
+      "confuser_false_alarm_rate": 0.0684931506849315,
+      "per_class_ap50": {
+        "pigeon": 0.7256812193129366,
+        "spotted_dove": null,
+        "zebra_dove": null,
+        "pink_necked_green_pigeon": null,
+        "javan_myna": null,
+        "house_crow": null,
+        "asian_glossy_starling": null,
+        "eurasian_tree_sparrow": null,
+        "yellow_vented_bulbul": null,
+        "asian_koel": null,
+        "other_bird": null
+      },
+      "counts": {
+        "images": 319,
+        "empty_images": 125,
+        "confuser_images": 73,
+        "pigeon_boxes": 353,
+        "small_pigeon_boxes": 201,
+        "groups": 295
+      }
+    },
+    "noir_night": {
+      "pigeon": {
+        "ap50": 0.6136938689259057,
+        "ap50_95": 0.4047227389197672,
+        "recall_at_p90": 0.43626062322946174,
+        "small_recall_at_p90": 0.11940298507462686,
+        "precision_at_threshold": 0.8793969849246231,
+        "recall_at_threshold": 0.49575070821529743
+      },
+      "pigeon_recall_at_p90": 0.43626062322946174,
+      "empty_false_alarm_rate": 0.0,
+      "confuser_false_alarm_rate": 0.2191780821917808,
+      "per_class_ap50": {
+        "pigeon": 0.6136938689259057,
+        "spotted_dove": null,
+        "zebra_dove": null,
+        "pink_necked_green_pigeon": null,
+        "javan_myna": null,
+        "house_crow": null,
+        "asian_glossy_starling": null,
+        "eurasian_tree_sparrow": null,
+        "yellow_vented_bulbul": null,
+        "asian_koel": null,
+        "other_bird": null
+      },
+      "counts": {
+        "images": 319,
+        "empty_images": 125,
+        "confuser_images": 73,
+        "pigeon_boxes": 353,
+        "small_pigeon_boxes": 201,
+        "groups": 295
+      }
+    },
+    "wide": {
+      "pigeon": {
+        "ap50": 0.5838744725838305,
+        "ap50_95": 0.38433679458670217,
+        "recall_at_p90": 0.5212464589235127,
+        "small_recall_at_p90": 0.29831932773109243,
+        "precision_at_threshold": 0.9457831325301205,
+        "recall_at_threshold": 0.4447592067988669
+      },
+      "pigeon_recall_at_p90": 0.5212464589235127,
+      "empty_false_alarm_rate": 0.0,
+      "confuser_false_alarm_rate": 0.0958904109589041,
+      "per_class_ap50": {
+        "pigeon": 0.5838744725838305,
+        "spotted_dove": null,
+        "zebra_dove": null,
+        "pink_necked_green_pigeon": null,
+        "javan_myna": null,
+        "house_crow": null,
+        "asian_glossy_starling": null,
+        "eurasian_tree_sparrow": null,
+        "yellow_vented_bulbul": null,
+        "asian_koel": null,
+        "other_bird": null
+      },
+      "counts": {
+        "images": 319,
+        "empty_images": 125,
+        "confuser_images": 73,
+        "pigeon_boxes": 353,
+        "small_pigeon_boxes": 238,
+        "groups": 295
+      }
+    }
+  },
+  "by_source": {
+    "coco-birds": {
+      "pigeon": {
+        "ap50": 0.5623837383738374,
+        "ap50_95": 0.3937789539823548,
+        "recall_at_p90": 0.2,
+        "small_recall_at_p90": 0.0,
+        "precision_at_threshold": 0.47058823529411764,
+        "recall_at_threshold": 0.5333333333333333
+      },
+      "pigeon_recall_at_p90": 0.2,
+      "empty_false_alarm_rate": null,
+      "confuser_false_alarm_rate": 0.15555555555555556,
+      "per_class_ap50": {
+        "pigeon": 0.5623837383738374,
+        "spotted_dove": null,
+        "zebra_dove": null,
+        "pink_necked_green_pigeon": null,
+        "javan_myna": null,
+        "house_crow": null,
+        "asian_glossy_starling": null,
+        "eurasian_tree_sparrow": null,
+        "yellow_vented_bulbul": null,
+        "asian_koel": null,
+        "other_bird": null
+      },
+      "counts": {
+        "images": 51,
+        "empty_images": 0,
+        "confuser_images": 45,
+        "pigeon_boxes": 15,
+        "small_pigeon_boxes": 5,
+        "groups": 17
+      }
+    },
+    "coco-negatives": {
+      "pigeon": {
+        "ap50": null,
+        "ap50_95": null,
+        "recall_at_p90": 0.0,
+        "small_recall_at_p90": 0.0,
+        "precision_at_threshold": 0.0,
+        "recall_at_threshold": 0.0
+      },
+      "pigeon_recall_at_p90": 0.0,
+      "empty_false_alarm_rate": 0.0026666666666666666,
+      "confuser_false_alarm_rate": null,
+      "per_class_ap50": {
+        "pigeon": null,
+        "spotted_dove": null,
+        "zebra_dove": null,
+        "pink_necked_green_pigeon": null,
+        "javan_myna": null,
+        "house_crow": null,
+        "asian_glossy_starling": null,
+        "eurasian_tree_sparrow": null,
+        "yellow_vented_bulbul": null,
+        "asian_koel": null,
+        "other_bird": null
+      },
+      "counts": {
+        "images": 375,
+        "empty_images": 375,
+        "confuser_images": 0,
+        "pigeon_boxes": 0,
+        "small_pigeon_boxes": 0,
+        "groups": 125
+      }
+    },
+    "inaturalist": {
+      "pigeon": {
+        "ap50": null,
+        "ap50_95": null,
+        "recall_at_p90": 0.0,
+        "small_recall_at_p90": 0.0,
+        "precision_at_threshold": 0.0,
+        "recall_at_threshold": 0.0
+      },
+      "pigeon_recall_at_p90": 0.0,
+      "empty_false_alarm_rate": null,
+      "confuser_false_alarm_rate": 0.1206896551724138,
+      "per_class_ap50": {
+        "pigeon": null,
+        "spotted_dove": null,
+        "zebra_dove": null,
+        "pink_necked_green_pigeon": null,
+        "javan_myna": null,
+        "house_crow": null,
+        "asian_glossy_starling": null,
+        "eurasian_tree_sparrow": null,
+        "yellow_vented_bulbul": null,
+        "asian_koel": null,
+        "other_bird": null
+      },
+      "counts": {
+        "images": 174,
+        "empty_images": 0,
+        "confuser_images": 174,
+        "pigeon_boxes": 0,
+        "small_pigeon_boxes": 0,
+        "groups": 58
+      }
+    },
+    "roboflow-yolo1199": {
+      "pigeon": {
+        "ap50": 0.6615941637044384,
+        "ap50_95": 0.426245661321011,
+        "recall_at_p90": 0.5919540229885057,
+        "small_recall_at_p90": 0.36220472440944884,
+        "precision_at_threshold": 0.9799270072992701,
+        "recall_at_threshold": 0.514367816091954
+      },
+      "pigeon_recall_at_p90": 0.5919540229885057,
+      "empty_false_alarm_rate": null,
+      "confuser_false_alarm_rate": null,
+      "per_class_ap50": {
+        "pigeon": 0.6615941637044384,
+        "spotted_dove": null,
+        "zebra_dove": null,
+        "pink_necked_green_pigeon": null,
+        "javan_myna": null,
+        "house_crow": null,
+        "asian_glossy_starling": null,
+        "eurasian_tree_sparrow": null,
+        "yellow_vented_bulbul": null,
+        "asian_koel": null,
+        "other_bird": null
+      },
+      "counts": {
+        "images": 357,
+        "empty_images": 0,
+        "confuser_images": 0,
+        "pigeon_boxes": 1044,
+        "small_pigeon_boxes": 635,
+        "groups": 95
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "recipe": "yolo26n-v2s-species-800-r3",
+  "seed": 2,
+  "decode": "yolo11",
+  "precision": "fp16",
+  "input_hw": [
+    448,
+    800
+  ],
+  "model_id": "yolo26n-v2s-species-800-r3/seed2/yolo11/fp16",
+  "package": "/tmp/cz-958260/exports/yolo26n-v2s-species-800-r3/seed2/yolo11/fp16_ncnn_model",
+  "reference": "/home/a/ashelow/columba/scratch/ws7/additions/yolo26n-v2s-species-800-r3/results/yolo26n-v2s-species-800-r3/seed2/yolo11/pt",
+  "taxonomy": "species",
+  "single_recipe": "yolo26n-v2s-800-round2-plain",
+  "provisional": true,
+  "accuracy_gate_passed": true,
+  "parity_passed": false
+}

@@ -1,0 +1,41 @@
+{
+  "label": "simulated",
+  "reaction_ms": {
+    "p50": 168.97393624657406,
+    "p95": 317.02532582767316,
+    "mean": 187.28423404733292,
+    "std": 64.97701588017505
+  },
+  "sensor_ms": {
+    "p50": 50.095237068577724,
+    "p95": 65.0001135068568,
+    "mean": 50.000954740824945,
+    "std": 9.61941073661324
+  },
+  "first_wait_ms": {
+    "p50": 16.681166319440365,
+    "p95": 34.9699647827606,
+    "mean": 18.162039327674396,
+    "std": 11.065789108522436
+  },
+  "mean_processed_visible_frames": 3.2509,
+  "mean_dropped_visible_frames": 0.3037,
+  "camera_fps": 30.0,
+  "recall": 0.6543909348441926,
+  "k": 2,
+  "n": 3,
+  "correlation": 0.0,
+  "trials": 20000,
+  "seed": 42,
+  "frame_policy": "latest",
+  "sensor_periods": [
+    1.0,
+    2.0
+  ],
+  "origin": "capture timestamp of first visible frame; no random pre-capture wait",
+  "hit_model": "stationary Bernoulli Markov; lag correlation rho^camera-frame-gap",
+  "processing_model": "independent empirical bootstrap; latest-frame pre-roll 128 frames",
+  "processing_host": "estimated Pi5",
+  "distribution": "empirical paired end-to-end bootstrap",
+  "recall_source": "test recall at independently val-selected threshold; per-frame proxy"
+}

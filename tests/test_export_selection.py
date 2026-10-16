@@ -9,10 +9,11 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 from app.json_data import JsonValue
-from tools.evaluate_predictions import Dataset, ImageRecord, mapping
+from tools.evaluate_predictions import Dataset, ImageRecord, load_dataset, mapping
 from tools.prepare_models import prepare_models
 from tools.quantize_ncnn import calibration_images
 from tools.select_model import (
@@ -21,6 +22,8 @@ from tools.select_model import (
     aspect_bucket,
     baseline_scores,
     candidate_record,
+    latest_frame_rate,
+    package_final_candidate,
     parity,
     reaction_for_recall,
     select_candidates,
@@ -37,7 +40,7 @@ def candidate(recipe: str, seed: int, validation_recall: float = 0.8) -> dict[st
         "decode": "yolo11",
         "precision": "fp16",
         "input_hw": [448, 800],
-        "val": {"recall_at_p90": validation_recall},
+        "val": {"recall_at_p90": validation_recall, "ap50": 0.85},
         "test": {"recall_at_p90": 0.78, "ap50": 0.85, "recall_at_threshold": 0.75},
         "empty_far": 0.0,
         "confuser_far": 0.04,
@@ -56,6 +59,41 @@ class ExportSelectionTests(unittest.TestCase):
     def selection(self, records: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
         with patch("tools.select_model.candidate_record", side_effect=records):
             return select_candidates([Path(str(index)) for index in range(len(records))], BASELINE)
+
+    def test_species_taxonomy_view_keeps_manifest_images_inside_immutable_view(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            dataset = Path(temporary) / "columba-test-v2"
+            (dataset / "images/test").mkdir(parents=True)
+            (dataset / "labels/test").mkdir(parents=True)
+            image = dataset / "images/test/bird.jpg"
+            image.write_bytes(b"image")
+            (dataset / "labels/test/bird.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+            original = "names: [pigeon]\ntest: images/test\n"
+            (dataset / "data.yaml").write_text(original)
+            (dataset / "manifest.jsonl").write_text(
+                json.dumps(
+                    {
+                        "id": "bird",
+                        "file": "images/test/bird.jpg",
+                        "split": "test",
+                        "width": 100,
+                        "height": 100,
+                        "classes_present": ["pigeon"],
+                        "style": "original",
+                        "source": "test",
+                        "group": "bird",
+                    }
+                )
+                + "\n"
+            )
+            with taxonomy_view(dataset, "species") as view:
+                loaded = load_dataset(view, "test")
+                self.assertEqual(loaded.names[0], "pigeon")
+                self.assertGreater(len(loaded.names), 1)
+                self.assertTrue(loaded.images[0].path.is_relative_to(view))
+                self.assertEqual(loaded.images[0].annotations[0].category_id, 0)
+            self.assertEqual((dataset / "data.yaml").read_text(), original)
+            self.assertEqual(image.read_bytes(), b"image")
 
     def test_aspect_buckets_cover_canonical_shapes(self) -> None:
         for width_px, height_px, expected in (
@@ -167,6 +205,45 @@ class ExportSelectionTests(unittest.TestCase):
             )
             self.assertFalse(accuracy_gate(reference, exported)["passed"])
 
+    def test_final_selection_keeps_fp32_as_companion_only(self) -> None:
+        records = [candidate("arm", seed) for seed in range(3)]
+        companions = [candidate("arm", seed, 0.81) for seed in range(3)]
+        for record in companions:
+            record["precision"] = "fp32"
+        with patch("tools.select_model.candidate_record", side_effect=records + companions):
+            decision = select_candidates(
+                [Path(str(index)) for index in range(6)], BASELINE, final=True
+            )
+        self.assertIn("/fp16/", str(decision["selected"]))
+        self.assertFalse(decision["provisional"])
+        self.assertEqual(decision["awaiting"], [])
+
+    def test_validation_ties_use_false_alarms_then_ap50_before_seed_index(self) -> None:
+        records = [candidate("arm", seed) for seed in range(3)]
+        records[2]["val_confuser_far"] = 0.03
+        self.assertEqual(
+            mapping(cast(list[JsonValue], self.selection(records)["arms"])[0], "arm")[
+                "shipped_seed"
+            ],
+            2,
+        )
+        records[1]["val_confuser_far"] = 0.03
+        records[2]["val_empty_far"] = 0.01
+        self.assertEqual(
+            mapping(cast(list[JsonValue], self.selection(records)["arms"])[0], "arm")[
+                "shipped_seed"
+            ],
+            1,
+        )
+        records[2]["val_empty_far"] = 0.0
+        mapping(records[2]["val"], "val")["ap50"] = 0.86
+        self.assertEqual(
+            mapping(cast(list[JsonValue], self.selection(records)["arms"])[0], "arm")[
+                "shipped_seed"
+            ],
+            2,
+        )
+
     def test_int8_parity_has_documented_tolerances_and_still_requires_equal_counts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             reference, exported = Path(temporary) / "pt.json", Path(temporary) / "int8.json"
@@ -188,6 +265,8 @@ class ExportSelectionTests(unittest.TestCase):
                 decodes=["yolo11", "yolo26"],
                 output=Path(temporary),
                 reference_data_root=None,
+                precisions=["fp32", "fp16"],
+                node="xcng1",
                 single_recipe="yolo26n-v2s-800-round2-plain",
             )
             with (
@@ -210,6 +289,8 @@ class ExportSelectionTests(unittest.TestCase):
             script = payload["submissions"][0]["script"]
             subprocess.run(["bash", "-n"], input=script, text=True, check=True, capture_output=True)
             self.assertIn("OMP_WAIT_POLICY=ACTIVE", script)
+            self.assertIn("--precisions fp32 fp16", script)
+            self.assertIn("#SBATCH --nodelist=xcng1", script)
             self.assertIn("--single-recipe yolo26n-v2s-800-round2-plain", script)
             self.assertIn("tools.select_model styles", script)
             self.assertIn("#SBATCH --nice=1000", script)
@@ -223,12 +304,54 @@ class ExportSelectionTests(unittest.TestCase):
         self.assertIsNotNone(decision["diagnostic_candidate"])
         self.assertTrue(decision["diagnostic_failures"])
 
+    def test_latest_frame_rate_limits_service_and_drops_stale_frames(self) -> None:
+        self.assertAlmostEqual(latest_frame_rate([40.0]), 25.0)
+        self.assertAlmostEqual(latest_frame_rate([100.0]), 10.0)
+        self.assertAlmostEqual(latest_frame_rate([20.0]), 30.0, places=3)
+
     def test_zero_recall_has_no_fabricated_reaction_quantile(self) -> None:
         reaction = reaction_for_recall([30.0, 40.0], 0.0)
         self.assertIsNone(mapping(reaction["reaction_ms"], "reaction")["p95"])
         records = [candidate("arm", seed) for seed in range(3)]
         records[0]["reaction_p95_ms"] = None
         self.assertIsNone(self.selection(records)["selected"])
+
+    def test_primary_plain_pick_is_not_duplicated_as_its_own_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary).resolve()
+            arguments = argparse.Namespace(
+                exports=Path("exports"),
+                decision=repository / "decision.json",
+                report=None,
+                fallback_candidate=Path("plain/seed1"),
+                fallback_exports=Path("old-exports"),
+            )
+            decision: dict[str, JsonValue] = {
+                "provisional": False,
+                "package_candidate": "plain/seed1",
+                "arms": [],
+            }
+            entry: dict[str, JsonValue] = {
+                "model_id": "plain-seed1",
+                "measured_model_id": "plain/seed1",
+                "source": "tracked/plain",
+                "runtime_directory": "models/plain",
+                "files": [],
+            }
+            with (
+                patch("tools.select_model.__file__", str(repository / "tools/select_model.py")),
+                patch("tools.select_model.durable_package_entry", return_value=entry) as package,
+                patch(
+                    "tools.select_model.candidate_record", return_value={"model_id": "plain/seed1"}
+                ),
+                patch(
+                    "tools.prepare_models.prepare_models", return_value=repository / "models/plain"
+                ),
+            ):
+                package_final_candidate(arguments, decision)
+            package.assert_called_once()
+            manifest = json.loads((repository / "deploy/model_manifest.json").read_text())
+            self.assertEqual(manifest["fallback_models"], [])
 
     def test_provisional_manifest_verifies_c8_without_switching_default(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -272,7 +395,7 @@ class ExportSelectionTests(unittest.TestCase):
             (source / "model.ncnn.bin").write_bytes(b"corrupt")
             with self.assertRaisesRegex(SystemExit, "source checksum mismatch"):
                 prepare_models(repository, "candidate-provisional")
-            with self.assertRaisesRegex(SystemExit, "expected one provisional model entry"):
+            with self.assertRaisesRegex(SystemExit, "expected one model entry"):
                 prepare_models(repository, "unknown")
 
     def test_species_taxonomy_view_preserves_immutable_dataset(self) -> None:

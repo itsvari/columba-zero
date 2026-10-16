@@ -64,6 +64,12 @@ REQUIRED_SEEDS = frozenset({0, 1, 2})
 RSYNC_REMOTE_SHELL = "ssh -o BatchMode=yes -o ConnectTimeout=20"
 CAMERA_INPUT_HW_PX = (480, 640)
 BENCHMARK_FRAME_COUNT = 20
+REGISTERED_CAMERA_FPS = 30.0
+REACTION_REPRODUCTION_TOLERANCE_MS = 0.000001
+RATE_PROFILE_FRAMES = 20000
+RATE_PROFILE_WARMUP = 128
+RATE_PROFILE_SEED = 42
+MILLISECONDS_PER_SECOND = 1000.0
 VALIDATION_TIE_RECALL_FRACTION = 0.01
 LATENCY_TIE_RATIO = 1.05
 MAXIMUM_SPECIES_RECALL_DROP = 0.01
@@ -92,10 +98,10 @@ def taxonomy_view(dataset: Path, taxonomy: str) -> Iterator[Path]:
         view.mkdir()
         for child in dataset.iterdir():
             destination = view / child.name
-            if child.name == "data.yaml":
-                shutil.copy2(child, destination)
+            if child.is_dir():
+                shutil.copytree(child, destination)
             else:
-                destination.symlink_to(child.resolve(), target_is_directory=child.is_dir())
+                shutil.copy2(child, destination)
         align_test_taxonomy(view, taxonomy, Path("training/classes.yaml"))
         yield view
 
@@ -406,6 +412,67 @@ def reaction_for_recall(samples_ms: list[float], recall: float) -> dict[str, Jso
         }
 
 
+def latest_frame_rate(samples_ms: list[float], camera_fps: float = REGISTERED_CAMERA_FPS) -> float:
+    import numpy
+
+    period_ms = MILLISECONDS_PER_SECOND / camera_fps
+    processing_ms = numpy.random.default_rng(RATE_PROFILE_SEED).choice(
+        samples_ms, RATE_PROFILE_WARMUP + RATE_PROFILE_FRAMES
+    )
+    captured_index = 0
+    started_ms = 0.0
+    measured_start_ms = 0.0
+    for index, duration_ms in enumerate(processing_ms):
+        if index == RATE_PROFILE_WARMUP:
+            measured_start_ms = started_ms
+        finished_ms = started_ms + float(duration_ms)
+        captured_index = max(captured_index + 1, int(finished_ms / period_ms))
+        started_ms = max(finished_ms, captured_index * period_ms)
+    return RATE_PROFILE_FRAMES * MILLISECONDS_PER_SECOND / (started_ms - measured_start_ms)
+
+
+def reaction_audit(directory: Path) -> dict[str, JsonValue]:
+    record = candidate_record(directory)
+    latency = read_report(directory / "latency.json")
+    factor = number(mapping(latency["estimated_pi5"], "estimated Pi")["factor"], "factor")
+    samples_ms, distribution = processing_samples(latency, factor)
+    settings = ReactionSettings(recall=metric(record, "test", "recall_at_threshold"))
+    reproduced = simulate_reaction(samples_ms, settings)
+    gate_p95_ms = number(mapping(reproduced["reaction_ms"], "reaction")["p95"], "p95")
+    if (
+        abs(gate_p95_ms - number(record["reaction_p95_ms"], "recorded reaction"))
+        > REACTION_REPRODUCTION_TOLERANCE_MS
+    ):
+        raise ValueError("saved reaction gate differs from current latest-frame simulation")
+    return {
+        "label": "simulated using estimated Pi latency, not measured Pi reaction",
+        "camera_fps": settings.camera_fps,
+        "effective_detection_fps": latest_frame_rate(samples_ms, settings.camera_fps),
+        "assumes_detection_on_every_camera_frame": False,
+        "registered_30fps_p95_ms": gate_p95_ms,
+        "throughput_limited_gate_p95_ms": gate_p95_ms,
+        "processing_distribution": distribution,
+        "frame_policy": settings.frame_policy,
+        "mean_dropped_visible_frames": reproduced["mean_dropped_visible_frames"],
+        "mean_processed_visible_frames": reproduced["mean_processed_visible_frames"],
+        "rate_profile_frames": RATE_PROFILE_FRAMES,
+        "rate_profile_warmup": RATE_PROFILE_WARMUP,
+        "rate_profile_seed": RATE_PROFILE_SEED,
+        "explanation": (
+            "WS4 serialises each sampled processing duration, then selects the newest available "
+            "camera index. Stale captures are skipped. Confirmation counts processed observations, "
+            "matching ConfirmationTracker.update. The existing 30 FPS capture result already "
+            "includes throughput limits; reducing camera FPS to detector FPS "
+            "would double-count them."
+        ),
+        "remaining_limits": (
+            "sensor delivery assumptions, still-image recall proxy, temporal correlation, "
+            "track association, capture contention and thermal effects require WS10 step3 "
+            "real reaction measurement"
+        ),
+    }
+
+
 def evaluate_candidate(arguments: argparse.Namespace) -> None:
     with taxonomy_view(arguments.test_dataset, arguments.taxonomy) as aligned:
         evaluate_aligned_candidate(
@@ -469,7 +536,7 @@ def evaluate_aligned_candidate(arguments: argparse.Namespace) -> None:
             )
             if styles_threshold["value"] != reference_threshold["value"]:
                 raise ValueError("cached PyTorch styles threshold differs from its val threshold")
-        for precision in ("fp32", "fp16", "int8"):
+        for precision in arguments.precisions:
             package = source / decode / f"{precision}_ncnn_model"
             if precision == "int8" and not package.exists():
                 command(
@@ -716,6 +783,8 @@ def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
             None,
         )
         reasons = cast(list[JsonValue], arm["failures"])
+        species_gates: list[JsonValue] = []
+        arm["species_gates"] = species_gates
         if reference is None:
             reasons.append("species gate needs --single-recipe and its evaluated three-seed arm")
         elif (
@@ -724,6 +793,17 @@ def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
         ):
             reasons.append("species pigeon recall is more than 0.01 below matched single")
         if reference is not None:
+            minimum_recall = (
+                number(reference["test_recall_mean"], "recall") - MAXIMUM_SPECIES_RECALL_DROP
+            )
+            species_gates.append(
+                {
+                    "gate": "Species pigeon three-seed recall",
+                    "value": arm["test_recall_mean"],
+                    "requirement": f">= {minimum_recall:.6f}",
+                    "passed": number(arm["test_recall_mean"], "recall") >= minimum_recall,
+                }
+            )
             reference_seed = next(
                 (
                     mapping(seed, "seed")
@@ -739,12 +819,27 @@ def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
                 reasons.append("species comparison requires val-eligible shipped seeds")
             else:
                 for field in ("empty_far", "confuser_far"):
+                    species_gates.append(
+                        {
+                            "gate": f"Species shipped {field} no worse than single",
+                            "value": shipped_seed[field],
+                            "requirement": f"<= {reference_seed[field]}",
+                            "passed": number(shipped_seed[field], field)
+                            <= number(reference_seed[field], field),
+                        }
+                    )
                     if number(shipped_seed[field], field) > number(reference_seed[field], field):
                         reasons.append(f"species shipped {field} is worse than matched single")
-            if (
-                number(arm["pi5_p95_ms"], "latency")
-                > number(reference["pi5_p95_ms"], "latency") * SPECIES_LATENCY_RATIO
-            ):
+            maximum_latency_ms = number(reference["pi5_p95_ms"], "latency") * SPECIES_LATENCY_RATIO
+            species_gates.append(
+                {
+                    "gate": "Species estimated Pi p95 within 5% of single",
+                    "value": arm["pi5_p95_ms"],
+                    "requirement": f"<= {maximum_latency_ms:.6f} ms",
+                    "passed": number(arm["pi5_p95_ms"], "latency") <= maximum_latency_ms,
+                }
+            )
+            if number(arm["pi5_p95_ms"], "latency") > maximum_latency_ms:
                 reasons.append("species latency is over 5% slower than matched single")
         arm["failures"] = reasons
         arm["passes"] = not reasons
@@ -881,7 +976,9 @@ def arm_gates(arm: dict[str, JsonValue], baseline: tuple[float, ...]) -> list[Js
     return gates
 
 
-def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> dict[str, JsonValue]:
+def select_candidates(
+    directories: list[Path], baseline: tuple[float, ...], *, final: bool = False
+) -> dict[str, JsonValue]:
     candidates = [candidate_record(directory) for directory in directories]
     for candidate in candidates:
         candidate["deployment_parity_passed"] = deployment_parity(candidate)
@@ -904,11 +1001,19 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
             reasons.append("three-seed test accuracy does not beat baseline by seed uncertainty")
         representative = max(
             (seed for seed in seeds if passes_validation_false_alarms(seed)),
-            key=lambda seed: (metric(seed, "val", "recall_at_p90"), -cast(int, seed["seed"])),
+            key=lambda seed: (
+                metric(seed, "val", "recall_at_p90"),
+                -number(seed["val_confuser_far"], "val confuser FAR"),
+                -number(seed["val_empty_far"], "val empty FAR"),
+                metric(seed, "val", "ap50"),
+                -cast(int, seed["seed"]),
+            ),
             default=None,
         )
         if representative is None:
             reasons.append("no seed passes validation false-alarm gates")
+        if final and key[2] == "fp32":
+            reasons.append("fp32 is the strict parity companion; final deployment uses fp16")
         if key[2] == "int8":
             reasons.append("int8 excluded by coordinator decision")
         if key[1] == "yolo26":
@@ -990,7 +1095,7 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
     ]
     diagnostic = styles_tie_break(comparable)
     return {
-        "provisional": True,
+        "provisional": not final,
         "baseline": {
             "recipe": "baseline-repro-p50",
             "test_mean": baseline_mean,
@@ -1005,7 +1110,10 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
         "fp16_parity_policy": (
             "same-graph strict fp32 parity and precision accuracy; strict fp16 diagnostic"
         ),
-        "excluded": ["int8", "decode:yolo26"],
+        "excluded": cast(
+            list[JsonValue],
+            ["int8", "decode:yolo26"] + (["fp32 parity companions"] if final else []),
+        ),
         "precision_accuracy_gate": (
             "each split R@P90/AP50/operating recall drop <=0.01 vs same-head rectangular PyTorch"
         ),
@@ -1019,7 +1127,7 @@ def select_candidates(directories: list[Path], baseline: tuple[float, ...]) -> d
         "package_candidate": selected["representative"] if selected else None,
         "diagnostic_candidate": diagnostic["representative"] if diagnostic else None,
         "diagnostic_failures": diagnostic["failures"] if diagnostic else [],
-        "awaiting": ["round2-distill", "round3-species"],
+        "awaiting": [] if final else ["round2-distill", "round3-species"],
     }
 
 
@@ -1367,13 +1475,15 @@ def add_candidate(arguments: argparse.Namespace) -> None:
             arguments.taxonomy,
             "--decodes",
             *arguments.decodes,
+            "--precisions",
+            *arguments.precisions,
             *single_recipe_arguments,
             *reference_arguments,
         ]
     )
     script = f"""#!/usr/bin/env bash
 #SBATCH --partition=normal
-#SBATCH --nodelist=xcng0
+#SBATCH --nodelist={arguments.node}
 #SBATCH --nice=1000
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=12G
@@ -1461,10 +1571,147 @@ srun --cpu-bind=cores python -m tools.select_model styles --candidates "$workspa
     )
 
 
+def collect_evidence(arguments: argparse.Namespace) -> None:
+    count = 0
+    for marker in sorted(arguments.candidates.rglob("candidate.json")):
+        directory = marker.parent
+        candidate_record(directory)
+        for evidence_directory in (directory, directory.parent / "pt"):
+            for source in evidence_directory.glob("*.json"):
+                if source.name.startswith("predictions_") and not source.name.endswith(
+                    ".meta.json"
+                ):
+                    continue
+                destination = arguments.output / source.relative_to(arguments.candidates)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+        descriptor = read_report(marker)
+        package = (
+            arguments.exports
+            / str(descriptor["recipe"])
+            / f"seed{descriptor['seed']}"
+            / str(descriptor["decode"])
+            / f"{descriptor['precision']}_ncnn_model"
+        )
+        for name in ("export.json", "calibration.json"):
+            if (package / name).is_file():
+                shutil.copy2(
+                    package / name,
+                    arguments.output / directory.relative_to(arguments.candidates) / name,
+                )
+        count += 1
+    print(json.dumps({"evidence_cases": count, "output": str(arguments.output)}))
+
+
+def durable_package_entry(
+    candidate: Path, exports: Path, decision_path: Path, repository: Path
+) -> dict[str, JsonValue]:
+    import yaml
+
+    descriptor = read_report(candidate / "candidate.json")
+    model_id = str(descriptor["model_id"]).replace("/", "-")
+    source = (
+        exports
+        / str(descriptor["recipe"])
+        / f"seed{descriptor['seed']}"
+        / str(descriptor["decode"])
+        / f"{descriptor['precision']}_ncnn_model"
+    )
+    measured = read_report(candidate / "latency.json")
+    for name, field in (
+        ("model.ncnn.param", "parameters_sha256"),
+        ("model.ncnn.bin", "weights_sha256"),
+    ):
+        if hashlib.sha256((source / name).read_bytes()).hexdigest() != measured[field]:
+            raise ValueError(f"{source / name}: package differs from measured export")
+    destination = repository / "runs/detect/pigeon_detector" / model_id / "weights/best_ncnn_model"
+    destination.mkdir(parents=True, exist_ok=True)
+    files: list[JsonValue] = []
+    for name in ("model.ncnn.param", "model.ncnn.bin", "metadata.yaml"):
+        payload = (source / name).read_bytes()
+        if name == "metadata.yaml":
+            metadata = mapping(yaml.safe_load(payload), "metadata")
+            columba = mapping(metadata["columba"], "columba")
+            columba["model_id"] = model_id
+            metadata["columba"] = columba
+            payload = yaml.safe_dump(metadata, sort_keys=False).encode()
+        (destination / name).write_bytes(payload)
+        files.append(
+            {"file": name, "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
+        )
+    model_settings(destination, cast(list[int], descriptor["input_hw"]), str(descriptor["decode"]))
+    return {
+        "model_id": model_id,
+        "provisional": False,
+        "source": str(destination.relative_to(repository)),
+        "runtime_directory": f"models/{model_id}",
+        "selection": str(decision_path.resolve().relative_to(repository)),
+        "checkpoint_sha256": read_report(source / "export.json")["source_sha256"],
+        "measured_model_id": descriptor["model_id"],
+        "operating_threshold": read_report(candidate / "metrics_val.json")["operating_threshold"],
+        "decode": descriptor["decode"],
+        "input_hw": descriptor["input_hw"],
+        "quantization": descriptor["precision"],
+        "taxonomy": descriptor["taxonomy"],
+        "files": files,
+    }
+
+
+def package_final_candidate(arguments: argparse.Namespace, decision: dict[str, JsonValue]) -> None:
+    from tools.prepare_models import prepare_models
+
+    if decision["provisional"] is not False or not isinstance(decision["package_candidate"], str):
+        raise ValueError("final packaging requires a final decision with every gate passing")
+    repository = Path(__file__).resolve().parents[1]
+    entry = durable_package_entry(
+        Path(decision["package_candidate"]), arguments.exports, arguments.decision, repository
+    )
+    fallback_entries: list[JsonValue] = []
+    fallback = (
+        candidate_record(arguments.fallback_candidate) if arguments.fallback_candidate else None
+    )
+    if fallback is not None and fallback["model_id"] != entry["measured_model_id"]:
+        if not any(
+            mapping(arm, "arm")["passes"] is True
+            and mapping(arm, "arm")["representative"] == fallback["directory"]
+            for arm in cast(list[JsonValue], decision["arms"])
+        ):
+            raise ValueError("fallback must be a val-chosen seed of a passing arm")
+        fallback_entries.append(
+            durable_package_entry(
+                arguments.fallback_candidate,
+                arguments.fallback_exports or arguments.exports,
+                arguments.decision,
+                repository,
+            )
+        )
+    entry["fallback_models"] = fallback_entries
+    write_json(repository / "deploy/model_manifest.json", entry)
+    for package in [entry, *[mapping(value, "fallback") for value in fallback_entries]]:
+        prepare_models(repository, str(package["model_id"]))
+    verified = prepare_models(repository)
+    decision["package_verification"] = {
+        "model_id": entry["model_id"],
+        "eligible": True,
+        "provisional": False,
+        "directory": str(verified.relative_to(repository)),
+        "source": entry["source"],
+        "manifest": "deploy/model_manifest.json",
+        "status": "SHA-256 and byte counts verified",
+    }
+    write_json(arguments.decision, decision)
+    if arguments.report:
+        write_decision_report(arguments.report, decision)
+    print(verified)
+
+
 def package_candidate(arguments: argparse.Namespace) -> None:
     from tools.prepare_models import prepare_models
 
     decision = read_report(arguments.decision)
+    if arguments.final:
+        package_final_candidate(arguments, decision)
+        return
     selected = decision.get("package_candidate")
     eligible = isinstance(selected, str)
     if not eligible and arguments.diagnostic:
@@ -1548,14 +1795,140 @@ def package_candidate(arguments: argparse.Namespace) -> None:
     print(verified)
 
 
+def final_gate_markdown(decision: dict[str, JsonValue]) -> list[str]:
+    arms = sorted(
+        (
+            mapping(value, "arm")
+            for value in cast(list[JsonValue], decision["arms"])
+            if mapping(value, "arm")["precision"] == "fp16"
+            and mapping(value, "arm")["decode"] == "yolo11"
+        ),
+        key=lambda arm: number(arm["val_recall_mean"], "recall"),
+        reverse=True,
+    )
+    lines = [
+        "## Final fp16 ranking and every gate",
+        "",
+        "Rank is three-seed deploy-size val R@P90. Held arms retain their val rank.",
+        "",
+    ]
+    for rank, arm in enumerate(arms, start=1):
+        lines.extend(
+            [
+                f"### {rank}. {arm['recipe']}",
+                "",
+                f"Val mean {number(arm['val_recall_mean'], 'recall'):.6f}; val-chosen seed "
+                f"{arm['shipped_seed']}; {'PASS' if arm['passes'] else 'HOLD'}.",
+                "",
+                "| Gate | Observed | Requirement | Result |",
+                "|---|---|---|---|",
+            ]
+        )
+        for value in [
+            *cast(list[JsonValue], arm["gates"]),
+            *cast(list[JsonValue], arm.get("species_gates", [])),
+        ]:
+            gate = mapping(value, "gate")
+            lines.append(
+                f"| {gate['gate']} | {gate['value']} | {gate['requirement']} | "
+                f"{'pass' if gate['passed'] else 'fail'} |"
+            )
+        lines.append("")
+    if decision.get("final_policy") is not None:
+        policy = mapping(decision["final_policy"], "policy")
+        lines.extend(
+            [
+                "## Square-val nominations versus deploy-val seed picks",
+                "",
+                str(policy["policy"]),
+                str(policy["timing"]),
+                f"Policy recorded UTC: {policy['decision_recorded_utc']}. "
+                "WS5 values below are rounded square-input context; "
+                "deploy values are measured native fp16.",
+                "",
+                "| Arm | WS5 seed | Square val R@P90 | Deploy seed | Deploy val R@P90 | "
+                "Nominated seed at deploy val | Fresh deploy threshold |",
+                "|---|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for value in cast(list[JsonValue], policy["square_val_nominations"]):
+            nomination = mapping(value, "nomination")
+            arm = next(arm for arm in arms if arm["recipe"] == nomination["recipe"])
+            seeds = [mapping(seed, "seed") for seed in cast(list[JsonValue], arm["seeds"])]
+            nominated = next(seed for seed in seeds if seed["seed"] == nomination["seed"])
+            selected = next((seed for seed in seeds if seed["seed"] == arm["shipped_seed"]), None)
+            lines.append(
+                f"| {arm['recipe']} | {nomination['seed']} | {nomination['val_recall_at_p90']} | "
+                f"{arm['shipped_seed']} | "
+                f"{metric(selected, 'val', 'recall_at_p90') if selected else None} | "
+                f"{metric(nominated, 'val', 'recall_at_p90')} | "
+                f"{selected['threshold'] if selected else None} |"
+            )
+        lines.append("")
+    if decision.get("reaction_audit") is not None:
+        audit = mapping(decision["reaction_audit"], "reaction audit")
+        lines.extend(
+            [
+                "## Reaction scheduling audit",
+                "",
+                str(audit["label"]),
+                str(audit["explanation"]),
+                "",
+                f"Capture rate: {audit['camera_fps']} FPS. Estimated effective detector rate: "
+                f"{number(audit['effective_detection_fps'], 'rate'):.3f} FPS. "
+                f"Registered 30 FPS capture p95: {audit['registered_30fps_p95_ms']} ms. "
+                f"Throughput-limited gate p95: {audit['throughput_limited_gate_p95_ms']} ms. "
+                "These are the same correctly scheduled simulation, not separate gates.",
+                "",
+                "WS10 step 3 must measure real reaction time. " + str(audit["remaining_limits"]),
+                "",
+            ]
+        )
+    winner = next((arm for arm in arms if arm["id"] == decision["selected"]), None)
+    lines.extend(["## Why this model", ""])
+    if winner:
+        lines.append(
+            f"`{winner['recipe']}` wins the registered ranking among arms passing every gate. "
+            "Seed choice and the operating threshold use val alone. Test-v2 supplies "
+            "promotion gates; styles is secondary and only breaks matched v2/v2s ties."
+        )
+    for arm in arms:
+        if "distill" in str(arm["recipe"]) and arm["id"] != decision["selected"]:
+            lines.append(
+                f"Distill-800 loses at deploy size. Its val rank is "
+                f"{arms.index(arm) + 1}; held reasons: {arm['failures']}."
+            )
+    lines.extend(
+        [
+            "",
+            "## Deployment limits and WS10 hand-off",
+            "",
+            "The plain-800 same-checkpoint geometry diagnostic below attributes 38 of 39 "
+            "lost test matches to portrait images at the global P90 cut. Test-v2 has only "
+            "nine approximately 16:9 images, two positive. This limits camera claims. "
+            "WS10 columba-test-site-v1 is the real site check.",
+            "",
+            "WS10 steps 5–7 remain open: site threshold and k/n, the Pi OMP wait policy, "
+            "and on-Pi capture/model geometry. No Pi measurement is claimed. "
+            "The launcher stays unchanged; authorised capture FPS is 30.",
+            "",
+        ]
+    )
+    return lines
+
+
 def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
     arms = [mapping(arm, "arm") for arm in cast(list[JsonValue], decision["arms"])]
     baseline = mapping(decision["baseline"], "baseline")
     lines = [
-        "# WS7 provisional export decision",
+        "# WS7 final export decision"
+        if decision["provisional"] is False
+        else "# WS7 provisional export decision",
         "",
-        f"Provisional selection: `{decision['selected'] or 'HOLD: no arm passes every gate'}`.",
-        "Final selection waits for distilled and species candidates.",
+        f"Selection: `{decision['selected'] or 'HOLD: no arm passes every gate'}`.",
+        "All training candidates are available; deploy-size evidence decides the final pick."
+        if decision["provisional"] is False
+        else "Final selection waits for distilled and species candidates.",
         f"Coverage: {len(arms)} configurations and "
         f"{sum(len(cast(list[JsonValue], arm['seeds'])) for arm in arms)} seed/export cases.",
         f"Comparison baseline: `{baseline['recipe']}`, measured native fp16 384x640 test R@P90 "
@@ -1567,7 +1940,7 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
         "use styles recall to break the tie. The 5% band treats host timing noise",
         "as equal latency.",
         "",
-        "Primary accuracy is measured using columba_native package-default compute on xcng0.",
+        "Primary accuracy is measured using columba_native package-default compute on xcng0/xcng1.",
         "Native styles accuracy and ACTIVE latency use xcng0/xcng1; C3/C7 record each host.",
         "Val/test CPU PyTorch references use xcng0 for the first seed's two heads, then Mac",
         "vexcalibur. Mac versus xcng0 passes all 1,408 first-reference image comparisons.",
@@ -1755,13 +2128,16 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
             "",
         ]
     )
+    if decision["provisional"] is False:
+        lines.extend(final_gate_markdown(decision))
     if decision.get("package_verification") is not None:
         verified = mapping(decision["package_verification"], "package verification")
         lines.extend(
             [
-                "## Package dry run",
+                "## Durable package" if verified["provisional"] is False else "## Package dry run",
                 "",
-                f"`{verified['model_id']}` is provisional. {verified['status']}.",
+                f"`{verified['model_id']}`. Provisional: {verified['provisional']}. "
+                f"{verified['status']}.",
                 f"Package source: `{verified['source']}`. "
                 f"Verified copy: `{verified['directory']}`.",
                 f"Manifest: `{verified['manifest']}`. "
@@ -2084,11 +2460,15 @@ def parser() -> argparse.ArgumentParser:
         sub.add_argument("--seed", type=int, required=True)
         sub.add_argument("--input-hw", type=int, nargs=2, required=True)
         sub.add_argument("--taxonomy", choices=("single", "species"), default="single")
-        sub.add_argument(
-            "--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11", "yolo26"]
-        )
+        sub.add_argument("--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11"])
         sub.add_argument("--output", type=Path, required=True)
         if action == "evaluate":
+            sub.add_argument(
+                "--precisions",
+                nargs="+",
+                choices=("fp32", "fp16", "int8"),
+                default=["fp32", "fp16"],
+            )
             sub.add_argument("--exports", type=Path, required=True)
             sub.add_argument("--references", type=Path)
             sub.add_argument("--single-recipe", help="matched single-taxonomy arm for PLAN 5.4")
@@ -2130,9 +2510,9 @@ def parser() -> argparse.ArgumentParser:
         default=Path.home() / "columba-data",
         help="optional Mac C1 root for CPU reference precomputation",
     )
-    sub.add_argument(
-        "--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11", "yolo26"]
-    )
+    sub.add_argument("--decodes", nargs="+", choices=("yolo11", "yolo26"), default=["yolo11"])
+    sub.add_argument("--precisions", nargs="+", choices=("fp32", "fp16"), default=["fp32", "fp16"])
+    sub.add_argument("--node", choices=("xcng0", "xcng1"), default="xcng0")
     sub.add_argument("--output", type=Path, default=Path("outputs/ws7"))
     sub = commands.add_parser("audit", help="verify saved C3/C4/C7 data and real package bytes")
     sub.add_argument("--candidates", type=Path, required=True)
@@ -2161,6 +2541,12 @@ def parser() -> argparse.ArgumentParser:
         choices=("fp32", "fp16", "int8"),
         default=["fp32", "fp16", "int8"],
     )
+    sub = commands.add_parser(
+        "evidence", help="collect C4/C7 and provenance without raw predictions"
+    )
+    sub.add_argument("--candidates", type=Path, required=True)
+    sub.add_argument("--exports", type=Path, required=True)
+    sub.add_argument("--output", type=Path, required=True)
     sub = commands.add_parser("package")
     sub.add_argument("--decision", type=Path, required=True)
     sub.add_argument("--report", type=Path)
@@ -2170,6 +2556,9 @@ def parser() -> argparse.ArgumentParser:
         help="package a blocked candidate for hash-check dry run while selection stays HOLD",
     )
     sub.add_argument("--exports", type=Path, required=True)
+    sub.add_argument("--final", action="store_true")
+    sub.add_argument("--fallback-candidate", type=Path)
+    sub.add_argument("--fallback-exports", type=Path)
     sub = commands.add_parser("aspect")
     sub.add_argument("--dataset", type=Path, required=True)
     sub.add_argument("--square-predictions", type=Path, required=True)
@@ -2191,6 +2580,7 @@ def parser() -> argparse.ArgumentParser:
         "--aspect-report", type=Path, default=Path("experiments/reports/WS7-aspect.json")
     )
     sub.add_argument("--output", type=Path, required=True)
+    sub.add_argument("--final", action="store_true")
     return root
 
 
@@ -2216,6 +2606,8 @@ def main() -> None:
         fetch_candidate(arguments)
     elif arguments.action == "audit":
         audit_candidates(arguments)
+    elif arguments.action == "evidence":
+        collect_evidence(arguments)
     elif arguments.action == "package":
         package_candidate(arguments)
     elif arguments.action == "aspect":
@@ -2230,12 +2622,19 @@ def main() -> None:
         )
         if not directories:
             raise SystemExit("no candidate.json files found")
-        decision = select_candidates(directories, baseline_scores(arguments.baseline_metrics))
+        decision = select_candidates(
+            directories, baseline_scores(arguments.baseline_metrics), final=arguments.final
+        )
         baseline_summary = arguments.baseline_metrics.parent / "measurements.json"
         if baseline_summary.exists():
             decision["baseline_measurements"] = read_report(baseline_summary)
         if arguments.aspect_report.exists():
             decision["aspect_ratio"] = read_report(arguments.aspect_report)
+        policy_path = Path("experiments/reports/WS7-final-policy.json")
+        if arguments.final and policy_path.is_file():
+            decision["final_policy"] = read_report(policy_path)
+        if arguments.final and isinstance(decision["package_candidate"], str):
+            decision["reaction_audit"] = reaction_audit(Path(decision["package_candidate"]))
         write_json(arguments.output, decision)
         if arguments.report:
             write_decision_report(arguments.report, decision)

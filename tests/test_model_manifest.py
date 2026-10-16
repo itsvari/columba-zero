@@ -12,7 +12,6 @@ from unittest.mock import patch
 from tools import prepare_models
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-METADATA_FILE = "best_ncnn_model/metadata.yaml"
 
 
 class ModelManifestTests(unittest.TestCase):
@@ -50,6 +49,7 @@ class ModelManifestTests(unittest.TestCase):
                         "deploy/model_manifest.json",
                         "tools/prepare_models.py",
                         manifest["source"],
+                        *(entry["source"] for entry in manifest.get("fallback_models", [])),
                     ],
                     check=True,
                 )
@@ -60,23 +60,61 @@ class ModelManifestTests(unittest.TestCase):
                     capture_output=True,
                     text=True,
                 )
-                for record in manifest["files"]:
-                    copied = checkout / manifest["runtime_directory"] / record["file"]
-                    self.assertEqual(
-                        hashlib.sha256(copied.read_bytes()).hexdigest(), record["sha256"]
-                    )
-                    self.assertEqual(copied.stat().st_size, record["bytes"])
+                for entry in [manifest, *manifest.get("fallback_models", [])]:
+                    model_id = entry.get("model_id")
+                    command = [sys.executable, "tools/prepare_models.py"]
+                    if model_id:
+                        command.extend(["--model-id", model_id])
+                    subprocess.run(command, cwd=checkout, check=True, capture_output=True)
+                    for record in entry["files"]:
+                        copied = checkout / entry["runtime_directory"] / record["file"]
+                        self.assertEqual(
+                            hashlib.sha256(copied.read_bytes()).hexdigest(), record["sha256"]
+                        )
+                        self.assertEqual(copied.stat().st_size, record["bytes"])
 
     def test_manifest_matches_tracked_bytes(self) -> None:
         manifest = json.loads((REPOSITORY / "deploy/model_manifest.json").read_text())
-        for record in manifest["files"]:
-            source = f"{manifest['source']}/{record['file']}"
-            content = subprocess.check_output(["git", "show", f"HEAD:{source}"], cwd=REPOSITORY)
-            with self.subTest(file=record["file"]):
-                self.assertEqual(len(content), record["bytes"])
-                self.assertEqual(hashlib.sha256(content).hexdigest(), record["sha256"])
-                if record["file"] == METADATA_FILE:
-                    self.assertNotIn(b"\r", content)
+        for entry in [manifest, *manifest.get("fallback_models", [])]:
+            for record in entry["files"]:
+                source = f"{entry['source']}/{record['file']}"
+                content = subprocess.check_output(["git", "show", f"HEAD:{source}"], cwd=REPOSITORY)
+                with self.subTest(file=source):
+                    self.assertEqual(len(content), record["bytes"])
+                    self.assertEqual(hashlib.sha256(content).hexdigest(), record["sha256"])
+                    if Path(record["file"]).name == "metadata.yaml":
+                        self.assertNotIn(b"\r", content)
+
+    def test_flat_selected_package_and_named_fallback_use_manifest_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            entries = []
+            for model_id in ("selected", "fallback"):
+                source = repository / model_id
+                source.mkdir()
+                payload = model_id.encode()
+                (source / "model.ncnn.bin").write_bytes(payload)
+                entries.append(
+                    {
+                        "model_id": model_id,
+                        "source": model_id,
+                        "runtime_directory": f"models/{model_id}",
+                        "files": [
+                            {
+                                "file": "model.ncnn.bin",
+                                "bytes": len(payload),
+                                "sha256": hashlib.sha256(payload).hexdigest(),
+                            }
+                        ],
+                    }
+                )
+            manifest = {**entries[0], "fallback_models": [entries[1]]}
+            (repository / "deploy").mkdir()
+            (repository / "deploy/model_manifest.json").write_text(json.dumps(manifest))
+            selected = prepare_models.prepare_models(repository)
+            fallback = prepare_models.prepare_models(repository, "fallback")
+            self.assertEqual((selected / "model.ncnn.bin").read_bytes(), b"selected")
+            self.assertEqual((fallback / "model.ncnn.bin").read_bytes(), b"fallback")
 
     def test_preparation_rejects_changed_source_and_copy(self) -> None:
         for corruption in ("source", "copy"):

@@ -1,119 +1,119 @@
 # WS7 — Export, quantisation and selection
 
-- State: provisional scope complete; selected export passes revised gates
+- State: complete
 - Branch: `ws7/export`
 - Agent: gpt-6.1-sol via T3 delegate
-- Last updated: 2026-10-15
-- Contracts: v1.8; coordinator main 8aeef6c merged
+- Last updated: 2026-10-16
+- Contracts: v1.9; based on coordinator main `47a9b8b`
 
 ## Done when
 
-The selected provisional model is packaged, its manifest verifies with
-`prepare_models.py`, and the report covers all 54 current exports. The
-coordinator's 15 October export and shipped-seed rules are implemented.
-Final selection still waits for distilled and species candidates.
+Met. Final selection covers 24 configurations and 72 seed/export cases.
+The selected model is durably packaged, its manifest and C8 metadata verify,
+the authorised deployment config is set, and post-config full checks pass.
+No merge into main was performed.
 
 Selected: `yolo26n-v2s-800-round2-plain/seed1/yolo11/fp16`, 448x800.
-Manifest ID: `yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16-provisional`.
-The entry is provisional and eligible, with `promotion_status: dry-run-only`.
-The incumbent manifest fields remain unchanged. No launcher or capture setting
-was changed. The earlier blocked fp32 entry was replaced by this pick.
+The val-derived threshold is 0.62646484375. This is also the plain fallback,
+so one package serves both roles without a duplicate manifest entry.
 
-## Revised selection and gates
+## Selection and gates
 
-Arms rank by three-seed mean val R@P90. Select the highest-val-recall seed
-among val FAR passes, then gate that export alone. Never retry another seed
-because of test results. All seed FARs remain reported. FP16 parity requires
-strict same-graph fp32 parity plus the confirmed precision accuracy policy.
-Strict fp16 per-image parity remains diagnostic. Int8 and one-to-one heads
-remain in the report but are excluded from deployment. The confirmed styles
-tie-break remains within 0.01 val recall and 5% latency.
+Every arm uses the same deploy-size val rule: highest R@P90 among val FAR
+passes, then lower confuser FAR, lower empty FAR, higher AP50 and lower seed
+index. This rule was confirmed before inspecting deploy-size test results
+for switched seeds. Arm ranking uses three-seed val mean; the section-1
+improvement rule uses three-seed test mean. Other gates apply to the chosen
+export alone. No test-driven seed fallback occurred.
 
-| Gate | Selected value | Limit | Result |
+| Arm | WS5 square-val seed | Deploy-val seed | Final result |
 |---|---:|---:|---|
-| Three-seed test improvement | 0.463645 | > larger SD 0.013084 | pass |
-| Val empty / confuser FAR | 0 / 0.032110 | <=0.02 / <=0.05 | pass |
-| Test empty / confuser FAR | 0 / 0.041096 | <=0.02 / <=0.05 | pass |
-| Estimated Pi frame p95 | 36.543667 ms | <=100 ms, target70 | pass |
-| Simulated reaction p95 | 345.363965 ms | <=500 ms | pass |
-| Maximum precision accuracy loss | 0.000005 | <=0.01 in all six metrics | pass |
-| Export parity | strict fp32 pass + accuracy pass | both | pass |
+| Distill-800 | 1 | 0 | held: test confuser FAR 0.054795 >0.05 |
+| Plain-800 | 1 | 1 | selected; all gates pass |
+| Species-800 | 2 | 2 | held: relative empty FAR 0.008 >plain's zero |
+| Control-b16 | 2 | 0 | held: confuser FAR 0.068493 and fp16 R@P90 loss 0.014164 |
 
-Accuracy/FAR are **measured** via native package-default compute on xcng0.
-Latency is **estimated** Pi from xcng0 ACTIVE C7 using WS4 x1.527110713.
-Reaction is **simulated** with WS4 at 30 FPS, k2/n3, 20,000 trials, seed42,
-independent hits and still-image operating recall as the frame-recall proxy.
-The val threshold is 0.62646484375. Selected-seed test R@P90 is 0.691218;
-the arm's test mean is 0.685552 +/- 0.007495. Strict fp16 parity fails two
-image comparisons; this is diagnostic under the revised rule.
+Species seeds 0 and 1 are val-ineligible at confuser FAR 0.050459. The selected
+plain seed passes val empty/confuser FAR 0/0.032110 and test FAR 0/0.041096.
+Its measured native test R@P90 is 0.691218. Its three-seed test mean is
+0.685552 +/-0.007495, versus rectangular native fp16 baseline
+0.221907 +/-0.013084. Strict same-graph fp32 parity passes; maximum fp16 loss
+across the six accuracy metrics is 0.00000512. Strict fp16 image parity is
+diagnostic. Int8 and one-to-one remain excluded; fp32 is a parity companion.
 
-The val-chosen v2-800 seed2 fails test confuser FAR 0.082192. The val-chosen
-v2s-640 seed1 fails 0.054795. Neither arm falls back to another seed.
+Accuracy and FAR are **measured** on xcng. The selected Pi frame p95 is
+**estimated** at 36.543667 ms using WS4 x1.527110713. Reaction p95 is
+**simulated** at 345.363965 ms with 30 FPS capture and k2/n3. WS4 already
+serialises processing and drops stale captures; the estimated effective
+detector rate is 27.446 FPS. No 30-detections-per-second assumption is made.
+**WS10 step 3 must confirm reaction p95 on the physical Pi.**
 
-## Rectangular baseline and geometry
+`WS7-final.md` has complete section-1 gate tables for all six deployment
+candidates, plus all 18 excluded diagnostic configurations. It records every
+seed's FAR, both square and deploy val nominations, precision deltas, styles
+scores, species 5.4 gates, the rectangular baseline and geometry caveat.
 
-New exports were limited to baseline-repro-p50, all three seeds, standard
-head, fp32/fp16, 384x640. CPU PyTorch references are **measured** on Mac
-vexcalibur; native values on xcng0. Every baseline export independently
-selects its threshold on val. Native fp32 strictly matches PT for all three
-seeds; all baseline fp16 exports pass the precision policy.
+## Package and configuration
 
-| Format | Test R@P90 seeds 0 / 1 / 2 | Mean +/- SD |
-|---|---|---|
-| PyTorch / native fp32 | 0.232295 / 0.229462 / 0.206799 | 0.222852 +/- 0.013974 |
-| Native fp16 | 0.229462 / 0.229462 / 0.206799 | 0.221907 +/- 0.013084 |
+Tracked package:
+`runs/detect/pigeon_detector/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16/weights/best_ncnn_model/`.
+Runtime copy: `models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16`.
+`deploy/model_manifest.json` contains file SHA-256s/byte counts and a durable
+repository-relative source. No worktree or ignored-output source remains.
+The 4,885,148-byte fp16 binary follows the existing direct-Git convention,
+with exact-byte attributes and no Git LFS filter. Existing baseline files
+remain unchanged. Clean-clone checksum tests pass with autocrlf false and true.
 
-Selection now uses native fp16 rectangular baseline C4, matching the pick's
-arithmetic. It no longer uses square leaderboard 0.2455 +/- 0.0346.
+`app/config.yaml` selects native inference at 448x800 with the val threshold,
+confirmation enabled at k2/n3 and an 800x450 lores stream at 30 FPS.
+Recording FPS remains 15. All requested keys already existed; other defaults,
+schema and launcher remain unchanged.
 
-PyTorch-only, same checkpoint and Mac CPU implementation: seed1 test R@P90
-is 0.801700 at 800x800 versus 0.691218 at 448x800. At respective full-test
-P90 cuts, portrait images account for 38 of 39 lost matches; 4:3 accounts for
-one; square/wide matches are unchanged. Portrait content scale drops to
-0.56. The fixed square-defined small cohort also loses recall, so the effect
-is more than changing the WS1 small-object denominator. The geometry
-hypothesis is supported for this checkpoint, with padding/sampling changes
-also present. The wide bucket has only two positive images, 17 boxes.
+`prepare_models.py` and C8 `check_model` pass. A fresh native replay processed
+20 frames and emitted one confirmed trigger. This is functional verification,
+not a live-camera reaction measurement.
 
-`WS7-aspect.md` reports every bucket's R@P90, WS1 small recall/counts and fixed
-small-cohort recall. No gate or operating threshold was changed by this
-analysis. Existing `app/config.yaml` and CameraConfig default to 640x480;
-WS10 should verify the actual deployed 16:9 capture stream before relying on
-the scale-match argument. Capture configuration stays unchanged.
+## Final validation
 
-Int8 note: full-graph KL quantisation, including the head, may be sensitive
-to activation ranges. Both sizes used the same 200 val IDs and RGB /255.
-Different 800/640 checkpoints confound a pure shape comparison. No specific
-root cause is established; no further investigation was performed.
+All checks passed after the deployment config edit, using the current Mac
+native extension. No package versions changed.
+
+- Full pytest: **325 passed, 223 subtests passed, zero skipped**.
+- Full unittest discovery: **325 passed**.
+- Native CTest: **1 passed**.
+- Ruff check on `app tests tools cluster training native`: **pass**.
+- Ruff format check on those directories: **94 files already formatted**.
+- Full mypy: **91 source files, no issues**.
+
+Two fixtures still assumed the old default deployment. The camera default
+test now loads an empty config to verify schema defaults. The warm-up test
+injects failure through the backend-neutral factory and asserts that warm-up
+ran before capture/output startup. Production behaviour was unchanged.
 
 ## Artefacts and resources
 
-- `experiments/reports/WS7-provisional.md`: all candidates, seed FAR context,
-  chosen-seed gates, baseline, aspect breakdown and quantisation note.
-- `experiments/reports/WS7-selection.json`: reproducible revised decision.
-- `experiments/reports/WS7-baseline/`: PT/native fp32/fp16 C4, C3 sidecars,
-  parity/accuracy checks and aggregate measurements.
-- `experiments/reports/WS7-aspect.{json,md}`: geometry diagnostic and interpretation.
-- `experiments/reports/WS7-candidates/`, `WS7-platform/`: existing evidence.
-  All 129 C7 records explicitly contain ACTIVE or PASSIVE under contracts1.8.
-  Legacy bridge/PASSIVE metadata came from recorded job environments; no
-  timing sample was changed.
-- `experiments/reports/WS7-audit.json`: 54 parity reports replayed, package
-  hashes and all 18 validation-only 200-image calibrations verified again.
-- `experiments/reports/WS7-methods.md`: exact add/fetch/select/package and
-  geometry replay commands. Future selection defaults to rectangular baseline.
-- Raw new C3/C8 evidence: `outputs/ws7/{baseline-native,revision-references,
-  revision-exports,aspect,packages}/` and the same folders under cluster
-  `~/columba/scratch/ws7/`. No weights or raw prediction arrays were committed.
+- `experiments/reports/WS7-final.md`: final decision, every gate and hand-off.
+- `WS7-final-selection.json`: reproducible selector output for all 72 cases.
+- `WS7-final-candidates/`: C4/C7, C3 sidecars and provenance for the 18 new cases.
+- `WS7-final-audit.json`: all 18 new parity reports reproduced; package bytes,
+  native compute, val thresholds and calibrated latency samples checked.
+- `WS7-final-policy.json`: coordinator seed rule and WS5 nominations.
+- `WS7-final-preparation.json`: completed jobs and source checkpoint hashes.
+- `WS7-final-verification.json`: current replay, check counts and log hashes.
+- `WS7-methods.md`: exact candidate addition, selection and verification commands.
+- Existing `WS7-candidates/`, `WS7-platform/`, `WS7-audit.json`, `WS7-baseline/`
+  and `WS7-aspect.{json,md}` retain the earlier evidence. The 15 FPS reaction
+  sensitivity is historical; capture is now authorised and configured at 30.
 
-CPU job 951221 completed exit0 on xcng0 in 2:10, four cores. No GPU was used
-this turn. No WS5 job was changed or cancelled. No WS7 job or Mac reference
-process remains active. Final checks: 303 tests OK, seven expected native
-extension skips; Ruff lint/format and strict mypy pass for 88 source files.
+Jobs 958128, 958260 and 958304 completed and were fetched before the pause.
+No jobs remain in flight. Finalisation required only the requested successful
+BatchMode connection check; no cluster jobs were submitted or changed.
+No password was requested, used or stored.
 
-## Remaining decisions
+## Remaining work outside WS7
 
-No contract request remains: C7 wait policy is in v1.8. WS10 decides ACTIVE
-versus PASSIVE with the complete pipeline on the Pi and verifies the deployed
-capture geometry. Distilled/species evaluation and final promotion wait for
-the coordinator's follow-up. The current package is provisional only.
+No contract change or selection decision remains open. WS10 step 3 must
+measure real Pi reaction. Steps 5–7 remain open for site threshold/k-n,
+OMP wait policy and on-Pi geometry. Portrait images account for 38 of 39 lost
+full-test P90 matches in the shape diagnostic. Test-v2 has only nine roughly
+16:9 images, two positive; `columba-test-site-v1` is the real camera check.

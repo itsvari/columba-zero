@@ -6,3 +6,8 @@ runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/best.pt -text
 runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/best_ncnn_model/model.ncnn.bin -text
 runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/best_ncnn_model/model.ncnn.param -text
 runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights/best_ncnn_model/model_ncnn.py -text
+
+# final WS7 packages follow the incumbent's exact-byte convention, without Git LFS.
+runs/detect/pigeon_detector/yolo26n-*/weights/best_ncnn_model/metadata.yaml text eol=lf
+runs/detect/pigeon_detector/yolo26n-*/weights/best_ncnn_model/model.ncnn.bin -text
+runs/detect/pigeon_detector/yolo26n-*/weights/best_ncnn_model/model.ncnn.param -text

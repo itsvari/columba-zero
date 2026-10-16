@@ -1,0 +1,66 @@
+{
+  "state": "complete",
+  "verified_utc": "2026-10-16T12:36:37.508294+00:00",
+  "label": "measured functional verification and development checks, not Pi timing or accuracy",
+  "host": "vexcalibur",
+  "package": "yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16",
+  "native_source": "merged native source, rebuilt with existing A76-compatible NCNN and OpenCV dependencies",
+  "check_model": "passed; C8 agrees with configured [448,800], standard yolo11 decode and pigeon-only triggers",
+  "package_files": [
+    {
+      "file": "model.ncnn.param",
+      "sha256": "bd6201ead99a645b200d84ec76222c24475324f8be2f90d9de9e5b5513fba8f0",
+      "bytes": 26392
+    },
+    {
+      "file": "model.ncnn.bin",
+      "sha256": "639e90dc36ad34d1235221f4aa907fae5a434245a90883454c1ca8dd4d7ffb6e",
+      "bytes": 4885148
+    },
+    {
+      "file": "metadata.yaml",
+      "sha256": "051f3facc7f1bd9385221496329c99acc7fe22a250fe3cec339b4e3452d9bd1f",
+      "bytes": 845
+    }
+  ],
+  "replay": {
+    "frames": 20,
+    "width_px": 800,
+    "height_px": 450,
+    "camera_fps_configuration": 30,
+    "backend": "native",
+    "confidence": 0.62646484375,
+    "k": 2,
+    "n": 3,
+    "confirmed_triggers": 1,
+    "exit_code": 0,
+    "source": "synthetic blank/bird/blank clip generated from one val photo; unpaced file replay",
+    "log_sha256": "a0ece83fc215a186fe512ff3bc763aeb987e180795bd2ace0147fb74d5b6e4e9"
+  },
+  "pytest": {
+    "passed": 325,
+    "subtests_passed": 223,
+    "skipped": 0
+  },
+  "unittest": {
+    "passed": 325
+  },
+  "ctest": {
+    "passed": 1
+  },
+  "ruff": "passed app tests tools cluster training native",
+  "ruff_format": "passed; 94 files already formatted",
+  "mypy": "passed; 91 source files",
+  "verification_log_sha256": {
+    "pytest.log": "c11ff0a18936a92d96e3886986190302e44723e514c55be29835fb809226572e",
+    "unittest.log": "2d18e59be6a8bdcce715cdf7ee929bc9f86ba47597b99cf7786b08e19a426be6",
+    "ruff.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "format.log": "b475fc29aee3dc5c262c478029ac7795c29dadad3668bc877eb3a0357103a4e3",
+    "mypy.log": "fe0ce6e3b1983c3e150c09b415036599a0bee120f2cad38e219412ce21d84a67",
+    "ctest.log": "1d8b10a9d28bf7c2dd08f27647ba8c0e75f8e7a310bbac185439bd4754a7eb4f"
+  },
+  "test_repairs": [
+    "camera schema defaults are loaded from an empty configuration, independent of deployment settings",
+    "warmup failure is injected through the backend-neutral detector factory and asserted before capture/output startup"
+  ]
+}

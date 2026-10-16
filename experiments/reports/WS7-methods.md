@@ -1,196 +1,225 @@
 # WS7 reproduction and hand-off
 
-Use the shared environment without changing its pinned packages.
+Use the shared environment without changing its pinned packages. Run commands
+from the repository root. Cluster access is exclusively BatchMode SSH. If the connection fails,
+retry
+`ssh -o BatchMode=yes columba-cluster true` every 60 seconds for up to ten
+minutes before stopping and reporting. The coordinator's Mac watchdog normally
+restores the tunnel within 30–60 seconds. Never supply a password.
 
 ```sh
 export PATH="/Users/vari/Developer/columba-zero/.venv/bin:$PATH"
+export YOLO_CONFIG_DIR="$PWD/outputs/ws7-final/settings"
+export OMP_NUM_THREADS=6 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=6
+python -c 'from tools.predict_to_coco import configure_ultralytics; configure_ultralytics()'
 ```
 
-## Add another candidate
+## Add and fetch a candidate
 
-`add` requires three completed C6 runs. It fetches their checkpoints, exports
-both heads at the supplied deploy size, computes CPU PyTorch references and
-submits one guarded ARM job. That job calibrates int8 on 200 validation images,
-scores every precision on val, test-v2 and test-v2-styles, and measures native
-latency. It retains all three seeds. It never changes the training runs.
+`add` requires completed C6 runs for seeds 0, 1 and 2. It fetches immutable
+checkpoints, exports the standard head in fp32 and fp16, and computes CPU
+PyTorch references on val, test-v2 and styles. One guarded ARM bundle then
+scores native exports at the deploy size, derives each export's threshold on
+val, checks parity and precision accuracy, and measures native latency.
+Int8 and one-to-one heads are excluded from final deployment. No GPU is needed.
 
-For the species arm, after the coordinator confirms the recipe is ready:
+The final distilled-arm command was:
 
 ```sh
 python -m tools.select_model add \
-  --recipe yolo26n-v2s-species-800-r3 \
-  --input-hw 448 800 \
-  --decodes yolo11 \
-  --taxonomy species \
-  --dataset-name columba-train-v2s-species \
-  --single-recipe yolo26n-v2s-800-round2-plain \
-  --reference-data-root /Users/vari/columba-data \
-  --output outputs/ws7-later
+  --recipe yolo26n-v2s-800-round2-distill --input-hw 448 800 \
+  --decodes yolo11 --precisions fp32 fp16 \
+  --dataset-name columba-train-v2s --node xcng0 \
+  --output outputs/ws7-final
 ```
 
-For a distilled or other single-taxonomy candidate, use its actual recipe ID,
-omit the species flags and supply its deploy size. A 640-trained model needs
-`--input-hw 384 640`. The `add` command does not wait for unfinished training.
+Use the new recipe ID when adding another single-taxonomy candidate. A
+640-trained model needs `--input-hw 384 640`. For species, add
+`--taxonomy species --dataset-name columba-train-v2s-species
+--single-recipe yolo26n-v2s-800-round2-plain`. `--node xcng1` can use the other
+ARM node. At most two project CPU jobs may be submitted or running; use
+different nodes for simultaneous timing bundles. `add` checks the live queue
+and uses `cluster.slurm`'s atomic budget guard. It never modifies training jobs.
+Do not repeat `add` for an already completed bundle; fetch its evidence.
 
-After the submitted ARM bundle finishes:
+After its DONE marker exists:
 
 ```sh
 python -m tools.select_model fetch \
-  --recipe yolo26n-v2s-species-800-r3 --output outputs/ws7-later
+  --recipe yolo26n-v2s-800-round2-distill --output outputs/ws7-final
+python -m tools.select_model evidence \
+  --candidates outputs/ws7-final/results --exports outputs/ws7-final/exports \
+  --output experiments/reports/WS7-final-candidates
 python -m tools.select_model select \
-  experiments/reports/WS7-candidates outputs/ws7-later/results \
-  --output experiments/reports/WS7-selection.json \
-  --report experiments/reports/WS7-provisional.md
+  experiments/reports/WS7-candidates experiments/reports/WS7-final-candidates \
+  --final --output experiments/reports/WS7-final-selection.json \
+  --report experiments/reports/WS7-final.md
 ```
 
-Pass any number of additional candidate roots to `select`. Keep one copy of
-each recipe/head/precision/seed in those roots. Duplicate seed records fail
-the three-seed gate. C4 and C7 files, plus parity and accuracy-gate evidence,
-drive selection; no inference or threshold fitting occurs during selection.
-The default baseline is now the three native fp16 384x640 C4 reports under
-`experiments/reports/WS7-baseline/fp16`, not the square WS5 leaderboard.
-Int8 and one-to-one results remain diagnostics and cannot be admitted.
+Supply any number of additional candidate roots to `select`. Keep one copy of
+each recipe/head/precision/seed. Duplicate seeds fail the three-seed gate.
+Keep the fp32 sibling evidence: final deployment considers fp16, while its
+same-graph fp32 strict comparison supplies the parity gate. Selection reads
+C4/C7 and saved parity/accuracy evidence; it performs no inference or fitting.
+The default baseline is native fp16 at 384x640, all three seeds, under
+`experiments/reports/WS7-baseline/fp16`.
 
-Species scoring uses an isolated taxonomy view of each single-taxonomy test
-set. `cluster.staging.align_test_taxonomy` changes only that view's YAML.
-Pigeon remains class 0. The original data archive and extracted dataset stay
-unchanged. The selector also compares a species arm with its named matching
-single-taxonomy arm under PLAN section 5.4.
+## Seed and evaluation policies
 
-## Replay individual stages
+Contracts v1.9 and PLAN section 1 govern exports. The coordinator's 16 October
+clarification, recorded in `WS7-final-policy.json`, confirms that deploy-size
+val takes precedence over WS5's square-val seed nomination. Every arm uses
+the same seed rule: highest val R@P90 among val FAR passes, then lower val
+confuser FAR, lower val empty FAR, higher val AP50, lower seed index.
+This rule was confirmed before inspecting deploy-size test results for any
+switched seed. Test failure holds that arm; another seed is never retried.
 
-```sh
-python tools/export_ncnn.py --help
-python tools/quantize_ncnn.py --help
-python -m tools.select_model --help
-```
+Arm ranking uses three-seed mean val R@P90. The improvement rule compares
+three-seed test mean against baseline by more than the larger sample standard
+deviation. The chosen export alone supplies test FAR, latency, reaction,
+precision and parity gates. Matched v2/v2s ties within 0.01 val and 5% latency
+use styles recall. Styles never replaces test-v2 promotion gates.
 
-`quantize_ncnn.py` runs only on the xcng ARM lane. Its provenance records every
-selected validation image and SHA-256, the source checkpoint, calibration
-tools and frozen test manifest. It rejects test overlap. Both exported heads
-use centred deployment letterbox, RGB /255 and padding 114.
+Each fp16 export must lose at most 0.01 in each val/test R@P90, AP50 and
+operating recall against the same-head rectangular CPU PyTorch reference.
+Its same-graph fp32 export must pass strict comparison: equal counts,
+IoU >=0.8 and score difference <=0.05 at confidence 0.25. Strict fp16 per-image
+parity is a reported diagnostic. Historical int8 diagnostics use 0.7 / 0.10
+and validation-only calibration on 200 images, with no test overlap.
 
-`predict-native` runs the deployed `columba_native` path, with package-default
-compute and four threads. `evaluate` selects a fresh operating threshold on
-val for every export. Test and styles reuse only that export's val threshold.
-`remeasure` measures native end-to-end time with `OMP_WAIT_POLICY=ACTIVE`,
-retaining an older PASSIVE result as a diagnostic. Each seed-0 package also
-has a WS4 `bench_ncnn` bridge measurement. The native measurement includes the
-extension call and the Python return/decision overhead.
+Species test sets use a temporary copy with taxonomy names aligned by
+`cluster.staging.align_test_taxonomy`. Files stay inside the copy, satisfying
+the evaluator's manifest boundary. Source datasets stay immutable. Pigeon
+remains class 0; non-pigeon classes do not trigger. PLAN 5.4 compares the
+species arm with its named single-taxonomy reference.
 
-The initial matrix was already running when styles was requested. A second
-ARM job added styles and ACTIVE timing to completed candidates without
-restarting it. CPU references computed on the Mac were published only for
-cases that had not started. The first seed's ARM CPU reference validated
-all 1,408 val/test image comparisons against the Mac CPU reference. The
-remaining references use the Mac CPU path. GPU references failed this check
-and remain excluded diagnostics.
+## Evidence and timing
 
-## Audit and packaging
-
-The complete raw evidence and C8 exports are under `outputs/ws7/` locally and
-`~/columba/scratch/ws7/` on the cluster. Raw prediction arrays and model
-weights are deliberately absent from Git. The committed `WS7-candidates/`
-contains the small C4/C7, provenance, parity and accuracy-gate files needed to
-rerun selection. The audit replays parity from the raw predictions and checks
-the actual package bytes and validation-only calibration.
+Raw C3 arrays and all experimental exports remain ignored under `outputs/ws7/`
+and `outputs/ws7-final/`, with ARM copies in `~/columba/scratch/ws7/`.
+`evidence` collects small C4/C7 files, C3 sidecars and provenance into Git.
+`audit` reproduces saved strict parity and verifies actual package bytes:
 
 ```sh
 python -m tools.select_model audit \
-  --candidates outputs/ws7/results --exports outputs/ws7/exports \
-  --dataset /Users/vari/columba-data/columba-train-v2 \
+  --candidates outputs/ws7-final/results --exports outputs/ws7-final/exports \
+  --dataset /Users/vari/columba-data/columba-train-v2s \
   --test-dataset /Users/vari/columba-data/columba-test-v2 \
-  --out experiments/reports/WS7-audit.json
-python -m tools.select_model package \
-  --decision experiments/reports/WS7-selection.json \
+  --out experiments/reports/WS7-final-audit.json
+```
+
+Accuracy is measured via deployed `columba_native` package-default compute on
+allocated xcng cores. CPU PyTorch references use Mac vexcalibur; the original
+first-reference comparison passed all 1,408 val/test images against xcng.
+GPU references were excluded after that comparison failed.
+
+C7 records four pinned cores, A76-compatible NCNN build flags, default compute
+flags, OMP_WAIT_POLICY=ACTIVE, 20 warm-ups and 200 timed iterations. It includes
+native letterbox, inference, decode/NMS, Python return and a bool decision.
+Benchmark source frames are 480x640, recorded as `camera_hw`, resized from the
+first 20 val photos. Pi p95 is an estimate using xcng x1.527110713, not a Pi
+measurement. WS4 reaction is simulated at 30 FPS, k2/n3, 20,000 trials, seed42,
+independent hits, with still-image operating recall as the frame-recall proxy.
+The coordinator now authorises `camera.fps: 30`, leaving `recording_fps`
+unchanged. The simulator already samples serial service durations and selects
+the latest available capture after each service, dropping stale frames. Its
+30 FPS result is throughput limited, not 30 detections per second. Final
+selection reproduces the reaction gate and reports an effective detection rate
+from a 20,000-frame stationary scheduling replay using the same Pi latency
+samples. Do not replace capture FPS with detector FPS and count the service
+limit twice. WS10 step 3 must measure real reaction time.
+
+WS10 step 3 and steps 5–7 remain open: real reaction, site threshold/k-n,
+Pi OMP and on-Pi geometry. The launcher stays unchanged. `columba-test-site-v1` must check the
+real camera; frozen test-v2 has only nine approximately 16:9 images.
+
+## Durable packaging
+
+Final model files follow the incumbent's directly tracked convention under
+`runs/detect/pigeon_detector/<model-id>/weights/best_ncnn_model/`. The existing
+baseline files are unchanged. Git attributes preserve exact param/bin bytes
+and LF metadata. There is no Git LFS filter. The winner is plain-800, so its single shipped package also serves as the
+fallback. Experimental weights remain ignored.
+
+```sh
+python -m tools.select_model package --final \
+  --decision experiments/reports/WS7-final-selection.json \
   --exports outputs/ws7/exports \
-  --report experiments/reports/WS7-provisional.md
+  --fallback-candidate experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed1/yolo11/fp16 \
+  --fallback-exports outputs/ws7/exports \
+  --report experiments/reports/WS7-final.md
+python tools/prepare_models.py
+python tools/prepare_models.py --model-id yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16
 ```
 
-The package command requires an admitted candidate. When selection is HOLD,
-an explicit `--diagnostic` permits the C8/hash dry run with a parity-safe,
-accuracy-safe candidate. That package remains blocked by the recorded gates.
-It does not turn HOLD into a selection. The manifest entry is provisional and
-`prepare_models.py --model-id ID` verifies its SHA-256s and byte counts. The
-existing default model entry stays active. Final promotion belongs to the
-coordinator after distilled and species results arrive.
+Use the selected export's root for `--exports`. The manifest contains only
+repository-relative durable source/runtime paths, checkpoint SHA-256,
+val-derived threshold and each file's SHA-256/byte count. Default preparation
+verifies and copies the winner; `--model-id` also selects the named fallback.
+Clean-clone tests verify the selected package with autocrlf false and true.
+The named-ID preparation path also selects this same package.
 
-The current provisional fp16 package can be fetched and verified in a
-checkout containing this branch's manifest:
+## Earlier diagnostics
+
+The original 54-case matrix was job950463, supplementary styles/ACTIVE timing
+job950885, and rectangular baseline job951221. WS7 cancelled only its own
+failed GPU reference job950509. No training job was changed or cancelled.
+`WS7-platform/` records ACTIVE/PASSIVE prediction equality, reference parity,
+input hashes and timing probes. `WS7-provisional.md` retains int8 and one-to-one
+diagnostics; the original audit is `WS7-audit.json`.
+
+`WS7-aspect.{json,md}` compares plain-800 seed1 PyTorch at 800x800 and 448x800.
+It separates shape-specific WS1 small-object cohorts from a fixed square-defined
+cohort. Portrait images account for 38 of 39 lost matches at the full-test P90
+cut. This analysis is diagnostic; it never changes a deployment threshold.
+The full reproduction commands remain available in the prior committed version
+of this methods report and `tools.select_model aspect --help`.
+
+
+## Final verification and completed pause
+
+The coordinator pause was resumed and closed. Jobs 958128, 958260 and 958304
+completed and were fetched; none is in flight. Finalisation required no new
+cluster jobs. All 18 new fp32/fp16 cases are audited and all 72 cases are in
+the saved decision. The current winner is plain-800 seed1, standard yolo11,
+fp16 at 448x800, threshold 0.62646484375. No selection decision is pending.
+
+Use these commands to repeat local validation from this worktree:
 
 ```sh
-rsync -a -e 'ssh -o BatchMode=yes' \
-  columba-cluster:columba/scratch/ws7/packages/ outputs/ws7/packages/
-python tools/prepare_models.py \
-  --model-id yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16-provisional
+export PATH="/Users/vari/Developer/columba-zero/.venv/bin:$PATH"
+export PYTHONPATH="$PWD/native/build/ws7-final-mac:$PWD"
+export YOLO_CONFIG_DIR="$PWD/outputs/ws7-final/settings"
+export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=4
+python tools/prepare_models.py
+python -m app.main --config outputs/ws7-final/replay-final-config.yaml \
+  --video outputs/ws7-final/replay-800x450-30fps.avi --max-frames 20
+python -m pytest
+python -m unittest discover -s tests -v
+python -m ruff check app tests tools cluster training native
+python -m ruff format --check app tests tools cluster training native
+python -m mypy
+ctest --test-dir native/build/ws7-final-mac --output-on-failure
 ```
 
-The original matrix is job 950463 on xcng0. The supplemental timing/styles
-job is 950885 on xcng1. Their results, exports and logs remain under the WS7
-scratch root. A diagnostic T4 reference job, 950509, was cancelled by WS7
-after 10 min 59 s because its reference parity failed. No WS5 job was changed
-or cancelled. The initial matrix used PASSIVE accuracy; the controlled
-same-package comparison reproduced identical predictions for fp32, fp16 and
-int8 under ACTIVE on all 319 test images. The committed
-[`WS7-platform/`](WS7-platform/) records those hashes, timing probes, CPU
-reference comparisons and input-hash diagnostics.
+The native build and replay clip are local ignored artefacts. For a fresh
+checkout, build `columba_native` using `native/README.md` and provide a local
+replay clip. The replay config changes only display/output settings for
+headless verification; its model, threshold, geometry, capture FPS and
+confirmation settings match deployment. It is an unpaced file replay and
+cannot establish live-camera reaction time.
 
-## Confirmed coordinator policy, 15 October
+Current proof is in `WS7-final-verification.json`, including hashes of raw
+logs under `outputs/ws7-final/resume-validation/`. Results are 325 pytest tests
+and 223 subtests passed, 325 unittest tests passed, one CTest passed, Ruff lint
+and format passed, and mypy passed for all 91 source files. No native test was
+skipped. Final gates and both seed nominations are in `WS7-final.md`.
 
-Contracts v1.8 and PLAN section 1 define the revised gates. Arms rank by
-three-seed mean val R@P90, and use three-seed test mean for the improvement
-rule. Choose the shipped seed on val only, among seeds passing val FAR.
-Test FAR, latency, reaction, precision accuracy and parity gate that export.
-A failed test gate holds the arm; another seed is never tried because of test.
-Every seed's FAR remains in the report for robustness context.
+`select` and `package` regenerate the core report from saved C4/C7 evidence.
+If new evidence is added later, refresh the final report's verification and
+diagnostic appendix from the new decision and actual check results. Do not
+retain old validation counts after a code or config change.
 
-Fp16 parity requires strict same-graph fp32 parity plus at most 0.01 loss in
-each val/test R@P90, AP50 and operating recall. Strict fp16 per-image parity
-is reported diagnostically. Int8 and one-to-one are excluded from deployment.
-Matching v2/v2s arms within 0.01 val recall and 5% latency use styles recall.
-
-All WS7 C7 files now record ACTIVE or PASSIVE. Legacy bridge/PASSIVE records
-were annotated from their recorded job environments; timing samples were
-unchanged. ACTIVE is the WS7 measurement profile. WS10 will decide the deployed
-policy on real Pi hardware, including pipeline contention. The launcher stays
-unchanged. Reaction still assumes independent temporal hits and proxies frame
-recall with still-image operating recall; no measured Pi result is claimed.
-
-## Rectangular baseline and geometry replay
-
-Job 951221 measured all three baseline seeds at 384x640 using native fp32 and
-fp16, with four allocated ARM cores. It completed successfully. Its raw C3/C4
-files are under `~/columba/scratch/ws7/baseline-native/` and locally under
-`outputs/ws7/baseline-native/`. New exports are under `revision-exports/` in
-the same scratch roots. No finalist graph was re-exported.
-
-Mac CPU reference command, repeated with seed 0, 1 and 2:
-
-```sh
-python -m tools.select_model references \
-  --checkpoint "$PWD/outputs/ws7/checkpoints/baseline-repro-p50/seed0/weights/best.pt" \
-  --recipe baseline-repro-p50 --seed 0 --input-hw 384 640 --decodes yolo11 \
-  --output outputs/ws7/revision-references \
-  --dataset /Users/vari/columba-data/columba-train-v1clean \
-  --test-dataset /Users/vari/columba-data/columba-test-v2 --device cpu --batch 1
-```
-
-The aspect diagnostic uses the provisional pick's PyTorch checkpoint, not its
-fp16 export. Both C3 files use the same Mac CPU implementation and checkpoint.
-The square source can be regenerated with `tools.predict_to_coco`, `--imgsz
-800 800`, `--decode yolo11`, `--device cpu`, and that checkpoint's absolute path.
-
-```sh
-python -m tools.select_model aspect \
-  --dataset /Users/vari/columba-data/columba-test-v2 \
-  --square-predictions outputs/ws7/aspect/square/predictions_test.json \
-  --rectangular-predictions outputs/ws7/results/yolo26n-v2s-800-round2-plain/seed1/yolo11/pt/predictions_test.json \
-  --out experiments/reports/WS7-aspect.json \
-  --report experiments/reports/WS7-aspect.md
-```
-
-The report distinguishes shape-specific WS1 small cohorts from the fixed
-square-defined cohort. Bucket P90 score cuts and full-test P90 cuts are
-diagnostics only. They never replace val-selected deployment thresholds.
-The reviewed interpretation is saved in `WS7-aspect.json`; regenerating the
-diagnostic requires reviewing that interpretation again.
+WS10 step 3 must measure real reaction p95 on the Pi. Steps 5–7 still cover
+site threshold/k-n, OMP policy and on-Pi capture/model geometry. No contract
+change is requested, and no merge into main was performed.

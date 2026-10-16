@@ -1,0 +1,7 @@
+{
+  "source": "/Users/vari/.t3/worktrees/columba-zero/t3-27965e4a/outputs/ws7-final/checkpoints/yolo26n-v2s-800-r3-control-b16/seed1/weights/best.pt",
+  "source_sha256": "bcba511e8a686e7ae95896c254be160998694a3a188890a53f167e08830dbd77",
+  "decode": "yolo11",
+  "quantization": "fp32",
+  "transformation": "standard"
+}

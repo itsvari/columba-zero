@@ -1,4 +1,4 @@
-"""Copy and verify incumbent or provisional C8 artefacts using the tracked manifest."""
+"""Copy and verify selected, fallback or provisional C8 artefacts from the manifest."""
 
 from __future__ import annotations
 
@@ -30,11 +30,15 @@ class ModelManifest:
             if model_id is not None:
                 matches = [
                     entry
-                    for entry in manifest.get("provisional_models", [])
-                    if entry["model_id"] == model_id
+                    for entry in [
+                        manifest,
+                        *manifest.get("fallback_models", []),
+                        *manifest.get("provisional_models", []),
+                    ]
+                    if entry.get("model_id") == model_id
                 ]
                 if len(matches) != 1:
-                    raise ValueError(f"expected one provisional model entry for {model_id}")
+                    raise ValueError(f"expected one model entry for {model_id}")
                 manifest = matches[0]
             return cls(
                 source=manifest["source"],
@@ -62,14 +66,10 @@ def prepare_models(repository: Path, model_id: str | None = None) -> Path:
     target = repository / manifest.runtime_directory
     verify_files(source, manifest.files, "source")
     target.mkdir(parents=True, exist_ok=True)
-    if model_id is None:
-        shutil.copy2(source / "best.pt", target / "best.pt")
-        shutil.copytree(source / "best_ncnn_model", target / "best_ncnn_model", dirs_exist_ok=True)
-    else:
-        for record in manifest.files:
-            destination = target / record.file
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source / record.file, destination)
+    for record in manifest.files:
+        destination = target / record.file
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / record.file, destination)
     verify_files(target, manifest.files, "copy")
     return target
 
@@ -81,6 +81,6 @@ def main(model_id: str | None = None) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--model-id", help="verify a provisional C8 entry; default verifies incumbent"
+        "--model-id", help="verify a named C8 entry; default verifies the selected model"
     )
     main(parser.parse_args().model_id)
