@@ -79,7 +79,10 @@ def write_package(
 
 class ConfigTests(unittest.TestCase):
     def test_default_config(self) -> None:
-        config = AppConfig.load("app/config.yaml")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.yaml"
+            path.write_text("{}\n")
+            config = AppConfig.load(path)
         self.assertEqual(config.model.image_size, 640)
         self.assertEqual(config.model.confidence, 0.5)
         self.assertTrue(config.display.enabled)
@@ -122,7 +125,7 @@ class ConfigTests(unittest.TestCase):
             config = AppConfig.load(path)
         self.assertEqual(config.model.image_size, (384, 640))
         self.assertEqual((config.model.backend, config.model.threads), ("native", 2))
-        defaults = AppConfig.load("app/config.yaml")
+        defaults = AppConfig()
         self.assertEqual((defaults.model.backend, defaults.model.threads), ("ultralytics", 4))
         self.assertEqual(defaults.confirmation, ConfirmationConfig())
         self.assertFalse(defaults.confirmation.enabled)
