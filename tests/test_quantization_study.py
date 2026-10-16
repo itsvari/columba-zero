@@ -5,10 +5,34 @@ import unittest
 from pathlib import Path
 
 from tools.quantization_study import scan_groups
-from tools.quantize_ncnn import filter_table, layer_inventory
+from tools.quantize_ncnn import filter_table, layer_inventory, set_activation_ranges
 
 
 class QuantizationStudyTests(unittest.TestCase):
+    def test_known_input_range_changes_only_its_activation_scale(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            table = Path(temporary) / "source.table"
+            table.write_text("conv_3_param_0 1 2\nconv_3 283.483368\nconv_30 6\n")
+            set_activation_ranges(table, (("conv_3", 1.0),))
+            self.assertEqual(table.read_text(), "conv_3_param_0 1 2\nconv_3 127\nconv_30 6\n")
+
+    def test_activation_range_rejects_missing_layers_and_nonphysical_values(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            table = Path(temporary) / "source.table"
+            original = "conv_3_param_0 1 2\nconv_3 283.483368\n"
+            for name, maximum in (
+                ("conv_4", 1.0),
+                ("conv_3_param_0", 1.0),
+                ("conv_3", 0.0),
+                ("conv_3", float("nan")),
+                ("conv_3", float("inf")),
+            ):
+                with self.subTest(name=name, maximum=maximum):
+                    table.write_text(original)
+                    with self.assertRaises(ValueError):
+                        set_activation_ranges(table, ((name, maximum),))
+                    self.assertEqual(table.read_text(), original)
+
     def test_float_filter_removes_activation_and_weight_entries_without_prefix_collisions(
         self,
     ) -> None:

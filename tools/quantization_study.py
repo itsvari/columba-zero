@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import time
@@ -59,14 +60,23 @@ def audit_preprocessing(arguments: argparse.Namespace) -> None:
     )
     maximum_pixel_delta = 0
     maximum_tensor_delta = 0.0
+    input_histogram = np.zeros(256, dtype=np.int64)
+    padding_channel_values = 0
     images: list[JsonValue] = []
     for image in selected:
         frame = cv2.imread(str(image.path))
         if frame is None:
             raise ValueError(f"cannot read {image.path}")
         tensor, _ = letterbox(cast(Frame, frame), settings.input_hw)
+        image_height_px, image_width_px = frame.shape[:2]
+        scale = min(settings.input_hw[0] / image_height_px, settings.input_hw[1] / image_width_px)
+        content_area_px = round(image_height_px * scale) * round(image_width_px * scale)
+        padding_channel_values += (
+            settings.input_hw[0] * settings.input_hw[1] - content_area_px
+        ) * 3
         padded = np.rint(tensor.transpose(1, 2, 0)[:, :, ::-1] * 255).astype(np.uint8)
         native_padded = np.asarray(columba_native._letterbox(frame, *settings.input_hw))
+        input_histogram += np.bincount(native_padded.reshape(-1), minlength=len(input_histogram))
         pixel_delta = int(np.max(np.abs(padded.astype(np.int16) - native_padded.astype(np.int16))))
         native_tensor = native_padded[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) / 255
         tensor_delta = float(np.max(np.abs(tensor - native_tensor)))
@@ -87,6 +97,8 @@ def audit_preprocessing(arguments: argparse.Namespace) -> None:
             "maximum_tensor_delta": maximum_tensor_delta,
             "passed": maximum_pixel_delta == 0 and maximum_tensor_delta == 0,
             "test_overlap_sha256": False,
+            "input_rgb_byte_histogram": [int(value) for value in input_histogram],
+            "padding_channel_values": padding_channel_values,
             "images": images,
         },
     )
@@ -103,9 +115,22 @@ def calibrate(
     table_source: Path | None = None,
     float_layers: tuple[str, ...] = (),
     no_resize: bool = False,
+    activation_ranges: tuple[tuple[str, float], ...] = (),
 ) -> Path | None:
     package = Path(arguments.output) / "packages" / f"{variant}_ncnn_model"
     if package.exists():
+        provenance = read_report(package / "calibration.json")
+        expected: dict[str, JsonValue] = {
+            "algorithm": method,
+            "count": count,
+            "float_layers": list(float_layers),
+            "activation_absolute_maxima": dict(activation_ranges),
+            "source_weights_sha256": digest(arguments.model / "model.ncnn.bin"),
+            "table_source_sha256": digest(table_source) if table_source else None,
+        }
+        defaults: dict[str, JsonValue] = {"activation_absolute_maxima": {}}
+        if any(provenance.get(key, defaults.get(key)) != value for key, value in expected.items()):
+            raise ValueError(f"cached package differs from requested variant: {package}")
         return package
     command = [
         sys.executable,
@@ -133,6 +158,8 @@ def calibrate(
         command.append("--no-resize")
     if method == "eq":
         command.extend(["--timeout-seconds", str(EQUALISATION_TIMEOUT_SECONDS)])
+    for name, maximum in activation_ranges:
+        command.extend(["--activation-range", name, str(maximum)])
     logs = arguments.output / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     started_s = time.monotonic()
@@ -169,6 +196,11 @@ def calibrate(
 def evaluate_variant(arguments: argparse.Namespace, variant: str, package: Path) -> None:
     directory = arguments.output / "results" / variant
     if (directory / "summary.json").exists():
+        summary = read_report(directory / "summary.json")
+        if summary["parameters_sha256"] != digest(package / "model.ncnn.param") or summary[
+            "weights_sha256"
+        ] != digest(package / "model.ncnn.bin"):
+            raise ValueError(f"cached results differ from requested model: {directory}")
         return
     directory.mkdir(parents=True, exist_ok=True)
     for split, dataset in (("val", arguments.dataset), ("test", arguments.test_dataset)):
@@ -190,7 +222,7 @@ def evaluate_variant(arguments: argparse.Namespace, variant: str, package: Path)
         parity(
             arguments.reference / "predictions_test.json",
             directory / "predictions_test.json",
-            "int8",
+            model_settings(package, None, None).format.removeprefix("ncnn-"),
             [image.image_id for image in load_dataset(arguments.test_dataset, "test").images],
         ),
     )
@@ -257,6 +289,19 @@ def scan_groups(model: Path) -> dict[str, tuple[str, ...]]:
     return {name: layers for name, layers in groups.items() if layers}
 
 
+def head_variants(model: Path) -> dict[str, tuple[str, ...]]:
+    groups = scan_groups(model)
+    return {
+        "head": groups["box"] + groups["class"],
+        "terminal-class": ("conv_90", "conv_93", "conv_96"),
+        "terminal-box": ("conv_81", "conv_84", "conv_87"),
+        "terminal-head": ("conv_81", "conv_84", "conv_87", "conv_90", "conv_93", "conv_96"),
+        "class-p3": ("conv_90",),
+        "class-p4": ("conv_93",),
+        "class-p5": ("conv_96",),
+    }
+
+
 def run_study(arguments: argparse.Namespace) -> None:
     require_arm()
     arguments.output.mkdir(parents=True, exist_ok=True)
@@ -274,6 +319,24 @@ def run_study(arguments: argparse.Namespace) -> None:
     if arguments.phase == "reference":
         evaluate_variant(arguments, arguments.variant, arguments.model)
         return
+    if arguments.phase == "optimise-reference":
+        package = arguments.output / "packages" / "optimised-fp32_ncnn_model"
+        if not package.exists():
+            package.mkdir(parents=True)
+            subprocess.run(
+                [
+                    str(arguments.prefix / "bin/ncnnoptimize"),
+                    str(arguments.model / "model.ncnn.param"),
+                    str(arguments.model / "model.ncnn.bin"),
+                    str(package / "model.ncnn.param"),
+                    str(package / "model.ncnn.bin"),
+                    "0",
+                ],
+                check=True,
+            )
+            shutil.copy2(arguments.model / "metadata.yaml", package / "metadata.yaml")
+        evaluate_variant(arguments, "optimised-fp32", package)
+        return
     if arguments.phase == "convert":
         package = calibrate(
             arguments,
@@ -283,13 +346,20 @@ def run_study(arguments: argparse.Namespace) -> None:
             table_source=arguments.table_source,
             float_layers=tuple(arguments.float_layers),
             no_resize=arguments.no_resize,
+            activation_ranges=tuple(
+                (name, float(value)) for name, value in arguments.activation_range
+            ),
         )
         if package:
             evaluate_variant(arguments, arguments.variant, package)
         return
-    groups = scan_groups(arguments.model)
+    groups = (
+        head_variants(arguments.model)
+        if arguments.phase == "heads"
+        else scan_groups(arguments.model)
+    )
     write_json(
-        arguments.output / "scan_groups.json",
+        arguments.output / f"{arguments.phase}_groups.json",
         cast(dict[str, JsonValue], {name: list(layers) for name, layers in groups.items()}),
     )
     for name, layers in groups.items():
@@ -308,7 +378,18 @@ def run_study(arguments: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=("audit", "calibration", "scan", "convert", "reference"))
+    parser.add_argument(
+        "phase",
+        choices=(
+            "audit",
+            "calibration",
+            "scan",
+            "heads",
+            "convert",
+            "reference",
+            "optimise-reference",
+        ),
+    )
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--dataset", type=Path, required=True)
@@ -328,6 +409,9 @@ def main() -> None:
     parser.add_argument("--float-layers", nargs="*", default=[])
     parser.add_argument("--variant", default="variant")
     parser.add_argument("--no-resize", action="store_true")
+    parser.add_argument(
+        "--activation-range", nargs=2, action="append", default=[], metavar=("LAYER", "ABSMAX")
+    )
     arguments = parser.parse_args()
     try:
         run_study(arguments)

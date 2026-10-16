@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import platform
 import shutil
 import subprocess
@@ -73,6 +74,19 @@ def filter_table(source: Path, destination: Path, float_layers: tuple[str, ...])
     destination.write_text("\n".join(retained) + "\n")
 
 
+def set_activation_ranges(table: Path, ranges: tuple[tuple[str, float], ...]) -> None:
+    entries = dict(
+        line.split(maxsplit=1) for line in table.read_text().splitlines() if line.strip()
+    )
+    for name, absolute_maximum in ranges:
+        if name not in entries or "_param_" in name:
+            raise ValueError(f"activation layer absent from filtered table: {name}")
+        if not math.isfinite(absolute_maximum) or absolute_maximum <= 0:
+            raise ValueError("activation absolute maximum must be finite and positive")
+        entries[name] = f"{127 / absolute_maximum:.9g}"
+    table.write_text("".join(f"{name} {scales}\n" for name, scales in entries.items()))
+
+
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -109,6 +123,7 @@ def quantize_package(
     float_layers: tuple[str, ...] = (),
     no_resize: bool = False,
     timeout_seconds: int | None = None,
+    activation_ranges: tuple[tuple[str, float], ...] = (),
 ) -> Path:
     if require_arm and not (
         platform.machine() == "aarch64" and platform.node().split(".")[0] in ("xcng0", "xcng1")
@@ -203,6 +218,7 @@ def quantize_package(
         unfiltered = scratch / "unfiltered.table"
         shutil.copy2(table, unfiltered)
         filter_table(unfiltered, table, float_layers)
+        set_activation_ranges(table, activation_ranges)
         subprocess.run(commands[2], check=True)
         inventory = layer_inventory(output / "model.ncnn.param")
         if not any(layer["quantised"] for layer in inventory):
@@ -223,6 +239,7 @@ def quantize_package(
             "method": f"NCNN {method.upper()}",
             "algorithm": method,
             "float_layers": list(float_layers),
+            "activation_absolute_maxima": dict(activation_ranges),
             "table_source_sha256": digest(table_source) if table_source else None,
             "table_sha256": digest(table),
             "calibrator_shape": [0, 0, 3]
@@ -263,6 +280,9 @@ def main() -> None:
     parser.add_argument("--float-layers", nargs="*", default=[])
     parser.add_argument("--timeout-seconds", type=int, help="bound the calibration subprocess")
     parser.add_argument(
+        "--activation-range", nargs=2, action="append", default=[], metavar=("LAYER", "ABSMAX")
+    )
+    parser.add_argument(
         "--no-resize", action="store_true", help="pass shape=[0,0,3] for already letterboxed PNGs"
     )
     arguments = parser.parse_args()
@@ -281,6 +301,9 @@ def main() -> None:
                 float_layers=tuple(arguments.float_layers),
                 no_resize=arguments.no_resize,
                 timeout_seconds=arguments.timeout_seconds,
+                activation_ranges=tuple(
+                    (name, float(value)) for name, value in arguments.activation_range
+                ),
             )
         )
     except (ValueError, OSError) as error:
