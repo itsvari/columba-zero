@@ -1,0 +1,13 @@
+{
+  "variant": "eq-1000",
+  "method": "eq",
+  "count": 1000,
+  "float_layers": [],
+  "elapsed_seconds": 120.39643727289513,
+  "failure": "calibration exited 1; see logs/eq-1000.log",
+  "host": "xcng1",
+  "label": "measured",
+  "job_id": "959719",
+  "original_failure_log_sha256": "457ec09b780f54d04343a1c38a341fc420fa86046454326d9f8ae762bf674c3c",
+  "normalised_failure_log_sha256": "4955dac813d5d232b3dc91dc0f56ed8e7d2ecaa6a1a671d5fe1352facc1654aa"
+}

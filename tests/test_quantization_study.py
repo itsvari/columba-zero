@@ -1,14 +1,36 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from tools.quantization_study import scan_groups
+from tools.quantization_study import scan_groups, validate_reference
 from tools.quantize_ncnn import filter_table, layer_inventory, set_activation_ranges
 
 
 class QuantizationStudyTests(unittest.TestCase):
+    def test_reference_guard_rejects_gpu_batch_cache_that_changes_parity(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            reference = Path(temporary)
+            metadata = {
+                "device": "cpu",
+                "batch": 1,
+                "format": "pt",
+                "input_hw": [448, 800],
+                "decode": "yolo11",
+            }
+            for split in ("val", "test"):
+                (reference / f"predictions_{split}.meta.json").write_text(json.dumps(metadata))
+            validate_reference(reference)
+            for field, incorrect in (("device", "0"), ("batch", 16), ("input_hw", [800, 800])):
+                with self.subTest(field=field):
+                    (reference / "predictions_test.meta.json").write_text(
+                        json.dumps({**metadata, field: incorrect})
+                    )
+                    with self.assertRaisesRegex(ValueError, "CPU/batch-1"):
+                        validate_reference(reference)
+
     def test_known_input_range_changes_only_its_activation_scale(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             table = Path(temporary) / "source.table"

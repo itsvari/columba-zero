@@ -18,7 +18,7 @@ import numpy as np
 from app.json_data import JsonValue
 from app.models import Frame
 from tools.bench_ncnn import read_report
-from tools.evaluate_predictions import load_dataset, mapping, number
+from tools.evaluate_predictions import load_dataset, mapping, number, sidecar_path
 from tools.predict_to_coco import letterbox, model_settings
 from tools.quantize_ncnn import calibration_images, digest, layer_inventory
 from tools.select_model import (
@@ -44,6 +44,38 @@ def require_arm() -> None:
         raise ValueError("study requires exactly four allocated, pinned CPU cores")
     if os.environ.get("OMP_WAIT_POLICY") != "ACTIVE":
         raise ValueError("study latency requires OMP_WAIT_POLICY=ACTIVE before NCNN loads")
+
+
+def validate_reference(reference: Path) -> None:
+    for split in ("val", "test"):
+        metadata = read_report(sidecar_path(reference / f"predictions_{split}.json"))
+        if (
+            metadata.get("device") != "cpu"
+            or metadata.get("batch") != 1
+            or metadata.get("format") != "pt"
+            or metadata.get("input_hw") != [448, 800]
+            or metadata.get("decode") != "yolo11"
+        ):
+            raise ValueError(
+                "study requires the published rectangular CPU/batch-1 PyTorch reference"
+            )
+
+
+def compare_reference(directory: Path, reference: Path, frozen_test: Path) -> None:
+    validate_reference(reference)
+    precision = str(
+        read_report(sidecar_path(directory / "predictions_test.json"))["format"]
+    ).removeprefix("ncnn-")
+    write_json(directory / "accuracy_gate.json", accuracy_gate(reference, directory))
+    write_json(
+        directory / "parity.json",
+        parity(
+            reference / "predictions_test.json",
+            directory / "predictions_test.json",
+            precision,
+            [image.image_id for image in load_dataset(frozen_test, "test").images],
+        ),
+    )
 
 
 def audit_preprocessing(arguments: argparse.Namespace) -> None:
@@ -216,16 +248,7 @@ def evaluate_variant(arguments: argparse.Namespace, variant: str, package: Path)
                 )
             )
     score(directory, arguments.dataset, arguments.test_dataset)
-    write_json(directory / "accuracy_gate.json", accuracy_gate(arguments.reference, directory))
-    write_json(
-        directory / "parity.json",
-        parity(
-            arguments.reference / "predictions_test.json",
-            directory / "predictions_test.json",
-            model_settings(package, None, None).format.removeprefix("ncnn-"),
-            [image.image_id for image in load_dataset(arguments.test_dataset, "test").images],
-        ),
-    )
+    compare_reference(directory, arguments.reference, arguments.test_dataset)
     validation = read_report(directory / "metrics_val.json")
     threshold = mapping(validation["operating_threshold"], "threshold")["value"]
     benchmark_native(
@@ -308,6 +331,11 @@ def run_study(arguments: argparse.Namespace) -> None:
     if arguments.phase == "audit":
         audit_preprocessing(arguments)
         return
+    validate_reference(arguments.reference)
+    if arguments.phase == "recompare":
+        for summary_path in sorted((arguments.output / "results").glob("*/summary.json")):
+            compare_reference(summary_path.parent, arguments.reference, arguments.test_dataset)
+        return
     if arguments.phase == "calibration":
         for method in arguments.methods:
             for count in arguments.counts:
@@ -388,6 +416,7 @@ def main() -> None:
             "convert",
             "reference",
             "optimise-reference",
+            "recompare",
         ),
     )
     parser.add_argument("--model", type=Path, required=True)

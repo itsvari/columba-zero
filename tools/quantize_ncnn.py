@@ -30,6 +30,7 @@ CALIBRATION_IMAGES = 200
 CALIBRATION_SEED = 42
 THREAD_COUNT = 4
 OPTIMISE_FP32 = "0"
+SYMMETRIC_INT8_MAXIMUM = 127.0
 CalibrationMethod = Literal["kl", "aciq", "eq"]
 QUANTISABLE_LAYERS = frozenset({"Convolution", "ConvolutionDepthWise", "InnerProduct"})
 
@@ -83,7 +84,7 @@ def set_activation_ranges(table: Path, ranges: tuple[tuple[str, float], ...]) ->
             raise ValueError(f"activation layer absent from filtered table: {name}")
         if not math.isfinite(absolute_maximum) or absolute_maximum <= 0:
             raise ValueError("activation absolute maximum must be finite and positive")
-        entries[name] = f"{127 / absolute_maximum:.9g}"
+        entries[name] = f"{SYMMETRIC_INT8_MAXIMUM / absolute_maximum:.9g}"
     table.write_text("".join(f"{name} {scales}\n" for name, scales in entries.items()))
 
 
@@ -212,6 +213,7 @@ def quantize_package(
                 or calibration["count"] != count
                 or calibration["seed"] != seed
                 or calibration.get("algorithm", "kl") != method
+                or calibration.get("table_sha256", digest(table_source)) != digest(table_source)
             ):
                 raise ValueError("reused table provenance differs from the requested calibration")
             shutil.copy2(table_source, table)
@@ -223,6 +225,11 @@ def quantize_package(
         inventory = layer_inventory(output / "model.ncnn.param")
         if not any(layer["quantised"] for layer in inventory):
             raise ValueError("NCNN conversion produced no int8 scale terms")
+        activation_entries = {
+            line.split()[0] for line in table.read_text().splitlines() if line.strip()
+        }
+        if any(layer["quantised"] != (layer["name"] in activation_entries) for layer in inventory):
+            raise ValueError("NCNN quantised-layer inventory differs from the filtered table")
         metadata = mapping(yaml.safe_load((model / "metadata.yaml").read_text()), "metadata")
         columba = mapping(metadata["columba"], "columba")
         columba["quantization"] = "int8"
