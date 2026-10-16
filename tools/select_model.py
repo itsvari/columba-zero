@@ -1043,7 +1043,7 @@ def select_candidates(
         "fp16_parity_policy": (
             "same-graph strict fp32 parity and precision accuracy; strict fp16 diagnostic"
         ),
-        "excluded": ["int8", "decode:yolo26"],
+        "excluded": ["int8", "decode:yolo26"] + (["fp32 parity companions"] if final else []),
         "precision_accuracy_gate": (
             "each split R@P90/AP50/operating recall drop <=0.01 vs same-head rectangular PyTorch"
         ),
@@ -1570,6 +1570,7 @@ def durable_package_entry(
         "runtime_directory": f"models/{model_id}",
         "selection": str(decision_path.resolve().relative_to(repository)),
         "checkpoint_sha256": read_report(source / "export.json")["source_sha256"],
+        "measured_model_id": descriptor["model_id"],
         "operating_threshold": read_report(candidate / "metrics_val.json")["operating_threshold"],
         "decode": descriptor["decode"],
         "input_hw": descriptor["input_hw"],
