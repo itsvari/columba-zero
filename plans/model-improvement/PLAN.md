@@ -1,5 +1,15 @@
 # Pigeon detector improvement plan
 
+> **Status (17 Oct 2026): project closed except WS10.** WS0–WS9 are done (WS6
+> closed at its latency gate). The shipped model and its numbers are in the
+> [section 1 outcome](#1-goals-and-success-criteria) and
+> [WS7-final.md](../../experiments/reports/WS7-final.md). WS10, Pi hardware
+> acceptance, is blocked until the hardware arrives; its steps are in
+> section 7 and the working checklist is
+> [RASPBERRY_PI_PROTOTYPE_PLAN.md](../../RASPBERRY_PI_PROTOTYPE_PLAN.md).
+> The repository was cleaned up afterwards; removed evidence and one-off
+> scripts are in git history at `6de04fb`.
+
 Plan for improving accuracy, speed, and reaction time of the Columba Zero
 detector on a Raspberry Pi 5 with a Camera Module 3 Wide and a NoIR camera.
 Written to be executed by one agent or by several agents in parallel git

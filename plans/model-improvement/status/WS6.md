@@ -5,6 +5,9 @@
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-14
 
+Cleanup note (17 Oct 2026): `training/adapters/` and `tests/test_challengers.py`
+were removed from the repository; they are in git history at `6de04fb`.
+
 ## Done
 
 Latency gate completed for COCO-pretrained D-FINE-N, RF-DETR Nano and

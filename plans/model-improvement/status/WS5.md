@@ -1,6 +1,6 @@
 # WS5 — YOLO training and distillation
 
-- State: done (training); final call with WS7  <!-- not started | in progress | blocked | done -->
+- State: done (final selection made in WS7: plain-800 shipped, distill-800 and species held)  <!-- not started | in progress | blocked | done -->
 - Branch: `ws5/training`
 - Agent: Claude Opus 5.5 via T3 delegate
 - Last updated: 2026-10-16

@@ -5,6 +5,10 @@
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-14
 
+Cleanup note (17 Oct 2026): the 1536×864 records in `experiments/latency/highres/`
+were removed from the repository; `experiments/latency/summary.md` keeps their
+numbers and git history at `6de04fb` has the files.
+
 ## Done
 
 All WS4 tasks 1–6 and its "Done when" are complete. PLAN itself is coordinator-owned; the recomputed replacement table is ready below.

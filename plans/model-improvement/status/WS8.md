@@ -6,6 +6,10 @@
 - Last updated: 2026-10-14
 - Rebased onto main: `3af2d02`, including native mypy and Ruff coverage from `2cb3308`.
 
+Cleanup note (17 Oct 2026): `native/run_frozen_parity.sh`,
+`run_frozen_arm_job.sh`, `verify_ws4_prefix.sh` and `rescore_parity.py` were
+removed from the repository; they are in git history at `6de04fb`.
+
 ## Done
 
 1. `columba_native.Detector(model_dir, threads=4, compute=None)`: C8 and legacy metadata,

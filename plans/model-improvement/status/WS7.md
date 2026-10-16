@@ -1,10 +1,15 @@
 # WS7 — Export, quantisation and selection
 
-- State: PTQ study complete; stock EQ unavailable; export work complete
+- State: done (export and selection merged at `a3e4321`, PTQ study at `6de04fb`; fp16 shipped, int8 rejected, QAT deferred)
 - Branch: `ws7/quant`, created from local main `e6e12be`
 - Agent: gpt-6.1-sol via T3 delegate
-- Last updated: 2026-10-16
+- Last updated: 2026-10-17 (coordinator cleanup)
 - Export contracts: v1.9; original selection based on coordinator main `47a9b8b`
+
+Cleanup note (17 Oct 2026): `WS7-candidates/`, `WS7-final-candidates/`,
+`WS7-quant-evidence/`, `WS7-final-references/`, `WS7-platform/` and most of
+`WS7-baseline/` were removed from the repository; they are in git history at
+`6de04fb`.
 
 ## Quantisation follow-up
 
