@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import numpy as np
 import yaml
@@ -29,6 +29,48 @@ CALIBRATION_IMAGES = 200
 CALIBRATION_SEED = 42
 THREAD_COUNT = 4
 OPTIMISE_FP32 = "0"
+CalibrationMethod = Literal["kl", "aciq", "eq"]
+QUANTISABLE_LAYERS = frozenset({"Convolution", "ConvolutionDepthWise", "InnerProduct"})
+
+
+def layer_inventory(parameters: Path) -> list[dict[str, JsonValue]]:
+    inventory: list[dict[str, JsonValue]] = []
+    for line in parameters.read_text().splitlines()[2:]:
+        fields = line.split()
+        if not fields or fields[0] not in QUANTISABLE_LAYERS:
+            continue
+        input_count, output_count = int(fields[2]), int(fields[3])
+        options = dict(field.split("=", 1) for field in fields[4 + input_count + output_count :])
+        inventory.append(
+            {
+                "name": fields[1],
+                "kind": fields[0],
+                "inputs": cast(list[JsonValue], fields[4 : 4 + input_count]),
+                "outputs": cast(
+                    list[JsonValue], fields[4 + input_count : 4 + input_count + output_count]
+                ),
+                "output_channels": int(options["0"]),
+                "int8_scale_term": int(options.get("8", "0")),
+                "quantised": int(options.get("8", "0")) != 0,
+            }
+        )
+    return inventory
+
+
+def filter_table(source: Path, destination: Path, float_layers: tuple[str, ...]) -> None:
+    lines = source.read_text().splitlines()
+    names = {line.split()[0].split("_param_", 1)[0] for line in lines if line.strip()}
+    unknown = set(float_layers) - names
+    if unknown:
+        raise ValueError(f"float layers absent from calibration table: {sorted(unknown)}")
+    retained = [
+        line
+        for line in lines
+        if line.strip() and line.split()[0].split("_param_", 1)[0] not in float_layers
+    ]
+    if not retained:
+        raise ValueError("at least one calibrated layer must remain quantised")
+    destination.write_text("\n".join(retained) + "\n")
 
 
 def digest(path: Path) -> str:
@@ -62,6 +104,11 @@ def quantize_package(
     count: int = CALIBRATION_IMAGES,
     seed: int = CALIBRATION_SEED,
     require_arm: bool = True,
+    method: CalibrationMethod = "kl",
+    table_source: Path | None = None,
+    float_layers: tuple[str, ...] = (),
+    no_resize: bool = False,
+    timeout_seconds: int | None = None,
 ) -> Path:
     if require_arm and not (
         platform.machine() == "aarch64" and platform.node().split(".")[0] in ("xcng0", "xcng1")
@@ -70,6 +117,8 @@ def quantize_package(
     settings = model_settings(model, None, None)
     if settings.format != "ncnn-fp32":
         raise ValueError("calibrate from the fp32 export, before fp16 weight rounding")
+    if method not in ("kl", "aciq", "eq"):
+        raise ValueError("calibration method must be kl, aciq or eq")
     selected = calibration_images(
         load_dataset(validation, "val"), load_dataset(frozen_test, "test"), count, seed
     )
@@ -117,10 +166,12 @@ def quantize_package(
                 str(table),
                 "mean=[0,0,0]",
                 "norm=[0.003921568627,0.003921568627,0.003921568627]",
-                f"shape=[{settings.input_hw[1]},{settings.input_hw[0]},3]",
+                "shape=[0,0,3]"
+                if no_resize
+                else f"shape=[{settings.input_hw[1]},{settings.input_hw[0]},3]",
                 "pixel=RGB",
                 f"thread={THREAD_COUNT}",
-                "method=kl",
+                f"method={method}",
             ],
             [
                 str(prefix / "bin/ncnn2int8"),
@@ -131,10 +182,30 @@ def quantize_package(
                 str(table),
             ],
         ]
-        for command in commands:
-            subprocess.run(command, check=True)
-        layers = (output / "model.ncnn.param").read_text().splitlines()[2:]
-        if not any(layer.startswith("Convolution") and " 8=" in layer for layer in layers):
+        subprocess.run(commands[0], check=True)
+        if table_source is None:
+            subprocess.run(commands[1], check=True, timeout=timeout_seconds)
+        else:
+            calibration = mapping(
+                json.loads((table_source.parent / "calibration.json").read_text()), "calibration"
+            )
+            if (
+                calibration["source_weights_sha256"] != digest(model / "model.ncnn.bin")
+                or calibration["validation_manifest_sha256"]
+                != digest(validation / "manifest.jsonl")
+                or calibration["test_manifest_sha256"] != digest(frozen_test / "manifest.jsonl")
+                or calibration["count"] != count
+                or calibration["seed"] != seed
+                or calibration.get("algorithm", "kl") != method
+            ):
+                raise ValueError("reused table provenance differs from the requested calibration")
+            shutil.copy2(table_source, table)
+        unfiltered = scratch / "unfiltered.table"
+        shutil.copy2(table, unfiltered)
+        filter_table(unfiltered, table, float_layers)
+        subprocess.run(commands[2], check=True)
+        inventory = layer_inventory(output / "model.ncnn.param")
+        if not any(layer["quantised"] for layer in inventory):
             raise ValueError("NCNN conversion produced no int8 scale terms")
         metadata = mapping(yaml.safe_load((model / "metadata.yaml").read_text()), "metadata")
         columba = mapping(metadata["columba"], "columba")
@@ -149,7 +220,14 @@ def quantize_package(
             "split": "val",
             "count": len(selected),
             "seed": seed,
-            "method": "NCNN KL",
+            "method": f"NCNN {method.upper()}",
+            "algorithm": method,
+            "float_layers": list(float_layers),
+            "table_source_sha256": digest(table_source) if table_source else None,
+            "table_sha256": digest(table),
+            "calibrator_shape": [0, 0, 3]
+            if no_resize
+            else [settings.input_hw[1], settings.input_hw[0], 3],
             "preprocessing": "centred OpenCV letterbox, RGB /255, pad 114",
             "input_hw": list(settings.input_hw),
             "test_overlap_sha256": False,
@@ -163,6 +241,7 @@ def quantize_package(
             },
         }
         (output / "calibration.json").write_text(json.dumps(provenance, indent=2) + "\n")
+        (output / "layers.json").write_text(json.dumps(inventory, indent=2) + "\n")
         shutil.copy2(table, output / "calibration.table")
         shutil.move(str(output), destination)
     return destination
@@ -177,6 +256,15 @@ def main() -> None:
     parser.add_argument("--prefix", type=Path, required=True)
     parser.add_argument("--count", type=int, default=CALIBRATION_IMAGES)
     parser.add_argument("--seed", type=int, default=CALIBRATION_SEED)
+    parser.add_argument("--method", choices=("kl", "aciq", "eq"), default="kl")
+    parser.add_argument(
+        "--table-source", type=Path, help="reuse a table with verified calibration provenance"
+    )
+    parser.add_argument("--float-layers", nargs="*", default=[])
+    parser.add_argument("--timeout-seconds", type=int, help="bound the calibration subprocess")
+    parser.add_argument(
+        "--no-resize", action="store_true", help="pass shape=[0,0,3] for already letterboxed PNGs"
+    )
     arguments = parser.parse_args()
     try:
         print(
@@ -188,6 +276,11 @@ def main() -> None:
                 arguments.prefix,
                 count=arguments.count,
                 seed=arguments.seed,
+                method=arguments.method,
+                table_source=arguments.table_source,
+                float_layers=tuple(arguments.float_layers),
+                no_resize=arguments.no_resize,
+                timeout_seconds=arguments.timeout_seconds,
             )
         )
     except (ValueError, OSError) as error:

@@ -1,6 +1,6 @@
 # WS7 — Export, quantisation and selection
 
-- State: PTQ follow-up blocked on cluster tunnel; export work complete
+- State: PTQ follow-up in progress; export work complete
 - Branch: `ws7/quant`, created from local main `e6e12be`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-16
@@ -8,14 +8,18 @@
 
 ## Quantisation follow-up
 
-The requested ARM-only PTQ study has not started. The initial
+The tunnel is restored and the ARM-only PTQ study has resumed. The initial
 `ssh -o BatchMode=yes columba-cluster true` check exited 255 with
 `ssh: connect to host 127.0.0.1 port 22022: Connection refused`.
-The coordinator's current instruction requires stopping on this failure.
-No retries, cluster jobs or GPU work were attempted. No password was
-requested, used or stored.
+The previous turn stopped as instructed. The coordinator now permits retries
+for up to five minutes after a transient failure. No password was requested,
+used or stored.
 
-`experiments/reports/WS7-quant.md` records the blocker and resume order.
+`experiments/reports/WS7-quant.md` retains the initial blocker and resume order.
+The quantiser now exposes KL/ACIQ/EQ, no-resize calibration and selective float
+layers, with table-provenance checks and a per-layer quantisation inventory.
+`tools/quantization_study.py` runs native scoring, fresh val thresholds,
+preprocessing equality checks and ACTIVE-policy C7 latency in an ARM allocation.
 Calibration reproduction, preprocessing audit, calibration-method comparison,
 mixed-precision sensitivity and latency measurements remain outstanding.
 No QAT work has started. Deployment files and the int8 exclusion are unchanged.
