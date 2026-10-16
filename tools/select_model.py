@@ -1754,6 +1754,36 @@ def final_gate_markdown(decision: dict[str, JsonValue]) -> list[str]:
                 f"{'pass' if gate['passed'] else 'fail'} |"
             )
         lines.append("")
+    if decision.get("final_policy") is not None:
+        policy = mapping(decision["final_policy"], "policy")
+        lines.extend(
+            [
+                "## Square-val nominations versus deploy-val seed picks",
+                "",
+                str(policy["policy"]),
+                str(policy["timing"]),
+                f"Policy recorded UTC: {policy['decision_recorded_utc']}. "
+                "WS5 values below are rounded square-input context; deploy values are measured native fp16.",
+                "",
+                "| Arm | WS5 seed | Square val R@P90 | Deploy seed | Deploy val R@P90 | "
+                "Nominated seed at deploy val | Fresh deploy threshold |",
+                "|---|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for value in cast(list[JsonValue], policy["square_val_nominations"]):
+            nomination = mapping(value, "nomination")
+            arm = next(arm for arm in arms if arm["recipe"] == nomination["recipe"])
+            seeds = [mapping(seed, "seed") for seed in cast(list[JsonValue], arm["seeds"])]
+            nominated = next(seed for seed in seeds if seed["seed"] == nomination["seed"])
+            selected = next((seed for seed in seeds if seed["seed"] == arm["shipped_seed"]), None)
+            lines.append(
+                f"| {arm['recipe']} | {nomination['seed']} | {nomination['val_recall_at_p90']} | "
+                f"{arm['shipped_seed']} | "
+                f"{metric(selected, 'val', 'recall_at_p90') if selected else None} | "
+                f"{metric(nominated, 'val', 'recall_at_p90')} | "
+                f"{selected['threshold'] if selected else None} |"
+            )
+        lines.append("")
     winner = next((arm for arm in arms if arm["id"] == decision["selected"]), None)
     lines.extend(["## Why this model", ""])
     if winner:
@@ -2500,6 +2530,9 @@ def main() -> None:
             decision["baseline_measurements"] = read_report(baseline_summary)
         if arguments.aspect_report.exists():
             decision["aspect_ratio"] = read_report(arguments.aspect_report)
+        policy_path = Path("experiments/reports/WS7-final-policy.json")
+        if arguments.final and policy_path.is_file():
+            decision["final_policy"] = read_report(policy_path)
         write_json(arguments.output, decision)
         if arguments.report:
             write_decision_report(arguments.report, decision)
