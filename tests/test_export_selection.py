@@ -22,6 +22,7 @@ from tools.select_model import (
     aspect_bucket,
     baseline_scores,
     candidate_record,
+    latest_frame_rate,
     parity,
     reaction_for_recall,
     select_candidates,
@@ -301,6 +302,11 @@ class ExportSelectionTests(unittest.TestCase):
         self.assertIsNone(decision["package_candidate"])
         self.assertIsNotNone(decision["diagnostic_candidate"])
         self.assertTrue(decision["diagnostic_failures"])
+
+    def test_latest_frame_rate_limits_service_and_drops_stale_frames(self) -> None:
+        self.assertAlmostEqual(latest_frame_rate([40.0]), 25.0)
+        self.assertAlmostEqual(latest_frame_rate([100.0]), 10.0)
+        self.assertAlmostEqual(latest_frame_rate([20.0]), 30.0, places=3)
 
     def test_zero_recall_has_no_fabricated_reaction_quantile(self) -> None:
         reaction = reaction_for_recall([30.0, 40.0], 0.0)

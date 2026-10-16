@@ -64,6 +64,12 @@ REQUIRED_SEEDS = frozenset({0, 1, 2})
 RSYNC_REMOTE_SHELL = "ssh -o BatchMode=yes -o ConnectTimeout=20"
 CAMERA_INPUT_HW_PX = (480, 640)
 BENCHMARK_FRAME_COUNT = 20
+REGISTERED_CAMERA_FPS = 30.0
+REACTION_REPRODUCTION_TOLERANCE_MS = 0.000001
+RATE_PROFILE_FRAMES = 20000
+RATE_PROFILE_WARMUP = 128
+RATE_PROFILE_SEED = 42
+MILLISECONDS_PER_SECOND = 1000.0
 VALIDATION_TIE_RECALL_FRACTION = 0.01
 LATENCY_TIE_RATIO = 1.05
 MAXIMUM_SPECIES_RECALL_DROP = 0.01
@@ -404,6 +410,67 @@ def reaction_for_recall(samples_ms: list[float], recall: float) -> dict[str, Jso
             "status": str(error),
             "recall": recall,
         }
+
+
+def latest_frame_rate(samples_ms: list[float], camera_fps: float = REGISTERED_CAMERA_FPS) -> float:
+    import numpy
+
+    period_ms = MILLISECONDS_PER_SECOND / camera_fps
+    processing_ms = numpy.random.default_rng(RATE_PROFILE_SEED).choice(
+        samples_ms, RATE_PROFILE_WARMUP + RATE_PROFILE_FRAMES
+    )
+    captured_index = 0
+    started_ms = 0.0
+    measured_start_ms = 0.0
+    for index, duration_ms in enumerate(processing_ms):
+        if index == RATE_PROFILE_WARMUP:
+            measured_start_ms = started_ms
+        finished_ms = started_ms + float(duration_ms)
+        captured_index = max(captured_index + 1, int(finished_ms / period_ms))
+        started_ms = max(finished_ms, captured_index * period_ms)
+    return RATE_PROFILE_FRAMES * MILLISECONDS_PER_SECOND / (started_ms - measured_start_ms)
+
+
+def reaction_audit(directory: Path) -> dict[str, JsonValue]:
+    record = candidate_record(directory)
+    latency = read_report(directory / "latency.json")
+    factor = number(mapping(latency["estimated_pi5"], "estimated Pi")["factor"], "factor")
+    samples_ms, distribution = processing_samples(latency, factor)
+    settings = ReactionSettings(recall=metric(record, "test", "recall_at_threshold"))
+    reproduced = simulate_reaction(samples_ms, settings)
+    gate_p95_ms = number(mapping(reproduced["reaction_ms"], "reaction")["p95"], "p95")
+    if (
+        abs(gate_p95_ms - number(record["reaction_p95_ms"], "recorded reaction"))
+        > REACTION_REPRODUCTION_TOLERANCE_MS
+    ):
+        raise ValueError("saved reaction gate differs from current latest-frame simulation")
+    return {
+        "label": "simulated using estimated Pi latency, not measured Pi reaction",
+        "camera_fps": settings.camera_fps,
+        "effective_detection_fps": latest_frame_rate(samples_ms, settings.camera_fps),
+        "assumes_detection_on_every_camera_frame": False,
+        "registered_30fps_p95_ms": gate_p95_ms,
+        "throughput_limited_gate_p95_ms": gate_p95_ms,
+        "processing_distribution": distribution,
+        "frame_policy": settings.frame_policy,
+        "mean_dropped_visible_frames": reproduced["mean_dropped_visible_frames"],
+        "mean_processed_visible_frames": reproduced["mean_processed_visible_frames"],
+        "rate_profile_frames": RATE_PROFILE_FRAMES,
+        "rate_profile_warmup": RATE_PROFILE_WARMUP,
+        "rate_profile_seed": RATE_PROFILE_SEED,
+        "explanation": (
+            "WS4 serialises each sampled processing duration, then selects the newest available "
+            "camera index. Stale captures are skipped. Confirmation counts processed observations, "
+            "matching ConfirmationTracker.update. The existing 30 FPS capture result already "
+            "includes throughput limits; reducing camera FPS to detector FPS "
+            "would double-count them."
+        ),
+        "remaining_limits": (
+            "sensor delivery assumptions, still-image recall proxy, temporal correlation, "
+            "track association, capture contention and thermal effects require WS10 step3 "
+            "real reaction measurement"
+        ),
+    }
 
 
 def evaluate_candidate(arguments: argparse.Namespace) -> None:
@@ -1796,6 +1863,25 @@ def final_gate_markdown(decision: dict[str, JsonValue]) -> list[str]:
                 f"{selected['threshold'] if selected else None} |"
             )
         lines.append("")
+    if decision.get("reaction_audit") is not None:
+        audit = mapping(decision["reaction_audit"], "reaction audit")
+        lines.extend(
+            [
+                "## Reaction scheduling audit",
+                "",
+                str(audit["label"]),
+                str(audit["explanation"]),
+                "",
+                f"Capture rate: {audit['camera_fps']} FPS. Estimated effective detector rate: "
+                f"{number(audit['effective_detection_fps'], 'rate'):.3f} FPS. "
+                f"Registered 30 FPS capture p95: {audit['registered_30fps_p95_ms']} ms. "
+                f"Throughput-limited gate p95: {audit['throughput_limited_gate_p95_ms']} ms. "
+                "These are the same correctly scheduled simulation, not separate gates.",
+                "",
+                "WS10 step 3 must measure real reaction time. " + str(audit["remaining_limits"]),
+                "",
+            ]
+        )
     winner = next((arm for arm in arms if arm["id"] == decision["selected"]), None)
     lines.extend(["## Why this model", ""])
     if winner:
@@ -1822,7 +1908,7 @@ def final_gate_markdown(decision: dict[str, JsonValue]) -> list[str]:
             "",
             "WS10 steps 5–7 remain open: site threshold and k/n, the Pi OMP wait policy, "
             "and on-Pi capture/model geometry. No Pi measurement is claimed. "
-            "The launcher and camera FPS default remain unchanged.",
+            "The launcher stays unchanged; authorised capture FPS is 30.",
             "",
         ]
     )
@@ -2545,6 +2631,8 @@ def main() -> None:
         policy_path = Path("experiments/reports/WS7-final-policy.json")
         if arguments.final and policy_path.is_file():
             decision["final_policy"] = read_report(policy_path)
+        if arguments.final and isinstance(decision["package_candidate"], str):
+            decision["reaction_audit"] = reaction_audit(Path(decision["package_candidate"]))
         write_json(arguments.output, decision)
         if arguments.report:
             write_decision_report(arguments.report, decision)

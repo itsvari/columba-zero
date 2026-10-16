@@ -1,6 +1,6 @@
 # WS7 — Export, quantisation and selection
 
-- State: blocked, final ARM evidence unavailable after BatchMode SSH failure
+- State: in progress, tunnel restored and final ARM bundles resumed
 - Branch: `ws7/export`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-16
