@@ -106,6 +106,24 @@ how the gates apply to exported candidates.
   PyTorch model. int8 uses the same accuracy tolerance.
 - v2 vs v2s ties (within 0.01 val R@P90 and 5% latency) break on
   `columba-test-v2-styles` recall.
+- Seed choice (coordinator, 16 Oct 2026): deploy-size val replaces WS5's
+  square-input seed nominations, with the same eligibility and tie rules for
+  every arm. This was recorded before any switched seed's deploy-size test
+  metrics were inspected. Both sets of picks are kept in `WS7-final.md`.
+
+**Outcome (16 Oct 2026, `experiments/reports/WS7-final.md`):** the shipped model
+is `yolo26n-v2s-800-round2-plain` seed 1, `yolo11` decode, fp16, 448×800,
+threshold 0.6265. It is packaged as C8
+`yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16` and is the manifest default.
+At deploy size it measures test R@P90 0.686 ± 0.008 (3-seed mean), against
+0.222 ± 0.013 for the baseline reproduction. Test empty FAR is 0 and confuser
+FAR is 3/73. The estimated Pi frame p95 is 36.5 ms and the simulated reaction
+p95 is 345 ms at 30 FPS capture with k = 2 of n = 3. Distill-800 led on square
+input but is held: its val-chosen seed has 4/73 test confuser false alarms at
+448×800. Species and the batch-16 control are also held. `app/config.yaml`
+now uses the native backend, 448×800, k2/n3 and an 800×450 lores stream at
+30 FPS. The reaction, site-threshold, OMP and geometry numbers are confirmed
+in WS10.
 
 Known test-set limits (to fix with WS10 site footage, `columba-test-site-v1`):
 test-v2 positives come almost entirely from one Roboflow source, and 196 of 212
@@ -737,6 +755,11 @@ graph LR
    WS2's datasets and WS1 are merged. WS6's latency gate once WS4 is merged.
 4. **Wave D:** WS5 rounds 2–3, WS6 training (if it passed), then WS7.
 5. **Wave E:** WS10 when hardware arrives.
+
+**Status (16 Oct 2026):** Waves A–D are complete and merged. WS7 was merged at
+`a3e4321`; WS6 stopped at its latency gate. No cluster jobs are running. Only
+Wave E (WS10) remains, and it is blocked on Pi hardware. Its step 4 (a site
+fine-tune, WS5 round 4) is the only remaining step that needs the cluster.
 
 ### Gates the coordinator enforces
 

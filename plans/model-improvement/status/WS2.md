@@ -1,6 +1,6 @@
 # WS2 — Data
 
-- State: done (phase 1 merged; phase 2 done, awaiting merge)  <!-- not started | in progress | blocked | done -->
+- State: done (phases 1 and 2 merged; phase 2 at 4cf06ca, coordinator 2026-10-16)  <!-- not started | in progress | blocked | done -->
 - Branch: `ws2/data`
 - Agent: Claude Opus 5.5 via T3 delegate
 - Last updated: 2026-10-14

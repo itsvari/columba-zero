@@ -1,6 +1,6 @@
 # WS3 — Cluster infrastructure
 
-- State: in progress
+- State: done (rounds 1–6 merged; coordinator 2026-10-16)
 - Branch: `ws3/cluster`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-15
