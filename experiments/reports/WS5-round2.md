@@ -1,12 +1,13 @@
 # WS5 round 2: interim report
 
-Status on 16 Oct 2026. This is **not** WS5-final.
+Status on 16 Oct 2026. The summary is in `WS5-final.md`.
 - **Plain arms:** complete, 18 of 18 runs DONE.
 - **Distillation:**
   - 640: generated mechanically by transition 949889 (yolo26x teacher).
     3 of 3 seeds DONE; compared with plain below.
-  - 800: added by coordinator decision on 15 Oct evening. Running; a
-    placeholder is below.
+  - 800: added by coordinator decision on 15 Oct evening. 3 of 3 seeds
+    DONE. It passes the section-1 rule against plain-800 (+0.031 test
+    R@P90).
 
 Promotion is judged at the deploy size, on native exports (PLAN section 1,
 15 Oct decision; WS7). The training-size numbers here are context.
@@ -122,7 +123,7 @@ deploy input. WS7 evaluates the exported candidates at their deploy size.
   hurting recall. Val recall at P90 ≈ 0.79 with empty FAR ≈ 0, so no
   subsampling is needed for now (WS2's suggestion).
 
-## Distillation (in progress)
+## Distillation
 
 Both arms use teacher `yolo26x-v2s-960-teacher-b12/seed0`: val/test R@P90
 0.845/0.861, the better val of the two teachers. `dis` is 6.0. Training is
@@ -133,7 +134,7 @@ patience 50, effective batch 64.
 |---|---|---|---|---|---|---|---|---|
 | yolo26n-v2s-640-round2-distill | 3/3 (950745 h100-47, 950746 H100 NVL, 950747 A100-80) | 0.807 ± 0.009 | 0.733 ± 0.013 | 0.517 ± 0.026 | 0.845 ± 0.009 | 0.890 / 0.743 | 0.000 | 0.050 ± 0.016 (3, 3, **5**) |
 | *plain yolo26n-v2s-640* | 3/3 | 0.788 ± 0.010 | 0.743 ± 0.003 | 0.534 ± 0.010 | 0.835 ± 0.006 | 0.912 / 0.732 | 0.003 | 0.041 ± 0.014 (**4**, 2, 3) |
-| yolo26n-v2s-800-round2-distill | running: s0, s2 951222 (h100-47); s1 951220 (A100-40) | *placeholder: pending* | | | | | | |
+| yolo26n-v2s-800-round2-distill | 3/3 (951222 s0/s2, 951220 s1) | **0.812 ± 0.003** | **0.811 ± 0.011** | **0.603 ± 0.022** | **0.893 ± 0.008** | 0.920 / 0.782 | 0.000 | 0.037 ± 0.008 (2, 3, 3) |
 | *plain yolo26n-v2s-800* | 3/3 | 0.794 ± 0.006 | 0.780 ± 0.024 | 0.537 ± 0.051 | 0.860 ± 0.017 | 0.924 / 0.748 | 0.000 | 0.032 ± 0.016 (3, 1, 3) |
 
 ### Distill-640 vs plain-640 (3 seeds each, measured, training size)
@@ -170,12 +171,46 @@ Training cost (measured): 61 s/epoch on H100 NVL, 99 s on the h100-47 MIG
 slice, 107 s on A100-80 (xgpj0, 3-hour slices), all at batch 64; 106–157
 epochs. Plain-640 is ≈ 2× faster per epoch on comparable GPUs.
 
-### Distill-800
+### Distill-800 vs plain-800 (3 seeds each, measured, training size)
 
-*Placeholder: fill in when 951220/951222 finish (≈ 5–7 h each, per the
-coordinator 16 Oct). Same table and the same section-1 comparison against
-plain-800. Measured so far: batch 64, 20.3 GB peak, 151 s/epoch on
-h100-47.*
+| Metric | Distill-800 | Plain-800 | Δ |
+|---|---|---|---:|
+| val R@P90 | 0.812 ± 0.003 (0.813, 0.815, 0.808) | 0.794 ± 0.006 | +0.018 |
+| test R@P90 | **0.811 ± 0.011** (0.819, 0.799, 0.816) | 0.780 ± 0.024 (0.779, 0.805, 0.756) | **+0.031** |
+| test small R@P90 (of 147 boxes) | 0.603 ± 0.022 | 0.537 ± 0.051 | +0.066 |
+| test AP50 | 0.893 ± 0.008 | 0.860 ± 0.017 | +0.033 |
+| test AP50-95 | 0.529 ± 0.002 | 0.511 ± 0.008 | +0.018 |
+| test P / R at val threshold | 0.920 / 0.782 | 0.924 / 0.748 | −0.004 / +0.034 |
+| test empty FAs (of 125), per seed | 0, 0, 0 | 0, 0, 0 | 0 |
+| test confuser FAs (of 73), per seed | 2, 3, 3 (mean 0.037) | 3, 1, 3 (mean 0.032) | +1 image in total |
+| val empty / confuser FAR (mean) | 0.003 / 0.029 | 0.003 / 0.038 | |
+
+**Section-1 rule, applied exactly:**
+- **Recall:** the mean test R@P90 gain must beat the larger seed sd.
+  Δ = +0.031 > max(0.011, 0.024) = 0.024: **pass**.
+- **False alarms:** every distill seed is within both gates. Empty FAR 0
+  (≤ 0.02) and confuser ≤ 3 of 73: **pass**.
+- **Distillation beats plain at 800**, unlike at 640. Every accuracy metric
+  improves: test R@P90, small recall (+0.066), AP50, AP50-95, and recall at
+  the val threshold.
+- Test precision at the val threshold stays ≥ 0.91 on every seed, so the
+  640-size calibration problem does not recur.
+
+**WS7 candidate (val only, PLAN section 1 seed rule):**
+`yolo26n-v2s-800-round2-distill/seed1`.
+- Val R@P90 0.8145 is the highest. Val FARs (empty 0.003, confuser 0.041)
+  are within 0.02 / 0.05.
+- Val operating threshold 0.585.
+- Test, for reference only: R@P90 0.799, 0 / 3 false alarms.
+
+**Cross-GPU resumes** (from `run.json.attempts`; batch fixed at 64 by
+`batch_override`, so no batch change on resume):
+- s1 started on an A100-40 (xgpg7, 951220) and resumed on the h100-47 MIG
+  slice (xgpi13): the retargeted legacy pinned array.
+- s0 resumed from h100-47 (xgpi13) to a full H100 NVL (xgpi15).
+- s2 moved between h100-47 slices (xgpi12 → xgpi11).
+- Epochs: 130 / 164 / 175, longer than plain-800's 106–147 before patience
+  50 fired.
 
 **800 distill arm** (`training/recipes/yolo26n-v2s-800-round2-distill.yaml`,
 commit fd026c4):
