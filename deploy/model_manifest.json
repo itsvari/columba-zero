@@ -37,5 +37,43 @@
       "bytes": 845
     }
   ],
-  "fallback_models": []
+  "fallback_models": [
+    {
+      "model_id": "pigeon_baseline_v1-2",
+      "source": "runs/detect/pigeon_detector/pigeon_baseline_v1-2/weights",
+      "runtime_directory": "models/pigeon_baseline_v1-2",
+      "decode": "yolo11",
+      "input_hw": [
+        640,
+        640
+      ],
+      "files": [
+        {
+          "file": "best.pt",
+          "sha256": "35f7f55cabfe709c5a0cd825610928b369eb7ff97a1354bbdb1c485cddc1704c",
+          "bytes": 5486106
+        },
+        {
+          "file": "best_ncnn_model/metadata.yaml",
+          "sha256": "180b7e93ae87e5fa4848da6a598c06001362c3b3c410c8bf9412cae8158bae65",
+          "bytes": 427
+        },
+        {
+          "file": "best_ncnn_model/model.ncnn.bin",
+          "sha256": "50463d299ed5d373aa6a32f23e58f603a67f3c214718242678911e4f677776e6",
+          "bytes": 10489356
+        },
+        {
+          "file": "best_ncnn_model/model.ncnn.param",
+          "sha256": "a7e8830c0a6ec552fcbcd5b5f52b61e6a33173a0b15bc5dde5df7acfe5d30f64",
+          "bytes": 22701
+        },
+        {
+          "file": "best_ncnn_model/model_ncnn.py",
+          "sha256": "503c73a7c162469ee4f04824011103371bd3cd59e5155bd3f4ac717fc6c2db4d",
+          "bytes": 783
+        }
+      ]
+    }
+  ]
 }

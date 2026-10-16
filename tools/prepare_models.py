@@ -1,4 +1,4 @@
-"""Copy and verify selected, fallback or provisional C8 artefacts from the manifest."""
+"""Copy and verify the selected, fallback or provisional model packages in the manifest."""
 
 from __future__ import annotations
 
@@ -74,13 +74,24 @@ def prepare_models(repository: Path, model_id: str | None = None) -> Path:
     return target
 
 
+def fallback_ids(path: Path) -> list[str]:
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    return [str(entry["model_id"]) for entry in manifest.get("fallback_models", [])]
+
+
 def main(model_id: str | None = None) -> None:
-    print(f"Verified models: {prepare_models(Path(__file__).resolve().parents[1], model_id)}")
+    repository = Path(__file__).resolve().parents[1]
+    print(f"Verified models: {prepare_models(repository, model_id)}")
+    if model_id is None:
+        # The default run also prepares the fallbacks, so models/ holds the baseline too.
+        for fallback in fallback_ids(repository / "deploy/model_manifest.json"):
+            print(f"Verified fallback: {prepare_models(repository, fallback)}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--model-id", help="verify a named C8 entry; default verifies the selected model"
+        "--model-id",
+        help="verify one named entry; default verifies the selected model and its fallbacks",
     )
     main(parser.parse_args().model_id)
