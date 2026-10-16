@@ -84,7 +84,7 @@ def main() -> None:
         else:
             benchmark = Path.cwd() / "tools/bench_ncnn.py"
             if not benchmark.is_file():
-                raise FileNotFoundError("WS4 tools/bench_ncnn.py is not merged")
+                raise FileNotFoundError("tools/bench_ncnn.py is missing from the checkout")
             command_file = root / "benchmark-commands.json"
             commands = cast(list[list[str]], json.loads(command_file.read_text()))
             for command in commands:

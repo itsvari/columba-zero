@@ -130,8 +130,7 @@ def create_detector(model: ModelConfig) -> tuple[FrameDetector, tuple[str, ...]]
     if model.backend == "native":
         model_info = load_model_info(model.path, model.image_size)
         try:
-            # WS8 owns app/native_detector.py; import by name so this module type-checks
-            # before it exists.
+            # Imported on demand; columba_native itself loads when NativeDetector is built.
             module = importlib.import_module(".native_detector", __package__)
             native_detector = cast(NativeDetectorFactory, module.NativeDetector)
         except (ImportError, AttributeError) as error:

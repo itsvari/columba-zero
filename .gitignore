@@ -8,14 +8,7 @@ build/
 *.egg-info/
 logs/
 models/
-calibration.local.yaml
-
-
 outputs/
-
-# Local deployment bundles; keep out of upstream pull requests.
-/columba-zero-pi.tar.gz
-/columba@columba-pi
 
 # Model-improvement plan: run copies, native builds and datasets stay out of git.
 experiments/runs/
