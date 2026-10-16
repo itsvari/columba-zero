@@ -716,6 +716,8 @@ def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
             None,
         )
         reasons = cast(list[JsonValue], arm["failures"])
+        species_gates: list[JsonValue] = []
+        arm["species_gates"] = species_gates
         if reference is None:
             reasons.append("species gate needs --single-recipe and its evaluated three-seed arm")
         elif (
@@ -724,6 +726,17 @@ def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
         ):
             reasons.append("species pigeon recall is more than 0.01 below matched single")
         if reference is not None:
+            minimum_recall = (
+                number(reference["test_recall_mean"], "recall") - MAXIMUM_SPECIES_RECALL_DROP
+            )
+            species_gates.append(
+                {
+                    "gate": "Species pigeon three-seed recall",
+                    "value": arm["test_recall_mean"],
+                    "requirement": f">= {minimum_recall:.6f}",
+                    "passed": number(arm["test_recall_mean"], "recall") >= minimum_recall,
+                }
+            )
             reference_seed = next(
                 (
                     mapping(seed, "seed")
@@ -739,12 +752,27 @@ def enforce_species_gate(arms: list[dict[str, JsonValue]]) -> None:
                 reasons.append("species comparison requires val-eligible shipped seeds")
             else:
                 for field in ("empty_far", "confuser_far"):
+                    species_gates.append(
+                        {
+                            "gate": f"Species shipped {field} no worse than single",
+                            "value": shipped_seed[field],
+                            "requirement": f"<= {reference_seed[field]}",
+                            "passed": number(shipped_seed[field], field)
+                            <= number(reference_seed[field], field),
+                        }
+                    )
                     if number(shipped_seed[field], field) > number(reference_seed[field], field):
                         reasons.append(f"species shipped {field} is worse than matched single")
-            if (
-                number(arm["pi5_p95_ms"], "latency")
-                > number(reference["pi5_p95_ms"], "latency") * SPECIES_LATENCY_RATIO
-            ):
+            maximum_latency_ms = number(reference["pi5_p95_ms"], "latency") * SPECIES_LATENCY_RATIO
+            species_gates.append(
+                {
+                    "gate": "Species estimated Pi p95 within 5% of single",
+                    "value": arm["pi5_p95_ms"],
+                    "requirement": f"<= {maximum_latency_ms:.6f} ms",
+                    "passed": number(arm["pi5_p95_ms"], "latency") <= maximum_latency_ms,
+                }
+            )
+            if number(arm["pi5_p95_ms"], "latency") > maximum_latency_ms:
                 reasons.append("species latency is over 5% slower than matched single")
         arm["failures"] = reasons
         arm["passes"] = not reasons
@@ -1687,6 +1715,78 @@ def package_candidate(arguments: argparse.Namespace) -> None:
     print(verified)
 
 
+def final_gate_markdown(decision: dict[str, JsonValue]) -> list[str]:
+    arms = sorted(
+        (
+            mapping(value, "arm")
+            for value in cast(list[JsonValue], decision["arms"])
+            if mapping(value, "arm")["precision"] == "fp16"
+            and mapping(value, "arm")["decode"] == "yolo11"
+        ),
+        key=lambda arm: number(arm["val_recall_mean"], "recall"),
+        reverse=True,
+    )
+    lines = [
+        "## Final fp16 ranking and every gate",
+        "",
+        "Rank is three-seed deploy-size val R@P90. Held arms retain their val rank.",
+        "",
+    ]
+    for rank, arm in enumerate(arms, start=1):
+        lines.extend(
+            [
+                f"### {rank}. {arm['recipe']}",
+                "",
+                f"Val mean {number(arm['val_recall_mean'], 'recall'):.6f}; val-chosen seed "
+                f"{arm['shipped_seed']}; {'PASS' if arm['passes'] else 'HOLD'}.",
+                "",
+                "| Gate | Observed | Requirement | Result |",
+                "|---|---|---|---|",
+            ]
+        )
+        for value in [
+            *cast(list[JsonValue], arm["gates"]),
+            *cast(list[JsonValue], arm.get("species_gates", [])),
+        ]:
+            gate = mapping(value, "gate")
+            lines.append(
+                f"| {gate['gate']} | {gate['value']} | {gate['requirement']} | "
+                f"{'pass' if gate['passed'] else 'fail'} |"
+            )
+        lines.append("")
+    winner = next((arm for arm in arms if arm["id"] == decision["selected"]), None)
+    lines.extend(["## Why this model", ""])
+    if winner:
+        lines.append(
+            f"`{winner['recipe']}` wins the registered ranking among arms passing every gate. "
+            "Seed choice and the operating threshold use val alone. Test-v2 supplies "
+            "promotion gates; styles is secondary and only breaks matched v2/v2s ties."
+        )
+    for arm in arms:
+        if "distill" in str(arm["recipe"]) and arm["id"] != decision["selected"]:
+            lines.append(
+                f"Distill-800 loses at deploy size. Its val rank is "
+                f"{arms.index(arm) + 1}; held reasons: {arm['failures']}."
+            )
+    lines.extend(
+        [
+            "",
+            "## Deployment limits and WS10 hand-off",
+            "",
+            "The plain-800 same-checkpoint geometry diagnostic below attributes 38 of 39 "
+            "lost test matches to portrait images at the global P90 cut. Test-v2 has only "
+            "nine approximately 16:9 images, two positive. This limits camera claims. "
+            "WS10 columba-test-site-v1 is the real site check.",
+            "",
+            "WS10 steps 5–7 remain open: site threshold and k/n, the Pi OMP wait policy, "
+            "and on-Pi capture/model geometry. No Pi measurement is claimed. "
+            "The launcher and camera FPS default remain unchanged.",
+            "",
+        ]
+    )
+    return lines
+
+
 def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
     arms = [mapping(arm, "arm") for arm in cast(list[JsonValue], decision["arms"])]
     baseline = mapping(decision["baseline"], "baseline")
@@ -1898,6 +1998,8 @@ def write_decision_report(path: Path, decision: dict[str, JsonValue]) -> None:
             "",
         ]
     )
+    if decision["provisional"] is False:
+        lines.extend(final_gate_markdown(decision))
     if decision.get("package_verification") is not None:
         verified = mapping(decision["package_verification"], "package verification")
         lines.extend(
