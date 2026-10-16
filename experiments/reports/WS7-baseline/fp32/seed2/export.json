@@ -1,7 +1,0 @@
-{
-  "source": "/Users/vari/.t3/worktrees/columba-zero/t3-27965e4a/outputs/ws7/checkpoints/baseline-repro-p50/seed2/weights/best.pt",
-  "source_sha256": "ba700188b7cc0d5ba91f3cc95fc285a2182a2d464b6e001d16012f87bf112322",
-  "decode": "yolo11",
-  "quantization": "fp32",
-  "transformation": "standard"
-}

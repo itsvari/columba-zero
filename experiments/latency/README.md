@@ -67,7 +67,8 @@ and for the 70 ms target. Exit status is 0 for hard PASS, 1 for hard FAIL,
 2 for invalid inputs or unavailable calibration. `--iterations` must be at
 least 200. `--camera-hw 864 1536` measures the larger camera stream.
 `--output experiments/latency/highres` keeps the C7 basename without overwriting
-the 480×640 measurements. `--calibration` selects another calibration record.
+the 480×640 measurements. The WS4 1536×864 records were removed in the cleanup;
+`summary.md` keeps their numbers, and git history at `6de04fb` has the files. `--calibration` selects another calibration record.
 A direct `--host-profile pi5` gate uses measured p95 and requires no factor.
 
 Supported output is C8 `(4+nc,N)` with pixel cxcywh and scores already sigmoid.

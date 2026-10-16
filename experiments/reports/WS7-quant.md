@@ -1,5 +1,9 @@
 # WS7 int8 quantisation study
 
+> Cleanup note (17 Oct 2026): the per-configuration evidence in
+> `WS7-quant-evidence/` was removed in the repository cleanup. It is available
+> in git history at `6de04fb`. `WS7-quant-results.json` is kept.
+
 Date: 16 October 2026. Branch: `ws7/quant`, from main `e6e12be`.
 Stage 1 complete. Stage 2 is a proposal only. No GPU jobs were submitted.
 

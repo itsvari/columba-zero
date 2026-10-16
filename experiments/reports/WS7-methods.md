@@ -1,5 +1,11 @@
 # WS7 reproduction and hand-off
 
+> Cleanup note (17 Oct 2026): the per-candidate evidence this report names
+> (`WS7-candidates/`, `WS7-final-candidates/`, `WS7-platform/` and most of
+> `WS7-baseline/`) was removed in the repository cleanup. It is available in
+> git history at `6de04fb`. `WS7-baseline/` keeps the files `select` reads:
+> `measurements.json` and `fp16/seed*/metrics_test.json`.
+
 Use the shared environment without changing its pinned packages. Run commands
 from the repository root. Cluster access is exclusively BatchMode SSH. If the connection fails,
 retry

@@ -1,5 +1,10 @@
 # WS7 final export decision
 
+> Cleanup note (17 Oct 2026): the per-candidate evidence behind this report
+> (`WS7-candidates/`, `WS7-final-candidates/`, `WS7-final-references/`) was
+> removed in the repository cleanup. It is available in git history at
+> `6de04fb`. `WS7-final-selection.json` is kept.
+
 Selection: `yolo26n-v2s-800-round2-plain/yolo11/fp16/[448, 800]`.
 All training candidates are available; deploy-size evidence decides the final pick.
 Coverage: 24 configurations and 72 seed/export cases.
