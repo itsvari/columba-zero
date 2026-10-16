@@ -1,6 +1,4 @@
-# WS7 final export decision (WIP, paused)
-
-Paused at the coordinator's request after selection, packaging and the native config replay. Full post-config checks and final report/status clean-up remain. See the Resume section of WS7-methods.md.
+# WS7 final export decision
 
 Selection: `yolo26n-v2s-800-round2-plain/yolo11/fp16/[448, 800]`.
 All training candidates are available; deploy-size evidence decides the final pick.
@@ -241,9 +239,9 @@ from still-image recall to temporal hits remain estimates and assumptions.
 Reproduction commands, candidate addition, resource handling and policy
 requests are in [WS7-methods.md](WS7-methods.md).
 
-## Final fp16 ranking and every gate
+## Deployment candidate ranking and section-1 gates
 
-Rank is three-seed deploy-size val R@P90. Held arms retain their val rank.
+The six standard-head fp16 arms below are the deployment candidates. Each has the complete section-1 gate table for its validation-chosen seed, plus the three-seed accuracy rule. Rank is three-seed deploy-size val R@P90; held arms retain their val rank. FP32 companions, int8 and one-to-one configurations are excluded diagnostics; their complete gate tables are in the final appendix.
 
 ### 1. yolo26n-v2s-species-800-r3
 
@@ -371,12 +369,12 @@ WS4 serialises each sampled processing duration, then selects the newest availab
 
 Capture rate: 30.0 FPS. Estimated effective detector rate: 27.446 FPS. Registered 30 FPS capture p95: 345.3639649591854 ms. Throughput-limited gate p95: 345.3639649591854 ms. These are the same correctly scheduled simulation, not separate gates.
 
-WS10 step 3 must measure real reaction time. sensor delivery assumptions, still-image recall proxy, temporal correlation, track association, capture contention and thermal effects require WS10 step3 real reaction measurement
+**The 345.364 ms reaction p95 is simulated, not a Pi measurement. WS10 step 3 must confirm it on the physical Pi.** Sensor delivery, temporal correlation, track association, capture contention and thermal effects remain unmeasured.
 
 ## Why this model
 
 `yolo26n-v2s-800-round2-plain` wins the registered ranking among arms passing every gate. Seed choice and the operating threshold use val alone. Test-v2 supplies promotion gates; styles is secondary and only breaks matched v2/v2s ties.
-Distill-800 loses at deploy size. Its val rank is 2; held reasons: ['shipped seed0 fails confuser_far'].
+Distill-800 loses at deploy size: its validation-chosen seed0 has four test confuser false alarms out of 73, FAR 0.054795, above 0.05. Species seed2 fails its relative empty-FAR clause, 0.008 versus plain's zero. Control seed0 fails test confuser FAR, 0.068493, and loses 0.014164 test R@P90 under fp16, beyond the 0.01 policy. Its fp32 strict companion passes; its fp16 accuracy failure makes the combined deployment parity gate fail. No other seed was tried after a test failure.
 
 ## Deployment limits and WS10 hand-off
 
@@ -456,3 +454,362 @@ quantisation sensitivity, including the detection head, to model activation rang
 Both sizes used the same 200 val IDs and RGB /255 preprocessing. The 800 and
 640 checkpoints also differ, so this is not a controlled input-shape comparison.
 No specific cause is established. Int8 is excluded; no further investigation was run.
+
+## Final package, config and verification
+
+The winner is also the plain fallback, so one durable package serves both roles. No duplicate fallback manifest entry is needed. The source follows the incumbent's direct-Git convention; no Git LFS filter is configured. The manifest has no absolute worktree path or ignored-output source.
+
+| Package file | Bytes | SHA-256 |
+|---|---:|---|
+| model.ncnn.param | 26392 | `bd6201ead99a645b200d84ec76222c24475324f8be2f90d9de9e5b5513fba8f0` |
+| model.ncnn.bin | 4885148 | `639e90dc36ad34d1235221f4aa907fae5a434245a90883454c1ca8dd4d7ffb6e` |
+| metadata.yaml | 845 | `051f3facc7f1bd9385221496329c99acc7fe22a250fe3cec339b4e3452d9bd1f` |
+
+`app/config.yaml` now selects the native package at 448x800 with the independently val-selected threshold 0.62646484375. Confirmation is enabled at k2/n3. Capture is 800x450 lores at 30 FPS; recording FPS stays 15. All requested keys already existed in the schema. Other defaults and the launcher are unchanged.
+
+Final verification is **measured on Mac vexcalibur**. Preparation rechecked actual model bytes and C8 metadata. A fresh native replay processed 20 frames and produced one confirmed trigger. This unpaced file replay proves loading and pipeline operation; it does not measure real camera reaction time.
+
+| Check | Result |
+|---|---|
+| Full pytest | 325 passed, 223 subtests passed, zero skipped |
+| Full unittest discovery | 325 passed |
+| Native CTest | 1 passed |
+| Ruff check, app/tests/tools/cluster/training/native | pass |
+| Ruff format check, same directories | 94 files already formatted |
+| Full mypy | 91 source files, no issues |
+
+Two test fixtures were corrected after the deployment change: camera schema defaults now come from an empty config, and warm-up failure uses the backend-neutral detector factory. Neither change alters runtime behaviour. `WS7-final-verification.json` records current counts, replay evidence and log hashes. `WS7-final-preparation.json` records the completed jobs and checkpoint hashes. No cluster job was submitted during finalisation.
+
+No selection or contract decision remains open. WS10 step 3 must measure real Pi reaction p95. WS10 steps 5–7 still cover site threshold/k-n, the Pi OMP wait policy and capture/model geometry.
+
+## Section-1 gates for excluded diagnostic configurations
+
+These 18 configurations are not deployment candidates. The rows retain their validation-chosen seed and measured metrics for completeness. Final admission is always false: fp32 is a strict-parity companion, while int8 and one-to-one are coordinator exclusions. These tables do not reopen selection.
+
+### Diagnostic yolo26n-v2-800-round2-plain/yolo11/fp32/[448, 800]
+
+Val-chosen seed 2; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.441926 | > 0.015602, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.022936 | <= 0.05 | pass |
+| Test empty FAR | 0.016000 | <= 0.02 | pass |
+| Test confuser FAR | 0.082192 | <= 0.05 | fail |
+| Estimated Pi frame p95 ms | 69.263138 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 612.669799 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.000000 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo11 / fp32 | standard head; int8 excluded | pass |
+| Final deployment admission | yolo11 / fp32 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2-800-round2-plain/yolo11/int8/[448, 800]
+
+Val-chosen seed 0; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.076487 | > 0.013084, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.013761 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.000000 | <= 0.05 | pass |
+| Estimated Pi frame p95 ms | 33.709555 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 1051.617525 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.379603 | <= 0.01 in each val/test R@P90, AP50, operating recall | fail |
+| Export parity | False | strict same-graph fp32 + accuracy for fp16 | fail |
+| Deployment policy | yolo11 / int8 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo11 / int8 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2-800-round2-plain/yolo26/fp16/[448, 800]
+
+Val-chosen seed 2; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.414542 | > 0.017309, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.022936 | <= 0.05 | pass |
+| Test empty FAR | 0.008000 | <= 0.02 | pass |
+| Test confuser FAR | 0.082192 | <= 0.05 | fail |
+| Estimated Pi frame p95 ms | 36.609518 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 353.334758 | <= 500.0 | pass |
+| Precision accuracy maximum drop | 0.005666 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo26 / fp16 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo26 / fp16 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2-800-round2-plain/yolo26/fp32/[448, 800]
+
+Val-chosen seed 2; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.420208 | > 0.021636, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.022936 | <= 0.05 | pass |
+| Test empty FAR | 0.008000 | <= 0.02 | pass |
+| Test confuser FAR | 0.082192 | <= 0.05 | fail |
+| Estimated Pi frame p95 ms | 69.507125 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 635.401273 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.000000 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo26 / fp32 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo26 / fp32 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2-800-round2-plain/yolo26/int8/[448, 800]
+
+Val-chosen seed 1; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.067044 | > 0.013084, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.013761 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.013699 | <= 0.05 | pass |
+| Estimated Pi frame p95 ms | 33.698084 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 1080.571984 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.382436 | <= 0.01 in each val/test R@P90, AP50, operating recall | fail |
+| Export parity | False | strict same-graph fp32 + accuracy for fp16 | fail |
+| Deployment policy | yolo26 / int8 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo26 / int8 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-640-round2-plain/yolo11/fp32/[384, 640]
+
+Val-chosen seed 1; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.434372 | > 0.013084, larger seed SD | pass |
+| Val empty FAR | 0.002625 | <= 0.02 | pass |
+| Val confuser FAR | 0.027523 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.054795 | <= 0.05 | fail |
+| Estimated Pi frame p95 ms | 46.754263 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 417.747684 | <= 500.0 | pass |
+| Precision accuracy maximum drop | 0.000000 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo11 / fp32 | standard head; int8 excluded | pass |
+| Final deployment admission | yolo11 / fp32 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-640-round2-plain/yolo11/int8/[384, 640]
+
+Val-chosen seed 1; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.419263 | > 0.018862, larger seed SD | pass |
+| Val empty FAR | 0.002625 | <= 0.02 | pass |
+| Val confuser FAR | 0.018349 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.041096 | <= 0.05 | pass |
+| Estimated Pi frame p95 ms | 23.456034 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 293.585550 | <= 500.0 | pass |
+| Precision accuracy maximum drop | 0.033246 | <= 0.01 in each val/test R@P90, AP50, operating recall | fail |
+| Export parity | False | strict same-graph fp32 + accuracy for fp16 | fail |
+| Deployment policy | yolo11 / int8 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo11 / int8 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-640-round2-plain/yolo26/fp16/[384, 640]
+
+Val-chosen seed 1; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.403211 | > 0.013084, larger seed SD | pass |
+| Val empty FAR | 0.002625 | <= 0.02 | pass |
+| Val confuser FAR | 0.027523 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.054795 | <= 0.05 | fail |
+| Estimated Pi frame p95 ms | 25.138780 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 321.109365 | <= 500.0 | pass |
+| Precision accuracy maximum drop | 0.014164 | <= 0.01 in each val/test R@P90, AP50, operating recall | fail |
+| Export parity | False | strict same-graph fp32 + accuracy for fp16 | fail |
+| Deployment policy | yolo26 / fp16 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo26 / fp16 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-640-round2-plain/yolo26/fp32/[384, 640]
+
+Val-chosen seed 0; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.407932 | > 0.018862, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.036697 | <= 0.05 | pass |
+| Test empty FAR | 0.008000 | <= 0.02 | pass |
+| Test confuser FAR | 0.068493 | <= 0.05 | fail |
+| Estimated Pi frame p95 ms | 46.436519 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 465.122550 | <= 500.0 | pass |
+| Precision accuracy maximum drop | 0.000000 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo26 / fp32 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo26 / fp32 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-640-round2-plain/yolo26/int8/[384, 640]
+
+Val-chosen seed 0; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.382436 | > 0.028376, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.009174 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.027397 | <= 0.05 | pass |
+| Estimated Pi frame p95 ms | 23.447808 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 379.962839 | <= 500.0 | pass |
+| Precision accuracy maximum drop | 0.048159 | <= 0.01 in each val/test R@P90, AP50, operating recall | fail |
+| Export parity | False | strict same-graph fp32 + accuracy for fp16 | fail |
+| Deployment policy | yolo26 / int8 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo26 / int8 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-800-r3-control-b16/yolo11/fp32/[448, 800]
+
+Val-chosen seed 0; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.474976 | > 0.013084, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.041284 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.068493 | <= 0.05 | fail |
+| Estimated Pi frame p95 ms | 68.701518 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 521.027137 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.000000 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo11 / fp32 | standard head; int8 excluded | pass |
+| Final deployment admission | yolo11 / fp32 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-800-round2-distill/yolo11/fp32/[448, 800]
+
+Val-chosen seed 0; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.465534 | > 0.013084, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.032110 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.054795 | <= 0.05 | fail |
+| Estimated Pi frame p95 ms | 69.003084 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 538.362825 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.000000 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo11 / fp32 | standard head; int8 excluded | pass |
+| Final deployment admission | yolo11 / fp32 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-800-round2-plain/yolo11/fp32/[448, 800]
+
+Val-chosen seed 1; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.466478 | > 0.013084, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.032110 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.041096 | <= 0.05 | pass |
+| Estimated Pi frame p95 ms | 68.620396 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 609.290558 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.000000 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo11 / fp32 | standard head; int8 excluded | pass |
+| Final deployment admission | yolo11 / fp32 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-800-round2-plain/yolo11/int8/[448, 800]
+
+Val-chosen seed 0; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.103872 | > 0.013084, larger seed SD | pass |
+| Val empty FAR | 0.005249 | <= 0.02 | pass |
+| Val confuser FAR | 0.013761 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.054795 | <= 0.05 | fail |
+| Estimated Pi frame p95 ms | 33.389419 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 809.967002 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.362606 | <= 0.01 in each val/test R@P90, AP50, operating recall | fail |
+| Export parity | False | strict same-graph fp32 + accuracy for fp16 | fail |
+| Deployment policy | yolo11 / int8 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo11 / int8 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-800-round2-plain/yolo26/fp16/[448, 800]
+
+Val-chosen seed 1; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.434372 | > 0.021450, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.027523 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.027397 | <= 0.05 | pass |
+| Estimated Pi frame p95 ms | 36.531362 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 360.400148 | <= 500.0 | pass |
+| Precision accuracy maximum drop | 0.000000 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo26 / fp16 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo26 / fp16 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-800-round2-plain/yolo26/fp32/[448, 800]
+
+Val-chosen seed 1; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.434372 | > 0.021450, larger seed SD | pass |
+| Val empty FAR | 0.000000 | <= 0.02 | pass |
+| Val confuser FAR | 0.027523 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.027397 | <= 0.05 | pass |
+| Estimated Pi frame p95 ms | 69.496002 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 650.073765 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.000000 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo26 / fp32 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo26 / fp32 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-800-round2-plain/yolo26/int8/[448, 800]
+
+Val-chosen seed 0; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.092540 | > 0.013084, larger seed SD | pass |
+| Val empty FAR | 0.005249 | <= 0.02 | pass |
+| Val confuser FAR | 0.009174 | <= 0.05 | pass |
+| Test empty FAR | 0.000000 | <= 0.02 | pass |
+| Test confuser FAR | 0.054795 | <= 0.05 | fail |
+| Estimated Pi frame p95 ms | 33.547623 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 882.218386 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.324273 | <= 0.01 in each val/test R@P90, AP50, operating recall | fail |
+| Export parity | False | strict same-graph fp32 + accuracy for fp16 | fail |
+| Deployment policy | yolo26 / int8 | standard head; int8 excluded | fail |
+| Final deployment admission | yolo26 / int8 | standard yolo11 head and fp16 | excluded |
+
+### Diagnostic yolo26n-v2s-species-800-r3/yolo11/fp32/[448, 800]
+
+Val-chosen seed 2; excluded from final deployment.
+
+| Gate | Observed | Requirement | Result |
+|---|---|---|---|
+| Three-seed test improvement | 0.468366 | > 0.013084, larger seed SD | pass |
+| Val empty FAR | 0.002625 | <= 0.02 | pass |
+| Val confuser FAR | 0.045872 | <= 0.05 | pass |
+| Test empty FAR | 0.008000 | <= 0.02 | pass |
+| Test confuser FAR | 0.041096 | <= 0.05 | pass |
+| Estimated Pi frame p95 ms | 70.022148 | <= 100.0 | pass |
+| Simulated reaction p95 ms | 612.642532 | <= 500.0 | fail |
+| Precision accuracy maximum drop | 0.000000 | <= 0.01 in each val/test R@P90, AP50, operating recall | pass |
+| Export parity | True | strict same-graph fp32 + accuracy for fp16 | pass |
+| Deployment policy | yolo11 / fp32 | standard head; int8 excluded | pass |
+| Species pigeon three-seed recall | 0.690274 | >= 0.678385 | pass |
+| Species shipped empty_far no worse than single | 0.008000 | <= 0.0 | fail |
+| Species shipped confuser_far no worse than single | 0.041096 | <= 0.0410958904109589 | pass |
+| Species estimated Pi p95 within 5% of single | 70.022148 | <= 72.051416 ms | pass |
+| Final deployment admission | yolo11 / fp32 | standard yolo11 head and fp16 | excluded |

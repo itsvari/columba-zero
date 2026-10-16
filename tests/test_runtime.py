@@ -1397,13 +1397,15 @@ class RuntimeTests(unittest.TestCase):
 
     def test_warmup_failure_before_capture_and_outputs(self) -> None:
         arguments = build_parser().parse_args([])
+        detector = Mock()
+        detector.warmup.side_effect = DetectorError("warmup")
         with (
-            patch("app.main.UltralyticsDetector") as detector,
+            patch("app.main.create_detector", return_value=(detector, ("pigeon",))),
             patch("app.main.Picamera2Capture") as camera,
             patch("app.main.RunOutput") as output,
         ):
-            detector.return_value.warmup.side_effect = DetectorError("warmup")
             self.assertEqual(run(arguments), 1)
+        detector.warmup.assert_called_once()
         camera.assert_not_called()
         output.assert_not_called()
 

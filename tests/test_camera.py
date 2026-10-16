@@ -85,7 +85,7 @@ class CameraConfigTests(unittest.TestCase):
             return AppConfig.load(path)
 
     def test_defaults_keep_previous_capture(self) -> None:
-        camera = AppConfig.load("app/config.yaml").camera
+        camera = self.load({}).camera
         self.assertEqual((camera.width, camera.height, camera.fps), (640, 480, 15))
         self.assertEqual((camera.stream, camera.camera_index, camera.label), ("main", 0, "camera0"))
         self.assertIsNone(camera.lens_position)

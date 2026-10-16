@@ -1,81 +1,143 @@
 {
-  "state": "blocked: BatchMode cluster SSH unavailable",
-  "main": "47a9b8b",
-  "distill_job": "958128",
-  "distill_job_state": "unknown after SSH failure; not cancelled",
-  "species_submission": "failed during checkout publication, before submission; no job receipt",
-  "control": "not started",
-  "final_selected": null,
-  "pytorch_previews": [
+  "state": "complete",
+  "main_base": "47a9b8b",
+  "cluster_jobs_required_for_finalisation": false,
+  "in_flight_ws7_jobs": [],
+  "final_selected": "yolo26n-v2s-800-round2-plain/yolo11/fp16/[448, 800]",
+  "new_seed_export_cases": 18,
+  "total_seed_export_cases": 72,
+  "candidates": [
     {
       "recipe": "yolo26n-v2s-800-round2-distill",
-      "label": "measured CPU PyTorch preview, not native deployment selection",
-      "host": "vexcalibur",
+      "job_id": "958128",
+      "host": "xcng0",
+      "state": "completed and fetched",
+      "label": "measured native xcng accuracy; latency is estimated Pi; reaction is simulated",
       "input_hw": [
         448,
         800
       ],
+      "precisions": [
+        "fp32",
+        "fp16"
+      ],
+      "decode": "yolo11",
       "seeds": [
         {
           "seed": 0,
-          "val_recall_at_p90": 0.8101487314085739,
+          "checkpoint_sha256": "e2b363faa469bd517529ce31ad2ea3b60d14bcdc28b3ac07c2bcf191af0797c5",
+          "val_recall_at_p90": 0.8092738407699037,
           "val_empty_far": 0.0,
           "val_confuser_far": 0.03211009174311927,
-          "val_threshold": 0.560291051864624,
-          "checkpoint_sha256": "e2b363faa469bd517529ce31ad2ea3b60d14bcdc28b3ac07c2bcf191af0797c5"
+          "val_threshold": 0.55810546875
         },
         {
           "seed": 1,
-          "val_recall_at_p90": 0.8057742782152231,
+          "checkpoint_sha256": "5aa95a43ad78012410cbac1b741f749c23684d8d83df5307969255639fc45136",
+          "val_recall_at_p90": 0.8075240594925635,
           "val_empty_far": 0.0,
-          "val_confuser_far": 0.03669724770642202,
-          "val_threshold": 0.5704952478408813,
-          "checkpoint_sha256": "5aa95a43ad78012410cbac1b741f749c23684d8d83df5307969255639fc45136"
+          "val_confuser_far": 0.03211009174311927,
+          "val_threshold": 0.56591796875
         },
         {
           "seed": 2,
-          "val_recall_at_p90": 0.7970253718285214,
-          "val_empty_far": 0.0026246719160104987,
+          "checkpoint_sha256": "e4df3c8713fadc6b6bb3a83a97e8112bb506f891eb9957284bb0363c405fe565",
+          "val_recall_at_p90": 0.7979002624671916,
+          "val_empty_far": 0.0,
           "val_confuser_far": 0.022935779816513763,
-          "val_threshold": 0.5864361524581909,
-          "checkpoint_sha256": "e4df3c8713fadc6b6bb3a83a97e8112bb506f891eb9957284bb0363c405fe565"
+          "val_threshold": 0.583984375
         }
       ]
     },
     {
       "recipe": "yolo26n-v2s-species-800-r3",
-      "label": "measured CPU PyTorch preview, not native deployment selection",
-      "host": "vexcalibur",
+      "job_id": "958260",
+      "host": "xcng1",
+      "state": "completed and fetched",
+      "label": "measured native xcng accuracy; latency is estimated Pi; reaction is simulated",
       "input_hw": [
         448,
         800
       ],
+      "precisions": [
+        "fp32",
+        "fp16"
+      ],
+      "decode": "yolo11",
       "seeds": [
         {
           "seed": 0,
-          "val_recall_at_p90": 0.8083989501312336,
+          "checkpoint_sha256": "b91d9d1ba22e37a2c6bec1b887cd1c15d0e5435c2cc3ab77d81ce7756aa6f5f4",
+          "val_recall_at_p90": 0.8092738407699037,
           "val_empty_far": 0.0,
           "val_confuser_far": 0.05045871559633028,
-          "val_threshold": 0.5749589800834656,
-          "checkpoint_sha256": "b91d9d1ba22e37a2c6bec1b887cd1c15d0e5435c2cc3ab77d81ce7756aa6f5f4"
+          "val_threshold": 0.5751953125
         },
         {
           "seed": 1,
-          "val_recall_at_p90": 0.8197725284339458,
+          "checkpoint_sha256": "a1af7a76798c72bf0dd64119bad62dc0260fd768ea55a0c32dceb543cd9631ac",
+          "val_recall_at_p90": 0.820647419072616,
           "val_empty_far": 0.0,
           "val_confuser_far": 0.05045871559633028,
-          "val_threshold": 0.5549433827400208,
-          "checkpoint_sha256": "a1af7a76798c72bf0dd64119bad62dc0260fd768ea55a0c32dceb543cd9631ac"
+          "val_threshold": 0.548828125
         },
         {
           "seed": 2,
+          "checkpoint_sha256": "ec8c3b8960c56731d6c658ae69830a818eccd0926a59a3d34490671360355d4e",
           "val_recall_at_p90": 0.8136482939632546,
           "val_empty_far": 0.0026246719160104987,
           "val_confuser_far": 0.045871559633027525,
-          "val_threshold": 0.6096760034561157,
-          "checkpoint_sha256": "ec8c3b8960c56731d6c658ae69830a818eccd0926a59a3d34490671360355d4e"
+          "val_threshold": 0.60498046875
+        }
+      ]
+    },
+    {
+      "recipe": "yolo26n-v2s-800-r3-control-b16",
+      "job_id": "958304",
+      "host": "xcng0",
+      "state": "completed and fetched",
+      "label": "measured native xcng accuracy; latency is estimated Pi; reaction is simulated",
+      "input_hw": [
+        448,
+        800
+      ],
+      "precisions": [
+        "fp32",
+        "fp16"
+      ],
+      "decode": "yolo11",
+      "seeds": [
+        {
+          "seed": 0,
+          "checkpoint_sha256": "1e3966a7c0224d73c21097805e64e16f9d4b99b957b56bc265e3e5d819d54236",
+          "val_recall_at_p90": 0.8040244969378828,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.04128440366972477,
+          "val_threshold": 0.5009765625
+        },
+        {
+          "seed": 1,
+          "checkpoint_sha256": "bcba511e8a686e7ae95896c254be160998694a3a188890a53f167e08830dbd77",
+          "val_recall_at_p90": 0.7751531058617673,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.04128440366972477,
+          "val_threshold": 0.546875
+        },
+        {
+          "seed": 2,
+          "checkpoint_sha256": "c978c4a153a1981231150d29413f3db58e591291a53502dc8ba7b0bed64b4e87",
+          "val_recall_at_p90": 0.7812773403324584,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.03669724770642202,
+          "val_threshold": 0.60302734375
         }
       ]
     }
-  ]
+  ],
+  "raw_results_local": "outputs/ws7-final/results",
+  "raw_exports_local": "outputs/ws7-final/exports",
+  "remote_root": "~/columba/scratch/ws7/additions/<recipe>/",
+  "evidence": "experiments/reports/WS7-final-candidates",
+  "audit": "experiments/reports/WS7-final-audit.json",
+  "prior_interruption": "BatchMode tunnel failed during initial species publication; coordinator restored it and all work completed before final pause"
 }

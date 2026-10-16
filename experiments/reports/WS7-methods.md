@@ -1,7 +1,8 @@
 # WS7 reproduction and hand-off
 
 Use the shared environment without changing its pinned packages. Run commands
-from the repository root. Cluster access is exclusively BatchMode SSH. If the connection fails, retry
+from the repository root. Cluster access is exclusively BatchMode SSH. If the connection fails,
+retry
 `ssh -o BatchMode=yes columba-cluster true` every 60 seconds for up to ten
 minutes before stopping and reporting. The coordinator's Mac watchdog normally
 restores the tunnel within 30–60 seconds. Never supply a password.
@@ -128,8 +129,8 @@ from a 20,000-frame stationary scheduling replay using the same Pi latency
 samples. Do not replace capture FPS with detector FPS and count the service
 limit twice. WS10 step 3 must measure real reaction time.
 
-WS10 step 3 and steps 5–7 remain open: real reaction, site threshold/k-n, Pi OMP and on-Pi
-geometry. The launcher stays unchanged. `columba-test-site-v1` must check the
+WS10 step 3 and steps 5–7 remain open: real reaction, site threshold/k-n,
+Pi OMP and on-Pi geometry. The launcher stays unchanged. `columba-test-site-v1` must check the
 real camera; frozen test-v2 has only nine approximately 16:9 images.
 
 ## Durable packaging
@@ -137,13 +138,13 @@ real camera; frozen test-v2 has only nine approximately 16:9 images.
 Final model files follow the incumbent's directly tracked convention under
 `runs/detect/pigeon_detector/<model-id>/weights/best_ncnn_model/`. The existing
 baseline files are unchanged. Git attributes preserve exact param/bin bytes
-and LF metadata. There is no Git LFS filter. Only the shipped fp16 package and
-the small plain-800 fallback are added; experimental weights remain ignored.
+and LF metadata. There is no Git LFS filter. The winner is plain-800, so its single shipped package also serves as the
+fallback. Experimental weights remain ignored.
 
 ```sh
 python -m tools.select_model package --final \
   --decision experiments/reports/WS7-final-selection.json \
-  --exports outputs/ws7-final/exports \
+  --exports outputs/ws7/exports \
   --fallback-candidate experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed1/yolo11/fp16 \
   --fallback-exports outputs/ws7/exports \
   --report experiments/reports/WS7-final.md
@@ -155,7 +156,8 @@ Use the selected export's root for `--exports`. The manifest contains only
 repository-relative durable source/runtime paths, checkpoint SHA-256,
 val-derived threshold and each file's SHA-256/byte count. Default preparation
 verifies and copies the winner; `--model-id` also selects the named fallback.
-Clean-clone tests verify both packages with autocrlf false and true.
+Clean-clone tests verify the selected package with autocrlf false and true.
+The named-ID preparation path also selects this same package.
 
 ## Earlier diagnostics
 
@@ -174,56 +176,21 @@ The full reproduction commands remain available in the prior committed version
 of this methods report and `tools.select_model aspect --help`.
 
 
-## Resume from the coordinator pause, 16 October 2026
+## Final verification and completed pause
 
-WIP, paused by explicit coordinator instruction. No new cluster jobs are
-needed. Jobs958128 (distill, xcng0), 958260 (species, xcng1) and958304 (control,
-xcng0) completed and were fetched. The last observed queue was empty; **no jobs
-are in flight**. Raw results and exports are local under `outputs/ws7-final/`
-and remote under `~/columba/scratch/ws7/additions/<recipe>/{results,exports}`.
-The original plain package remains under `outputs/ws7/exports/`.
+The coordinator pause was resumed and closed. Jobs 958128, 958260 and 958304
+completed and were fetched; none is in flight. Finalisation required no new
+cluster jobs. All 18 new fp32/fp16 cases are audited and all 72 cases are in
+the saved decision. The current winner is plain-800 seed1, standard yolo11,
+fp16 at 448x800, threshold 0.62646484375. No selection decision is pending.
 
-Done: all18 new fp32/fp16 cases are scored on val/test/styles via native xcng,
-audited, and copied into `WS7-final-candidates/`. All72 cases have been selected
-under the final rules. The winner is plain-800 seed1, standard yolo11 decode,
-fp16,448x800. Distill0 fails test confuser FAR; species2 fails its relative
-empty FAR clause; control0 fails confuser FAR and fp16 precision accuracy.
-No test-driven seed fallback occurred. `WS7-final-selection.json` is the real
-final decision; the report is marked WIP because validation/report clean-up
-was interrupted by the pause.
-
-Packaging is complete. `deploy/model_manifest.json` promotes the already
-tracked plain package to the default. Since the winner is the plain fallback,
-there is one package and no duplicate fallback entry. The authorised config
-edit is complete: native backend,448x800,threshold0.62646484375,confirmation
-k2/n3 enabled,800x450 lores capture at30FPS. Recording FPS remains15 and all
-other defaults remain unchanged. `check_model` and a fresh20-frame native
-replay passed with one confirmed trigger. Runtime test fixtures were updated
-to mock the backend-neutral factory where they had relied on the old default.
-All 60 runtime tests, touched-code Ruff and full mypy pass. Full post-config
-pytest/unittest and complete lint/format checks remain.
-
-The reaction audit reproduces the gate exactly. WS4 already serialises
-inference and drops stale captures:30FPS capture gives estimated effective
-27.446FPS detection and simulated p95345.364ms, already throughput limited.
-Do not reduce camera FPS to detection FPS and double-count the service limit.
-
-Resume in this order from this worktree, branch `ws7/export`:
+Use these commands to repeat local validation from this worktree:
 
 ```sh
 export PATH="/Users/vari/Developer/columba-zero/.venv/bin:$PATH"
 export PYTHONPATH="$PWD/native/build/ws7-final-mac:$PWD"
 export YOLO_CONFIG_DIR="$PWD/outputs/ws7-final/settings"
 export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=4
-python -m tools.select_model select \
-  experiments/reports/WS7-candidates experiments/reports/WS7-final-candidates \
-  --final --output experiments/reports/WS7-final-selection.json \
-  --report experiments/reports/WS7-final.md
-python -m tools.select_model package --final \
-  --decision experiments/reports/WS7-final-selection.json \
-  --exports outputs/ws7/exports \
-  --fallback-candidate experiments/reports/WS7-candidates/yolo26n-v2s-800-round2-plain/seed1/yolo11/fp16 \
-  --fallback-exports outputs/ws7/exports --report experiments/reports/WS7-final.md
 python tools/prepare_models.py
 python -m app.main --config outputs/ws7-final/replay-final-config.yaml \
   --video outputs/ws7-final/replay-800x450-30fps.avi --max-frames 20
@@ -232,14 +199,27 @@ python -m unittest discover -s tests -v
 python -m ruff check app tests tools cluster training native
 python -m ruff format --check app tests tools cluster training native
 python -m mypy
+ctest --test-dir native/build/ws7-final-mac --output-on-failure
 ```
 
-After checks, refresh `WS7-final-preparation.json`, `WS7-final-verification.json`
-and `status/WS7.md`; they still contain the earlier interruption's state/counts.
-Add config/package/replay/check summaries to the final report and remove WIP.
-Current raw proof is `outputs/ws7-final/configuration-replay-final.json`,
-`replay-final.log` and `replay-final-runs/*/detections.jsonl`. Package hashes are
-in the manifest. Re-run the final audit only if the saved evidence changes.
-Commit the completed reports and reply with SHA,winner,gates,package hashes
-and config diff. No policy decision is pending. WS10 step3 real reaction and
-steps5–7 site threshold/k-n,OMP and on-Pi geometry remain open.
+The native build and replay clip are local ignored artefacts. For a fresh
+checkout, build `columba_native` using `native/README.md` and provide a local
+replay clip. The replay config changes only display/output settings for
+headless verification; its model, threshold, geometry, capture FPS and
+confirmation settings match deployment. It is an unpaced file replay and
+cannot establish live-camera reaction time.
+
+Current proof is in `WS7-final-verification.json`, including hashes of raw
+logs under `outputs/ws7-final/resume-validation/`. Results are 325 pytest tests
+and 223 subtests passed, 325 unittest tests passed, one CTest passed, Ruff lint
+and format passed, and mypy passed for all 91 source files. No native test was
+skipped. Final gates and both seed nominations are in `WS7-final.md`.
+
+`select` and `package` regenerate the core report from saved C4/C7 evidence.
+If new evidence is added later, refresh the final report's verification and
+diagnostic appendix from the new decision and actual check results. Do not
+retain old validation counts after a code or config change.
+
+WS10 step 3 must measure real reaction p95 on the Pi. Steps 5–7 still cover
+site threshold/k-n, OMP policy and on-Pi capture/model geometry. No contract
+change is requested, and no merge into main was performed.
