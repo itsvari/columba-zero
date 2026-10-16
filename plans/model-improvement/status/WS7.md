@@ -6,6 +6,17 @@
 - Last updated: 2026-10-16
 - Contracts: v1.9; rebased onto coordinator main `47a9b8b`
 
+## Resume after tunnel restoration
+
+The coordinator restored the tunnel at 16:55. Distill job958128 completed and
+was fetched. Species job958260 is running on xcng1; control CPU preparation
+is in progress. BatchMode SSH now retries every 60 seconds for up to ten
+minutes on failure. The coordinator also authorised capture FPS30, with
+recording FPS unchanged. WS4 already simulates serial service and latest-frame
+drops. Its 30 FPS gate is throughput limited; a reproducible effective-rate
+audit has been added. The sections below describe the prior interruption and
+will be replaced by the final result after all evidence arrives.
+
 ## Done when
 
 Final selection is **not complete**. The selector, final report generator and

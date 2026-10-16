@@ -1,8 +1,10 @@
 # WS7 reproduction and hand-off
 
 Use the shared environment without changing its pinned packages. Run commands
-from the repository root. Cluster access is exclusively BatchMode SSH; stop
-cluster work if it fails. Never supply a password.
+from the repository root. Cluster access is exclusively BatchMode SSH. If the connection fails, retry
+`ssh -o BatchMode=yes columba-cluster true` every 60 seconds for up to ten
+minutes before stopping and reporting. The coordinator's Mac watchdog normally
+restores the tunnel within 30–60 seconds. Never supply a password.
 
 ```sh
 export PATH="/Users/vari/Developer/columba-zero/.venv/bin:$PATH"
@@ -117,10 +119,16 @@ Benchmark source frames are 480x640, recorded as `camera_hw`, resized from the
 first 20 val photos. Pi p95 is an estimate using xcng x1.527110713, not a Pi
 measurement. WS4 reaction is simulated at 30 FPS, k2/n3, 20,000 trials, seed42,
 independent hits, with still-image operating recall as the frame-recall proxy.
-The capture default remains 15 FPS under the limited config authorisation.
-The final report includes that FPS sensitivity separately.
+The coordinator now authorises `camera.fps: 30`, leaving `recording_fps`
+unchanged. The simulator already samples serial service durations and selects
+the latest available capture after each service, dropping stale frames. Its
+30 FPS result is throughput limited, not 30 detections per second. Final
+selection reproduces the reaction gate and reports an effective detection rate
+from a 20,000-frame stationary scheduling replay using the same Pi latency
+samples. Do not replace capture FPS with detector FPS and count the service
+limit twice. WS10 step 3 must measure real reaction time.
 
-WS10 steps 5–7 remain open: site threshold/k-n, the Pi OMP policy and on-Pi
+WS10 step 3 and steps 5–7 remain open: real reaction, site threshold/k-n, Pi OMP and on-Pi
 geometry. The launcher stays unchanged. `columba-test-site-v1` must check the
 real camera; frozen test-v2 has only nine approximately 16:9 images.
 
