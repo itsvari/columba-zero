@@ -1547,6 +1547,13 @@ def durable_package_entry(
         / str(descriptor["decode"])
         / f"{descriptor['precision']}_ncnn_model"
     )
+    measured = read_report(candidate / "latency.json")
+    for name, field in (
+        ("model.ncnn.param", "parameters_sha256"),
+        ("model.ncnn.bin", "weights_sha256"),
+    ):
+        if hashlib.sha256((source / name).read_bytes()).hexdigest() != measured[field]:
+            raise ValueError(f"{source / name}: package differs from measured export")
     destination = repository / "runs/detect/pigeon_detector" / model_id / "weights/best_ncnn_model"
     destination.mkdir(parents=True, exist_ok=True)
     files: list[JsonValue] = []
