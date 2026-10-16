@@ -13,7 +13,7 @@ from typing import cast
 from unittest.mock import patch
 
 from app.json_data import JsonValue
-from tools.evaluate_predictions import Dataset, ImageRecord, mapping
+from tools.evaluate_predictions import Dataset, ImageRecord, load_dataset, mapping
 from tools.prepare_models import prepare_models
 from tools.quantize_ncnn import calibration_images
 from tools.select_model import (
@@ -57,6 +57,41 @@ class ExportSelectionTests(unittest.TestCase):
     def selection(self, records: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
         with patch("tools.select_model.candidate_record", side_effect=records):
             return select_candidates([Path(str(index)) for index in range(len(records))], BASELINE)
+
+    def test_species_taxonomy_view_keeps_manifest_images_inside_immutable_view(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            dataset = Path(temporary) / "columba-test-v2"
+            (dataset / "images/test").mkdir(parents=True)
+            (dataset / "labels/test").mkdir(parents=True)
+            image = dataset / "images/test/bird.jpg"
+            image.write_bytes(b"image")
+            (dataset / "labels/test/bird.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+            original = "names: [pigeon]\ntest: images/test\n"
+            (dataset / "data.yaml").write_text(original)
+            (dataset / "manifest.jsonl").write_text(
+                json.dumps(
+                    {
+                        "id": "bird",
+                        "file": "images/test/bird.jpg",
+                        "split": "test",
+                        "width": 100,
+                        "height": 100,
+                        "classes_present": ["pigeon"],
+                        "style": "original",
+                        "source": "test",
+                        "group": "bird",
+                    }
+                )
+                + "\n"
+            )
+            with taxonomy_view(dataset, "species") as view:
+                loaded = load_dataset(view, "test")
+                self.assertEqual(loaded.names[0], "pigeon")
+                self.assertGreater(len(loaded.names), 1)
+                self.assertTrue(loaded.images[0].path.is_relative_to(view))
+                self.assertEqual(loaded.images[0].annotations[0].category_id, 0)
+            self.assertEqual((dataset / "data.yaml").read_text(), original)
+            self.assertEqual(image.read_bytes(), b"image")
 
     def test_aspect_buckets_cover_canonical_shapes(self) -> None:
         for width_px, height_px, expected in (

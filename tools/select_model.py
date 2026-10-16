@@ -92,10 +92,10 @@ def taxonomy_view(dataset: Path, taxonomy: str) -> Iterator[Path]:
         view.mkdir()
         for child in dataset.iterdir():
             destination = view / child.name
-            if child.name == "data.yaml":
-                shutil.copy2(child, destination)
+            if child.is_dir():
+                shutil.copytree(child, destination)
             else:
-                destination.symlink_to(child.resolve(), target_is_directory=child.is_dir())
+                shutil.copy2(child, destination)
         align_test_taxonomy(view, taxonomy, Path("training/classes.yaml"))
         yield view
 
