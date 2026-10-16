@@ -1,0 +1,81 @@
+{
+  "state": "blocked: BatchMode cluster SSH unavailable",
+  "main": "47a9b8b",
+  "distill_job": "958128",
+  "distill_job_state": "unknown after SSH failure; not cancelled",
+  "species_submission": "failed during checkout publication, before submission; no job receipt",
+  "control": "not started",
+  "final_selected": null,
+  "pytorch_previews": [
+    {
+      "recipe": "yolo26n-v2s-800-round2-distill",
+      "label": "measured CPU PyTorch preview, not native deployment selection",
+      "host": "vexcalibur",
+      "input_hw": [
+        448,
+        800
+      ],
+      "seeds": [
+        {
+          "seed": 0,
+          "val_recall_at_p90": 0.8101487314085739,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.03211009174311927,
+          "val_threshold": 0.560291051864624,
+          "checkpoint_sha256": "e2b363faa469bd517529ce31ad2ea3b60d14bcdc28b3ac07c2bcf191af0797c5"
+        },
+        {
+          "seed": 1,
+          "val_recall_at_p90": 0.8057742782152231,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.03669724770642202,
+          "val_threshold": 0.5704952478408813,
+          "checkpoint_sha256": "5aa95a43ad78012410cbac1b741f749c23684d8d83df5307969255639fc45136"
+        },
+        {
+          "seed": 2,
+          "val_recall_at_p90": 0.7970253718285214,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.022935779816513763,
+          "val_threshold": 0.5864361524581909,
+          "checkpoint_sha256": "e4df3c8713fadc6b6bb3a83a97e8112bb506f891eb9957284bb0363c405fe565"
+        }
+      ]
+    },
+    {
+      "recipe": "yolo26n-v2s-species-800-r3",
+      "label": "measured CPU PyTorch preview, not native deployment selection",
+      "host": "vexcalibur",
+      "input_hw": [
+        448,
+        800
+      ],
+      "seeds": [
+        {
+          "seed": 0,
+          "val_recall_at_p90": 0.8083989501312336,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.05045871559633028,
+          "val_threshold": 0.5749589800834656,
+          "checkpoint_sha256": "b91d9d1ba22e37a2c6bec1b887cd1c15d0e5435c2cc3ab77d81ce7756aa6f5f4"
+        },
+        {
+          "seed": 1,
+          "val_recall_at_p90": 0.8197725284339458,
+          "val_empty_far": 0.0,
+          "val_confuser_far": 0.05045871559633028,
+          "val_threshold": 0.5549433827400208,
+          "checkpoint_sha256": "a1af7a76798c72bf0dd64119bad62dc0260fd768ea55a0c32dceb543cd9631ac"
+        },
+        {
+          "seed": 2,
+          "val_recall_at_p90": 0.8136482939632546,
+          "val_empty_far": 0.0026246719160104987,
+          "val_confuser_far": 0.045871559633027525,
+          "val_threshold": 0.6096760034561157,
+          "checkpoint_sha256": "ec8c3b8960c56731d6c658ae69830a818eccd0926a59a3d34490671360355d4e"
+        }
+      ]
+    }
+  ]
+}

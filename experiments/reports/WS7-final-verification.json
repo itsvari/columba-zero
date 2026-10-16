@@ -1,0 +1,33 @@
+{
+  "label": "measured functional verification, not Pi timing or accuracy",
+  "host": "vexcalibur",
+  "package": "yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16",
+  "native_source": "merged native source, locally rebuilt with existing A76-compatible NCNN/OpenCV dependencies",
+  "check_model": "passed, C8 agrees with [448,800] and yolo11 decode",
+  "replay": {
+    "frames": 20,
+    "width_px": 800,
+    "height_px": 450,
+    "backend": "native",
+    "confidence": 0.62646484375,
+    "k": 2,
+    "n": 3,
+    "confirmed_triggers": 1,
+    "exit_code": 0,
+    "source": "local synthetic blank/bird/blank replay from one val photo",
+    "log_sha256": "a1df3914722f38b8d430ea8fef2fca81b0a366696496b234caedfbfd1422bf9e"
+  },
+  "pytest": {
+    "passed": 322,
+    "subtests_passed": 228
+  },
+  "unittest": {
+    "passed": 322
+  },
+  "ctest": {
+    "passed": 1
+  },
+  "ruff": "passed app tests tools cluster training native",
+  "ruff_format": "passed, 94 files",
+  "mypy": "passed, 91 source files"
+}

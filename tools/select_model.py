@@ -1043,7 +1043,10 @@ def select_candidates(
         "fp16_parity_policy": (
             "same-graph strict fp32 parity and precision accuracy; strict fp16 diagnostic"
         ),
-        "excluded": ["int8", "decode:yolo26"] + (["fp32 parity companions"] if final else []),
+        "excluded": cast(
+            list[JsonValue],
+            ["int8", "decode:yolo26"] + (["fp32 parity companions"] if final else []),
+        ),
         "precision_accuracy_gate": (
             "each split R@P90/AP50/operating recall drop <=0.01 vs same-head rectangular PyTorch"
         ),
