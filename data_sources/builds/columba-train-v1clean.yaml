@@ -20,8 +20,8 @@ val_fraction: 0.15
 seed: 0
 label_conventions: >-
   v1 convention kept for round 0: all COCO 2017 `bird` boxes are labelled `pigeon`
-  (pigeon_detection_training.ipynb section 4), even though most of those birds are other
-  species; their classes_present also lists `other_bird`. Roboflow NEA Fox boxes are dropped and
+  (docs/history/pigeon_detection_training.ipynb section 4), even though most of those
+  birds are other species; their classes_present also lists `other_bird`. Roboflow NEA Fox boxes are dropped and
   NEA/yolo1199 images without a pigeon box are left out, as in v1. No negatives.
 notes: >-
   Groups join exact copies (SHA-256), mirror-aware phash neighbours (distance <= 10), Roboflow

@@ -182,7 +182,7 @@ Environment notes (coordinator, 14 Oct 2026):
 
 - The original training images (Roboflow NEA `nea-pn0bc/pigeon-foxes-detector`
   v1, `yolo-bl12d/pigeons-detection-l7u3l` v1, COCO val2017 birds; see
-  `pigeon_detection_training.ipynb`) and the 63-image old test split are **not
+  [the training notebook](../../docs/history/pigeon_detection_training.ipynb)) and the 63-image old test split are **not
   on the Mac**. WS2 re-downloads them. The Roboflow API key is in
   `~/.config/columba/roboflow.env` (`ROBOFLOW_API_KEY=...`). Read it from there;
   never print it, log it, or commit it.

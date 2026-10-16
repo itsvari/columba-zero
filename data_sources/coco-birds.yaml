@@ -1,5 +1,5 @@
 # COCO 2017 val images containing at least one `bird` box. The v1 training set used
-# all of them, relabelled `pigeon` (pigeon_detection_training.ipynb, section 4).
+# all of them, relabelled `pigeon` (docs/history/pigeon_detection_training.ipynb, section 4).
 # COCO annotations are CC BY 4.0 (COCO Consortium); every image keeps its own
 # Flickr licence from the annotation JSON `licenses` table, which we filter:
 # only CC-BY-2.0 (id 4) and CC-BY-SA-2.0 (id 5) pass. NC (ids 1-3), ND (id 6),

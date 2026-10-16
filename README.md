@@ -7,8 +7,9 @@ actuation code, calibration, or unique-bird counting. Per-track trigger
 confirmation is available but off by default.
 
 The runtime uses the existing `pigeon_baseline_v1-2` YOLO11n single-class model.
-The original training notebook, results, and weights remain intact. The notebook
-and `GEN2002Y Report.md` describe historical work; the current application is
+The original training notebook, results, and weights remain intact. The
+[notebook](docs/history/pigeon_detection_training.ipynb) and
+[GEN2002Y report](docs/history/GEN2002Y%20Report.md) describe historical work; the current application is
 specified here and in [the acceptance guide](RASPBERRY_PI_PROTOTYPE_PLAN.md).
 
 ## Model preparation
