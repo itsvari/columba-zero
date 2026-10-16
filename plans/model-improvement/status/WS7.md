@@ -1,12 +1,27 @@
 # WS7 — Export, quantisation and selection
 
-- State: complete
-- Branch: `ws7/export`
+- State: PTQ follow-up blocked on cluster tunnel; export work complete
+- Branch: `ws7/quant`, created from local main `e6e12be`
 - Agent: gpt-6.1-sol via T3 delegate
 - Last updated: 2026-10-16
-- Contracts: v1.9; based on coordinator main `47a9b8b`
+- Export contracts: v1.9; original selection based on coordinator main `47a9b8b`
 
-## Done when
+## Quantisation follow-up
+
+The requested ARM-only PTQ study has not started. The initial
+`ssh -o BatchMode=yes columba-cluster true` check exited 255 with
+`ssh: connect to host 127.0.0.1 port 22022: Connection refused`.
+The coordinator's current instruction requires stopping on this failure.
+No retries, cluster jobs or GPU work were attempted. No password was
+requested, used or stored.
+
+`experiments/reports/WS7-quant.md` records the blocker and resume order.
+Calibration reproduction, preprocessing audit, calibration-method comparison,
+mixed-precision sensitivity and latency measurements remain outstanding.
+No QAT work has started. Deployment files and the int8 exclusion are unchanged.
+The `ws7/export` branch was not modified.
+
+## Export done when
 
 Met. Final selection covers 24 configurations and 72 seed/export cases.
 The selected model is durably packaged, its manifest and C8 metadata verify,
