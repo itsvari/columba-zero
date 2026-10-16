@@ -1,9 +1,9 @@
 # WS5 — YOLO training and distillation
 
-- State: in progress  <!-- not started | in progress | blocked | done -->
+- State: done (training); final call with WS7  <!-- not started | in progress | blocked | done -->
 - Branch: `ws5/training`
 - Agent: Claude Opus 5.5 via T3 delegate
-- Last updated: 2026-10-14
+- Last updated: 2026-10-16
 
 ## Done
 
@@ -55,43 +55,27 @@
 
 ## In progress
 
-Check-in 16 Oct (main 88eabb0 merged).
+Nothing running for WS5. Check-in 16 Oct (main 550e985). **Final report:
+`experiments/reports/WS5-final.md`.**
 
-- **Round 3 (species gate, PLAN 5.4): decided at training size, provisional
-  until WS7.** Full table in `experiments/reports/WS5-round3.md`; rows are
-  fetched to the leaderboard.
-
-  | Clause | Species vs single, 3 seeds each |
-  |---|---|
-  | Recall | **pass**: test R@P90 0.791 ± 0.013 vs 0.780 ± 0.024; val 0.818 ± 0.004 vs 0.794 ± 0.006 |
-  | Latency | **pass**: +1.9% est. Pi p95 at 448×800 |
-  | False alarms | **fail** (strict, test): empty FAR 0.008 (1 street scene on every seed) vs 0.000; confuser 0.041 vs 0.032. No worse on val. |
-
-  - **Decision:** do not ship species. Ship the single-class model, trained
-    with the species images as unlabelled negatives (v2s single).
-  - WS7's deploy-size gate (`select_model.py enforce_species_gate`) makes
-    the final call. The seeds for WS7, chosen on val:
-    `yolo26n-v2s-species-800-r3/seed2` and its single reference
-    `yolo26n-v2s-800-round2-plain/seed1`.
-  - **Control running** (coordinator-approved 16 Oct):
-    `yolo26n-v2s-800-r3-control-b16` (plain-800 + `batch_override: 16`),
-    commit f722a9b.
-    - Arrays **952063** (s0), **952064** (s1), **952065** (s2): Titan V
-      (`Features=titanv`), 3-hour limit over gpu-long,gpu with checkpoint
-      requeue.
-    - ETA (estimated): ≈ 5–6 h of training each (species: 108–136 epochs ×
-      160 s), so ≈ 6–8 h from start including one requeue.
-    - Interpretation rule, fixed before results: within the larger seed sd
-      of species → the gain is attributed to batch, and single-b16 becomes a
-      WS7 candidate. Otherwise the decision rests on WS7's deploy-size FARs.
-- **Distill-640 complete** (`WS5-round2.md`):
-  - val R@P90 0.807 ± 0.009 vs plain 0.788 ± 0.010, but test 0.733 ± 0.013
-    vs 0.743 ± 0.003.
-  - Test precision at the val threshold is < 0.90 on every seed.
-  - Confuser FAR 0.050 (s2 breaches).
-  - No improvement on test.
-- **Distill-800** running (951222 s0/s2 on h100-47, 951220 s1 on A100-40).
-  A placeholder is in `WS5-round2.md`.
+- **Best recipe (training size):** `yolo26n-v2s-800-round2-distill`.
+  - Section-1 pass vs plain-800: test R@P90 0.811 ± 0.011 vs 0.780 ± 0.024.
+  - FAR within the gates on all seeds.
+  - WS7 seed (val): **seed1** (val 0.815, threshold 0.5846).
+- **Species gate (5.4):** recall and latency pass; strict FAR fails (1 empty
+  false alarm per seed).
+  - The b16 control (test 0.790 ± 0.014) is within species' sd (0.791 ±
+    0.013), so the recall gain is attributed to batch size.
+  - **Decision: do not ship species.** Ship the single-class model trained
+    with species images as unlabelled negatives. Final confirmation is
+    WS7's deploy-size gate.
+- **WS7 candidates (val-chosen seeds):**
+  - distill-800 s1;
+  - plain-800 s1 (reference / fallback);
+  - species s2;
+  - control-b16 s2 (val tie with s0 broken on val confuser FAR).
+- Leaderboard rows cover every WS5 run except `baseline-repro/seed1`, which
+  was cancelled while pending and never ran.
 
 ## Blockers and requests
 

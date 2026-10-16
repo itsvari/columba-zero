@@ -111,7 +111,7 @@ than the taxonomy. A control run would separate the two:
 If single@16 matches species on recall, smaller batches help the single
 model without the species FAR cost.
 
-**Control running (coordinator-approved 16 Oct):**
+**Control (coordinator-approved and submitted 16 Oct; result below):**
 `training/recipes/yolo26n-v2s-800-r3-control-b16.yaml`.
 - **Why:** batch size, BatchNorm statistics and GPU type confound the
   species-vs-single comparison. The control removes them.
@@ -127,3 +127,57 @@ model without the species FAR cost.
     same rules.
   - Otherwise species keeps its recall advantage, and the decision rests
     on WS7's deploy-size false-alarm results.
+
+## Control result (16 Oct): species recall gain attributed to batch size
+
+`yolo26n-v2s-800-r3-control-b16`. 3 seeds on Titan V, batch 16 ×
+accumulate 4, single taxonomy on `columba-train-v2s`. Jobs 952063–952065,
+refilled after requeue as 954413 / 954417 / 954418 (and 955061 / 955062).
+Measured, training size, 800 px.
+
+| Metric | Control b16 (single) | Species b16 | Plain b64 (single) |
+|---|---|---|---|
+| val R@P90 | 0.798 ± 0.018 (0.808, 0.778, 0.808) | 0.818 ± 0.004 | 0.794 ± 0.006 |
+| test R@P90 | **0.790 ± 0.014** (0.790, 0.776, 0.805) | **0.791 ± 0.013** | 0.780 ± 0.024 |
+| test small R@P90 | 0.549 ± 0.024 | 0.551 ± 0.025 | 0.537 ± 0.051 |
+| test AP50 | 0.878 ± 0.011 | 0.875 ± 0.012 | 0.860 ± 0.017 |
+| test AP50-95 | 0.520 ± 0.005 | 0.519 ± 0.009 | 0.511 ± 0.008 |
+| test P / R at val threshold | 0.916 / 0.777 | 0.923 / 0.766 | 0.924 / 0.748 |
+| test empty FAs (of 125) | 0, 0, 0 | 1, 1, 1 | 0, 0, 0 |
+| test confuser FAs (of 73) | 3, **4**, 3 | 3, 3, 3 | 3, 1, 3 |
+
+**Pre-registered rule, applied verbatim:**
+- **Rule:** "If the control's 3-seed mean test R@P90 is within the larger
+  seed sd of species, the species recall gain is attributed to batch size."
+- **Applied:** |0.790 − 0.791| = 0.001 ≤ max(0.014, 0.013) = 0.014, so
+  **within**. The species gain is **attributed to batch size**, and
+  single-class b16 **becomes a WS7 candidate** under the same rules.
+- On val, species stays about 0.02 higher (0.818 vs 0.798). Control seed
+  1 is a low outlier on val (0.778). The rule is defined on test, though,
+  and test agrees with the control on every accuracy metric.
+
+**Control seed for WS7 (val only):** `yolo26n-v2s-800-r3-control-b16/seed2`.
+- Seeds 0 and 2 tie exactly on val R@P90 (0.808399, the same box count).
+- Deterministic val-only tie-break, in order:
+  1. higher val R@P90;
+  2. lower val confuser FAR;
+  3. lower val empty FAR;
+  4. higher val AP50;
+  5. lower seed index.
+- Step 2 decides it: s2 val confuser 0.032 vs s0 0.041. s2's val empty FAR
+  is 0.000, its val operating threshold 0.575.
+- Test, for reference only: R@P90 0.805, 0 / 3 false alarms.
+- Control seed 1 breaches the test confuser gate (4 of 73). It is not the
+  val-chosen seed.
+
+**Effect on the species decision:** with the recall gain explained by batch
+size, species no longer has a recall advantage over a matched single model.
+It still has the extra false alarms (1 empty scene per seed). So the
+training-size decision stands: **do not ship species**. WS7's deploy-size
+scoring of `species/seed2` against its single reference makes the final
+call.
+
+The training-size data also says batch 16 (on Titan V) helps single-class
+recall slightly (+0.010 test, within noise) and AP50 (+0.018). The cause
+cannot be separated further: batch, BatchNorm and GPU type all change
+together.
