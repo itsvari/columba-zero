@@ -1,5 +1,9 @@
 # WS6 challenger latency gate
 
+> Cleanup note (17 Oct 2026): the challenger adapters under `training/adapters/`
+> and `tests/test_challengers.py` were removed in the repository cleanup. They
+> are available in git history at `6de04fb`.
+
 Step 1 only, 14 October 2026, branch `ws6/challengers`. No training, recipes,
 shared-venv changes, WS4 edits, push or merge.
 

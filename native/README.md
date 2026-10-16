@@ -3,7 +3,8 @@
 `columba_native` runs detection without importing PyTorch or Ultralytics. The
 extension uses NCNN tag `20260526`, nanobind and OpenCV core/imgproc. Python needs
 NumPy and PyYAML. The application wrapper imports the extension only when a
-`NativeDetector` is constructed.
+`NativeDetector` is constructed. The shipped configuration (`model.backend:
+native` in `app/config.yaml`) needs it, so build it before running the app.
 
 ## Build on macOS ARM64
 
@@ -47,14 +48,24 @@ CMake build. The existing `native` extra supplies nanobind and build tools.
 
 ## Build on Linux aarch64
 
-Use Python 3.12.3 on the arm lane. Create the verification environment under
-`~/columba/scratch/ws8/venv`, outside WS3's environments. The Slurm runner
-`native/run_arm_job.sh` bundles dependency installation, build, C++ and Python
-tests, parity, and overhead measurement. It requests eight CPUs on `xcng1`,
-`normal`, a two-hour limit and `--nice=1000`. Check `squeue -u $USER` immediately
-before submission and respect the project caps and WS8's single CPU-job share.
-Stage a Git checkout at `~/columba/scratch/ws8/repo` and models/images at
-`~/columba/scratch/ws8/artifacts`; logs and results stay under the same root.
+Use Python 3.12.3 on the arm lane. The cluster keeps one working build, which
+`tools/select_model.py` hard-codes for its ARM evaluation bundles:
+
+- environment: `~/columba/scratch/ws8/venv`, outside WS3's environments;
+- extension: `~/columba/scratch/ws8/round3/repo/native/build/linux-aarch64`;
+- NCNN: `~/columba/scratch/ws4/ncnn-xcng`.
+
+The staged checkout `~/columba/scratch/ws8/repo`, the WS8 parity artefacts and
+the Linux OpenCV prefix were deleted after WS7. A rebuild needs a fresh Git
+checkout and `build_dependencies.sh --opencv-only` (below).
+
+The Slurm runner `native/run_arm_job.sh` bundles dependency installation,
+build, C++ and Python tests, parity and overhead measurement. It requests
+eight CPUs on `xcng1`, `normal`, a two-hour limit and `--nice=1000`. Check
+`squeue -u $USER` immediately before submission and respect the project caps.
+It expects a Git checkout at `~/columba/scratch/ws8/repo` and parity models
+and images at `~/columba/scratch/ws8/artifacts` (create them with
+`native.prepare_models`, below); logs and results stay under the same root.
 The full project tests need Git history and tracked deployment fixtures because
 they create local clones. `--checks-only` reruns those Python checks against an
 existing build without repeating model inference.
@@ -164,8 +175,8 @@ default: C8 `quantization: fp16` and `int8` turn on FP16 packing, storage and
 arithmetic; `fp32` and legacy packages turn all three off. An explicit override
 sets all three together, independently of stored weight quantisation. Int8
 kernels remain enabled. The FP16 options match WS4's latency bridge exactly.
-FP16 arithmetic can shift scores and confidence-threshold counts; WS7 owns the
-final FP16/int8 accuracy gate on frozen test-v2.
+FP16 arithmetic can shift scores and confidence-threshold counts; WS7 applied
+the final FP16/int8 accuracy gate on frozen test-v2 (fp16 shipped, int8 rejected).
 
 ## Repeatable verification
 
@@ -271,29 +282,11 @@ For trained pigeon checkpoints, `native.prepare_models` accepts
 weights with `quantize=16` and sets the corresponding C8 package default.
 Single-class pigeon names produce `taxonomy: single` and pigeon triggers.
 
-`native/run_frozen_parity.sh ARTIFACT_ROOT FROZEN_DATASET PROXY_IMAGES REPORT_DIR`
-runs four packages against both datasets, forcing FP32 on FP32 exports and
-using the default on FP16 exports. It records every case before returning
-failure if any required FP32 check failed. The repeatable arm bundle is
-`native/run_frozen_arm_job.sh`; inspect its scratch paths and check project
-Slurm capacity before submitting. It verifies the dataset archive and freeze,
-reuses WS4 NCNN and WS8 OpenCV prefixes, builds, runs CTest and native/runtime
-tests, then pins all parity cases to cores 0–3 in one `cz-ws8-parity` job.
-
-Saved predictions can be compared again without inference:
-
-```sh
-python -m native.rescore_parity --source original.json --output rescored.json
-```
-
-This uses the current comparison code, preserves the original report, and
-records hashes of both that report and its unchanged raw predictions. The
-relative degenerate-box bound avoids a fixed-ULP discontinuity observed on
-Linux at a 0.001018 px endpoint difference. Normal-box IoU, score and count
-requirements remain the same.
-
-Frozen and old-split proxy results for both platforms are recorded in
+Frozen test-v2 and old-split proxy parity for both platforms is recorded in
 [results/ws8-frozen-parity.json](results/ws8-frozen-parity.json). Required FP32
-comparisons pass after that comparison correction. FP16 package-default
-results remain informational; source reports and raw-prediction hashes make
-the offline rescore explicit.
+comparisons pass; FP16 package-default results are informational. The relative
+degenerate-box bound avoids a fixed-ULP discontinuity observed on Linux at a
+0.001018 px endpoint difference. The one-off frozen-parity runners
+(`run_frozen_parity.sh`, `run_frozen_arm_job.sh`) and the offline
+`rescore_parity.py` were removed in the cleanup; they are in git history at
+`6de04fb`.
