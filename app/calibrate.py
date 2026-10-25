@@ -2,10 +2,101 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
+from contextlib import contextmanager
 from dataclasses import replace
 
 from .config import ConfigError
 from .pantilt import PCA9685, AxisCalibration, Calibration
+
+ARROW_COMMANDS = {"LEFT": "pan -", "RIGHT": "pan +", "UP": "tilt -", "DOWN": "tilt +"}
+
+
+class KeyboardCommands:
+    """Immediate arrows plus editable command lines, sharing the calibration command path."""
+
+    def __init__(self, read_key, output) -> None:
+        self.read_key, self.output = read_key, output
+
+    def __call__(self, prompt: str) -> str:
+        self.output.write(prompt)
+        self.output.flush()
+        buffer = ""
+        while True:
+            key = self.read_key()
+            if key in ("\x04", "\x1a", ""):
+                self.output.write("\n")
+                raise EOFError
+            if key == "\x03":
+                raise KeyboardInterrupt
+            if key in ARROW_COMMANDS:
+                if buffer:
+                    continue  # Finish or erase a typed command before moving.
+                command = ARROW_COMMANDS[key]
+                self.output.write(command + "\n")
+                self.output.flush()
+                return command
+            if key in ("\r", "\n"):
+                self.output.write("\n")
+                self.output.flush()
+                return buffer
+            if key in ("\x08", "\x7f"):
+                if buffer:
+                    buffer = buffer[:-1]
+                    self.output.write("\b \b")
+            elif len(key) == 1 and key.isascii() and key.isprintable():
+                buffer += key
+                self.output.write(key)
+            self.output.flush()
+
+
+def posix_key(fd: int) -> str:
+    import select
+
+    value = os.read(fd, 1).decode("ascii", errors="ignore")
+    if value != "\x1b":
+        return value
+    # SSH terminals send ESC [ A/B/C/D; application mode sends ESC O A/B/C/D.
+    sequence = ""
+    while len(sequence) < 8 and select.select([fd], [], [], 0.05)[0]:
+        character = os.read(fd, 1).decode("ascii", errors="ignore")
+        if not character:
+            break
+        sequence += character
+        if len(sequence) >= 2 and (character.isalpha() or character == "~"):
+            break
+    return {"[A": "UP", "[B": "DOWN", "[C": "RIGHT", "[D": "LEFT",
+            "OA": "UP", "OB": "DOWN", "OC": "RIGHT", "OD": "LEFT"}.get(sequence, "IGNORE")
+
+
+def windows_key() -> str:
+    import msvcrt
+
+    key = msvcrt.getwch()
+    if key in ("\x00", "\xe0"):
+        return {"H": "UP", "P": "DOWN", "K": "LEFT", "M": "RIGHT"}.get(
+            msvcrt.getwch(), "IGNORE")
+    return key
+
+
+@contextmanager
+def command_input(line_input: bool = False):
+    if line_input or not sys.stdin.isatty() or not sys.stdout.isatty():
+        yield input
+    elif os.name == "nt":
+        yield KeyboardCommands(windows_key, sys.stdout)
+    else:
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        previous = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            yield KeyboardCommands(lambda: posix_key(fd), sys.stdout)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, previous)
 
 
 def calibrate(profile: Calibration, mount: PCA9685, path: str,
@@ -19,6 +110,7 @@ def calibrate(profile: Calibration, mount: PCA9685, path: str,
     for name in pulses:
         mount.pulse(getattr(profile, name).channel, 1500)
     write("Both axes commanded to 1500 us. No automatic sweep.\n"
+          "Arrow keys: left/right = pan -/+; up/down = tilt -/+ (10 us per step).\n"
           "Commands: pan + | pan - | tilt + | tilt - (10 us per step);\n"
           "pan min|home|max (mark current position); pan direction 1|-1;\n"
           "use tilt for the other axis; status; save; quit.\n"
@@ -83,8 +175,11 @@ def cli() -> None:
     parser.add_argument("--output", default="calibration.local.yaml")
     parser.add_argument("--bus", type=int, default=1)
     parser.add_argument("--address", type=lambda v: int(v, 0), default=0x40)
-    for name, channel in (("pan", 1), ("tilt", 0)):
-        parser.add_argument(f"--{name}-channel", type=int, default=channel)
+    parser.add_argument("--line-input", action="store_true",
+                        help="use typed commands only, without immediate arrow keys")
+    for name in ("pan", "tilt"):
+        parser.add_argument(f"--{name}-channel", type=int,
+                            default=getattr(Calibration(), name).channel)
         parser.add_argument(f"--{name}-pulse-min-us", type=float, default=1000)
         parser.add_argument(f"--{name}-pulse-max-us", type=float, default=2000)
     args = parser.parse_args()
@@ -100,7 +195,8 @@ def cli() -> None:
             raise ConfigError("pulse envelopes must contain 1500 us")
         print("Prepare for both servos to move to 1500 us. Follow the assembly guide first.")
         mount = PCA9685(profile)
-        calibrate(profile, mount, args.output)
+        with command_input(args.line_input) as read:
+            calibrate(profile, mount, args.output, read=read)
     except (ConfigError, OSError, RuntimeError) as exc:
         parser.exit(1, f"calibration failed: {exc}\n")
     except KeyboardInterrupt:

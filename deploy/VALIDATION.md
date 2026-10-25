@@ -2,6 +2,11 @@
 
 ## Pan-tilt software validation — 25 October 2026
 
+- Calibration follow-up: 60 total unittest cases passed after swapping default
+  pan/tilt channels to 0/1 and adding immediate arrow-key movement. Coverage
+  includes terminal key decoding, command editing, bounds, routing, CLI overrides,
+  and restoration of terminal settings after interruption. Real SSH keyboard
+  behavior and physical servo routing still require verification on the Pi.
 - 51 automated unittest cases passed on the existing Windows desktop environment.
   New coverage includes target association, loss/reacquisition, return-home timing,
   stale observations, deadband, speed/travel limits, calibration/profile validation,

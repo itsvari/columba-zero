@@ -93,8 +93,8 @@ switches are rejected with migration guidance.
 ## Pan-tilt camera setup
 
 The [Waveshare Pan-Tilt HAT](https://www.waveshare.com/wiki/Pan-Tilt_HAT) uses
-a PCA9685 over I2C. Defaults are bus 1, address `0x40`, PWM 50 Hz, pan on S1
-(channel 1), and tilt on S0 (channel 0). Only these two channels are driven or
+a PCA9685 over I2C. Defaults for this mount are bus 1, address `0x40`, PWM 50 Hz,
+pan on S0 (channel 0), and tilt on S1 (channel 1). Only these two channels are driven or
 disabled; PWM frequency is shared by the chip, so reserve the HAT for this app.
 The ambient light sensor is unused. The driver uses Linux I2C through `smbus2`,
 without WiringPi or RPi.GPIO. Actual Pi 5 hardware acceptance remains pending.
@@ -123,13 +123,24 @@ Power off before attaching horns or changing wiring.
 python -m app.calibrate
 ```
 
-There is no automatic sweep. `pan +`, `pan -`, `tilt +`, and `tilt -` change
-the respective pulse by 10 microseconds. Start with a narrow, clear travel range;
+There is no automatic sweep. In an interactive terminal (including SSH), arrow
+keys move immediately without Enter: left/right decrease/increase the pan pulse;
+up/down decrease/increase the tilt pulse. Each keypress moves 10 microseconds;
+holding a key repeats using your terminal's keyboard repeat. Physical direction
+depends on how the servos are mounted. Typed `pan +`, `pan -`, `tilt +`, and
+`tilt -` commands remain available. Type marking, direction, and save commands
+and press Enter as before. Arrow keys are ignored while a typed command is unfinished.
+Use `--line-input` for command-only input; redirected input also uses this mode.
+Start with a narrow, clear travel range;
 stop before binding, cable tension, or mechanical end stops. The initial pulse
 envelope is 1000–2000 microseconds. Flags such as `--pan-pulse-min-us` and
 `--pan-pulse-max-us` let you specify the installed servo's envelope within
 500–2500 microseconds; this is a mapping range, not a measured mechanical limit.
 `--bus`, `--address 0x40`, `--pan-channel`, and `--tilt-channel` override wiring.
+The default pan/tilt channels were swapped to match this assembled mount.
+Existing calibration files retain their saved channel assignments: recalibrate
+and save a fresh profile after updating. For the original Waveshare channel
+layout, use `--pan-channel 1 --tilt-channel 0` when calibrating.
 
 For each axis:
 

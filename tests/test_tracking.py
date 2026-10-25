@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import io
 import json
 import tempfile
 import unittest
@@ -11,7 +12,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 import yaml
 
-from app.calibrate import calibrate
+from app.calibrate import KeyboardCommands, calibrate, cli, command_input, posix_key, windows_key
 from app.capture import EndOfStream
 from app.config import AppConfig, ConfigError, TrackingConfig
 from app.main import build_parser, run
@@ -63,7 +64,7 @@ class ControllerTests(unittest.TestCase):
         # Previous target is outside gate: no movement toward a different bird.
         self.assertEqual(self.controller.step(0.15, 0.05), (90, 90))
         self.controller = TrackingController(
-            TrackingConfig(), replace(Calibration(), tilt=AxisCalibration(0, direction=-1)))
+            TrackingConfig(), replace(Calibration(), tilt=AxisCalibration(1, direction=-1)))
         self.observe([bird(75, 25)])
         self.assertEqual(self.controller.step(0.05, 0.05), (90.75, 90.75))
 
@@ -131,7 +132,7 @@ class HardwareTests(unittest.TestCase):
         driver.close()
         bus.close.assert_called_once()
         self.assertEqual([c.args[1] for c in bus.write_byte_data.call_args_list[-2:]],
-                         [0x0D, 0x09])
+                         [0x09, 0x0D])
         self.assertFalse(any(0xFA <= c.args[1] <= 0xFD
                              for c in bus.write_byte_data.call_args_list))
 
@@ -171,7 +172,7 @@ class HardwareTests(unittest.TestCase):
                 with self.subTest(axis=axis), self.assertRaises(ConfigError):
                     axis.validate()
             with self.assertRaises(ConfigError):
-                replace(Calibration(), tilt=AxisCalibration(1)).validate()
+                replace(Calibration(), tilt=AxisCalibration(0)).validate()
 
     def test_calibration_requires_measured_marks_and_saves(self):
         commands = iter(["save", "pan home", "pan -", "pan min", "pan +", "pan +",
@@ -199,6 +200,85 @@ class HardwareTests(unittest.TestCase):
             self.assertFalse(path.exists())
             self.assertLessEqual(max(c.args[1] for c in mount.pulse.call_args_list), 2000)
         self.assertIn("movement refused", output.call_args.args[0])
+
+
+class KeyboardCalibrationTests(unittest.TestCase):
+    def reader(self, keys):
+        iterator = iter(keys)
+        return KeyboardCommands(lambda: next(iterator), io.StringIO())
+
+    def test_arrows_are_immediate_commands(self):
+        read = self.reader(["LEFT", "RIGHT", "UP", "DOWN"])
+        self.assertEqual([read("> ") for _ in range(4)],
+                         ["pan -", "pan +", "tilt -", "tilt +"])
+
+    def test_typed_marks_editing_and_arrow_during_partial_command(self):
+        read = self.reader([*"pan homx", "\x7f", "LEFT", "e", "\r"])
+        self.assertEqual(read("> "), "pan home")
+
+    def test_eof_and_interrupt(self):
+        for key in ("", "\x04", "\x1a"):
+            with self.subTest(key=key), self.assertRaises(EOFError):
+                self.reader([key])("> ")
+        with self.assertRaises(KeyboardInterrupt):
+            self.reader(["\x03"])("> ")
+
+    def test_arrow_motion_uses_swapped_channels_and_enforces_envelope(self):
+        read = self.reader(["LEFT", "UP", *(["RIGHT"] * 52), *"quit", "\r"])
+        mount = Mock()
+        self.assertFalse(calibrate(Calibration(), mount, "unused.yaml", read=read, write=Mock()))
+        calls = mount.pulse.call_args_list
+        self.assertEqual([call.args for call in calls[:4]],
+                         [(0, 1500), (1, 1500), (0, 1490), (1, 1490)])
+        self.assertLessEqual(max(call.args[1] for call in calls), 2000)
+
+    def test_posix_escape_sequence_decoding(self):
+        for sequence, expected in ((b"\x1b[A", "UP"), (b"\x1b[B", "DOWN"),
+                                   (b"\x1bOC", "RIGHT"), (b"\x1b[D", "LEFT"),
+                                   (b"\x1b[3~", "IGNORE")):
+            with (patch("app.calibrate.os.read", side_effect=[bytes([b]) for b in sequence]),
+                  patch("select.select", return_value=([7], [], []))):
+                self.assertEqual(posix_key(7), expected)
+
+    def test_windows_extended_keys(self):
+        for code, expected in (("H", "UP"), ("P", "DOWN"), ("K", "LEFT"), ("M", "RIGHT")):
+            module = Mock()
+            module.getwch.side_effect = ["\xe0", code]
+            with patch.dict("sys.modules", {"msvcrt": module}):
+                self.assertEqual(windows_key(), expected)
+
+    def test_posix_terminal_restored_on_exception(self):
+        terminal, tty = Mock(), Mock()
+        terminal.tcgetattr.return_value = ["previous-settings"]
+        with (patch("app.calibrate.os.name", "posix"),
+              patch("app.calibrate.sys.stdin") as stdin,
+              patch("app.calibrate.sys.stdout"),
+              patch.dict("sys.modules", {"termios": terminal, "tty": tty})):
+            stdin.fileno.return_value = 7
+            with self.assertRaises(KeyboardInterrupt), command_input():
+                raise KeyboardInterrupt
+        tty.setcbreak.assert_called_once_with(7)
+        terminal.tcsetattr.assert_called_once_with(7, terminal.TCSADRAIN, ["previous-settings"])
+
+    def test_line_input_fallback(self):
+        with command_input(line_input=True) as read:
+            self.assertIs(read, input)
+        with patch("app.calibrate.sys.stdin") as stdin:
+            stdin.isatty.return_value = False
+            with command_input() as read:
+                self.assertIs(read, input)
+
+    def test_cli_defaults_and_overrides(self):
+        for flags, channels in (([], (0, 1)),
+                                (["--pan-channel", "1", "--tilt-channel", "0"], (1, 0))):
+            with (patch("sys.argv", ["calibrate", "--line-input", *flags]),
+                  patch("app.calibrate.PCA9685") as driver,
+                  patch("app.calibrate.calibrate") as run_calibration):
+                cli()
+                profile = driver.call_args.args[0]
+                self.assertEqual((profile.pan.channel, profile.tilt.channel), channels)
+                self.assertEqual(run_calibration.call_args.args[0], profile)
+                driver.return_value.close.assert_called_once()
 
 
 class SessionTests(unittest.TestCase):

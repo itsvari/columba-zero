@@ -57,8 +57,8 @@ available. Unattended startup remains outside this version.
 
 ## Pan-tilt acceptance on Pi 5 (pending)
 
-1. Follow README wiring, power, and calibration instructions. Verify pan S1,
-   tilt S0, I2C address, each direction, measured travel limits, home position,
+1. Follow README wiring, power, and calibration instructions. Verify pan S0,
+   tilt S1, I2C address, each direction, measured travel limits, home position,
    and camera cable clearance. Preserve the local calibration profile separately.
 2. Run live simulation and confirm selected-target overlays and JSONL commands.
    Run physical tracking and verify stable centering with a single pigeon,

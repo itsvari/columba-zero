@@ -46,8 +46,8 @@ class AxisCalibration:
 
 @dataclass(frozen=True)
 class Calibration:
-    pan: AxisCalibration = AxisCalibration(channel=1)
-    tilt: AxisCalibration = AxisCalibration(channel=0)
+    pan: AxisCalibration = AxisCalibration(channel=0)
+    tilt: AxisCalibration = AxisCalibration(channel=1)
     bus: int = 1
     address: int = 0x40
 
