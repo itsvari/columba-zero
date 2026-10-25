@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -34,7 +34,7 @@ class RunOutput:
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         self.directory = Path(config.output.directory) / f"{stamp}-{uuid4().hex[:8]}"
         self.directory.mkdir(parents=True, exist_ok=False)
         self._log = (self.directory / "detections.jsonl").open("w", encoding="utf-8")
@@ -54,7 +54,7 @@ class RunOutput:
             cv2.namedWindow(self.window, cv2.WINDOW_NORMAL)
 
     def render(self, frame: Any, detections: list[Detection], processing_fps: float,
-               capture_fps: float | None) -> bool:
+               capture_fps: float | None, tracking: dict | None = None) -> bool:
         if not self.config.display.enabled and not self.config.output.record:
             return True
         import cv2
@@ -74,6 +74,19 @@ class RunOutput:
         if capture_fps is not None:
             text = f"Capture: {capture_fps:.1f} FPS (requested {self.config.camera.fps:g})"
             cv2.putText(image, text, (10, 46), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+        if tracking is not None:
+            height, width = image.shape[:2]
+            cv2.drawMarker(image, (width // 2, height // 2), (255, 255, 0),
+                           cv2.MARKER_CROSS, 16, 1)
+            target = tracking["selected_target"]
+            if target is not None and tracking["state"] == "tracking":
+                x1, y1, x2, y2 = (round(v) for v in target["bbox"])
+                cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 255), 3)
+            text = (f'{tracking["mode"]}: {tracking["state"]} | Command pan '
+                    f'{tracking["commanded_pan_deg"]:.1f} tilt '
+                    f'{tracking["commanded_tilt_deg"]:.1f} deg')
+            cv2.putText(image, text, (10, 68), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.45, (255, 255, 0), 1)
         if self.config.output.record:
             height, width = image.shape[:2]
             if self._writer is None:

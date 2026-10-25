@@ -1,9 +1,11 @@
 # Columba Zero
 
-Detection-only pigeon prototype for **Raspberry Pi 5, 64-bit Raspberry Pi OS,
+Pigeon detection and camera tracking prototype for **Raspberry Pi 5, 64-bit Raspberry Pi OS,
 CSI camera, and a connected monitor**. It displays pigeon boxes, confidence,
-current-frame count, capture FPS, and processing FPS. There is no GPIO or
-actuation code, calibration, tracking, or unique-bird counting.
+current-frame count, capture FPS, and processing FPS. The Waveshare Pan-Tilt HAT
+can move the camera to follow one pigeon. Live runs default to physical tracking
+and require calibration; use `--tracking off` for detection alone. This version
+does not count unique birds.
 
 The runtime uses the existing `pigeon_baseline_v1-2` YOLO11n single-class model.
 The original training notebook, results, and weights remain intact. The notebook
@@ -71,8 +73,8 @@ working directory. Default live settings: 640x480 capture, requested 15 FPS,
 640x640 model input, confidence 0.5, recording off.
 
 ```bash
-columba-zero
-columba-zero --confidence 0.6 --record
+columba-zero --tracking off
+columba-zero --tracking off --confidence 0.6 --record
 columba-zero --video sample.mp4 --max-frames 300
 columba-zero --model models/pigeon_baseline_v1-2/best.pt --video sample.mp4
 ```
@@ -84,8 +86,110 @@ there is no hard watchdog for a hung native backend.
 
 `--config` selects a YAML file. [app/config.yaml](app/config.yaml) contains all
 settings. CLI model/confidence values override YAML; `--record` enables recording.
-Set `display.enabled: false` for headless replay or tests. Old actuation config
-sections and CLI switches are rejected with migration guidance.
+Set `display.enabled: false` for headless replay or tests. The new `tracking`
+section configures camera following; other old actuation sections and CLI
+switches are rejected with migration guidance.
+
+## Pan-tilt camera setup
+
+The [Waveshare Pan-Tilt HAT](https://www.waveshare.com/wiki/Pan-Tilt_HAT) uses
+a PCA9685 over I2C. Defaults are bus 1, address `0x40`, PWM 50 Hz, pan on S1
+(channel 1), and tilt on S0 (channel 0). Only these two channels are driven or
+disabled; PWM frequency is shared by the chip, so reserve the HAT for this app.
+The ambient light sensor is unused. The driver uses Linux I2C through `smbus2`,
+without WiringPi or RPi.GPIO. Actual Pi 5 hardware acceptance remains pending.
+
+Enable I2C using `sudo raspi-config` (Interface Options), then install into the
+Pi virtual environment prepared above:
+
+```bash
+sudo apt install i2c-tools
+python -m pip install 'smbus2>=0.4.3,<1'
+# Alternatively: python -m pip install -e '.[hardware]'
+i2cdetect -y 1
+```
+
+Confirm `40` appears and your user can access `/dev/i2c-1` (normally through the
+`i2c` group). Stop other programs that control the mount. Follow
+[Waveshare's assembly and power instructions](https://files.waveshare.com/upload/b/b9/Pan-Tilt_HAT_user_manual_en.pdf).
+Center the servos before attaching their horns and mount the CSI camera with
+enough cable slack throughout the intended travel. Calibration initially commands
+both servos to 1500 microseconds; their physical orientation depends on assembly.
+Power off before attaching horns or changing wiring.
+
+### Calibrate the assembled mount
+
+```bash
+python -m app.calibrate
+```
+
+There is no automatic sweep. `pan +`, `pan -`, `tilt +`, and `tilt -` change
+the respective pulse by 10 microseconds. Start with a narrow, clear travel range;
+stop before binding, cable tension, or mechanical end stops. The initial pulse
+envelope is 1000–2000 microseconds. Flags such as `--pan-pulse-min-us` and
+`--pan-pulse-max-us` let you specify the installed servo's envelope within
+500–2500 microseconds; this is a mapping range, not a measured mechanical limit.
+`--bus`, `--address 0x40`, `--pan-channel`, and `--tilt-channel` override wiring.
+
+For each axis:
+
+1. Move to a lower **pulse** position within clear travel and enter `pan min`.
+2. Move to the desired home position and enter `pan home`.
+3. Move to an upper pulse position within clear travel and enter `pan max`.
+4. With a fixed scene and detection disabled, check movement direction. Set
+   `pan direction 1` if increasing the pulse turns the camera toward objects
+   on the right of the image; otherwise use `pan direction -1`.
+5. Repeat using `tilt`; direction 1 must move toward objects below image center.
+
+`status` shows pulses and marks. `save` requires all four marks for both axes
+and writes `calibration.local.yaml`; `quit`, Ctrl+C, or EOF leaves it unsaved.
+Exiting disables the two PWM channels. The profile is ignored by Git; copy it
+separately when deploying. Do not reuse another mount's travel limits. Angles
+are logical 0–180-degree coordinates interpolated over each pulse envelope, not
+measured camera angles. `tracking.calibration` selects the profile path.
+
+### Run tracking
+
+```bash
+columba-zero                          # live CSI camera, physical tracking
+columba-zero --tracking simulate      # live camera, virtual mount
+columba-zero --tracking off           # detection only; no hardware dependency
+columba-zero --video sample.mp4       # simulated tracking using video frame time
+```
+
+Physical tracking with `--video` is rejected. Simulation uses your local profile
+if present, otherwise nominal home 90 and travel 60–120 on each axis. Physical
+mode requires a complete profile and working I2C hardware. At startup it commands
+the calibrated home position; the initial move cannot be speed limited because
+these servos provide no position feedback. Later commands obey configured speed
+and travel limits.
+
+The largest pigeon is acquired first. Following frames match the closest center
+within `tracking.match_distance` (default 0.25 in frame-width/height units), with
+confidence breaking ties. This is approximate association; crossing birds or
+camera movement can cause a switch. A missed match stops movement immediately.
+After two seconds without a match the camera returns home; new acquisition
+interrupts the return. Brief gaps retain the previous target for matching.
+
+The controller updates at up to 20 Hz with a latest-observation slot, 5% frame
+deadband on each side of center, gain 30 degrees/second at full normalized error,
+and maximum speed 30 degrees/second. These values are configurable in YAML.
+Observations older than one second cannot steer toward a target. The timeout
+also applies to inference latency: increase it only after measuring Pi latency.
+After two seconds without a fresh match the controller returns home even if
+inference stalls. A prolonged worker scheduling delay does not produce a large
+catch-up step. Simulation replay advances at virtual 20 Hz using frame sequence
+and video FPS (falling back to configured camera FPS if unavailable), independent
+of desktop inference speed. It does not model the visual effect of camera motion.
+
+The preview and recorded frames show a center crosshair, the currently matched
+target in magenta, state, and commanded pan/tilt angles. Frame JSONL records add
+`tracking` with `mode`, `state`, `selected_target`, `commanded_pan_deg`, and
+`commanded_tilt_deg`; it is `null` when disabled. Angles are commands without
+position feedback. A worker I2C failure attempts to disable both channels and
+is reported as a runtime error. Normal shutdown disables PWM and closes the bus;
+the mount may relax when PWM is removed. Native camera/inference or I2C calls
+cannot be forcibly interrupted, and a killed process cannot guarantee cleanup.
 
 The NCNN export is fixed at 640x640. To benchmark a different inference size,
 export a separate model with `tools/export_ncnn.py` and use a matching

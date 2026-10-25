@@ -11,13 +11,18 @@ from unittest.mock import Mock, patch
 import numpy as np
 import yaml
 
-from app.capture import CaptureError, EndOfStream, LatestFrameStream, Picamera2Capture, VideoFileCapture
+from app.capture import (
+    CaptureError,
+    EndOfStream,
+    LatestFrameStream,
+    Picamera2Capture,
+    VideoFileCapture,
+)
 from app.config import AppConfig, ConfigError, DisplayConfig, OutputConfig
 from app.detector import DetectorError, UltralyticsDetector, check_model, validate_names
 from app.main import build_parser, run
 from app.models import Detection, FramePacket
 from app.output import RunOutput
-
 
 Path("outputs/test-tmp").mkdir(parents=True, exist_ok=True)
 
@@ -33,7 +38,8 @@ class ConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="outputs/test-tmp") as directory:
             path = Path(directory) / "config.yaml"
             for value in ({"actuator": {}}, {"unknown": {}}, {"camera": {"oops": 1}},
-                          {"display": {"enabled": "false"}}, {"model": {"confidence": float("nan")}},
+                          {"display": {"enabled": "false"}},
+                          {"model": {"confidence": float("nan")}},
                           {"camera": {"fps": 0}}, {"model": {"image_size": 641}}, []):
                 path.write_text(yaml.safe_dump(value))
                 with self.subTest(value=value), self.assertRaises(ConfigError):
@@ -78,7 +84,8 @@ class DetectorTests(unittest.TestCase):
             result.conf = Mock(item=lambda: conf)
             result.xyxy = [Mock(tolist=lambda: [1, 2, 3, 4])]
             return result
-        detector._model.predict.return_value = [Mock(names={0: "pigeon"}, boxes=[box(0.4), box(0.8)])]
+        detector._model.predict.return_value = [
+            Mock(names={0: "pigeon"}, boxes=[box(0.4), box(0.8)])]
         result = detector.detect(FramePacket(0, 0, np.zeros((480, 640, 3), np.uint8)))
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].confidence, 0.8)
@@ -183,7 +190,8 @@ class CaptureTests(unittest.TestCase):
                                         "libcamera": Mock(controls=fake_controls)}):
             source = Picamera2Capture(640, 480, 15)
             source.start()
-            self.assertEqual(camera.create_video_configuration.call_args.kwargs["main"]["format"], "RGB888")
+            self.assertEqual(camera.create_video_configuration.call_args.kwargs["main"]["format"],
+                             "RGB888")
             self.assertEqual(
                 camera.create_video_configuration.call_args.kwargs["controls"]["AfMode"],
                 fake_controls.AfModeEnum.Continuous)
@@ -200,7 +208,8 @@ class OutputTests(unittest.TestCase):
             first, second = RunOutput(config), RunOutput(config)
             self.assertNotEqual(first.directory, second.directory)
             first.event("frame", frame_number=7, captured_at=12.5, inference_s=0.02,
-                        detections=[Detection("pigeon", 0.8, 1, 2, 3, 4).as_dict()], dropped_frames=2)
+                        detections=[Detection("pigeon", 0.8, 1, 2, 3, 4).as_dict()],
+                        dropped_frames=2)
             first.close()
             second.close()
             record = json.loads((first.directory / "detections.jsonl").read_text())
@@ -231,7 +240,8 @@ class OutputTests(unittest.TestCase):
                   patch.object(cv2, "getWindowProperty", return_value=1)):
                 output.start()
                 self.assertFalse(output.render(np.zeros((32, 32, 3), np.uint8), [], 1, 15))
-                with patch.object(cv2, "waitKey", return_value=0), patch.object(cv2, "getWindowProperty", return_value=0):
+                with (patch.object(cv2, "waitKey", return_value=0),
+                      patch.object(cv2, "getWindowProperty", return_value=0)):
                     self.assertFalse(output.render(np.zeros((32, 32, 3), np.uint8), [], 1, 15))
                 output.close()
                 destroy.assert_called_once()
@@ -328,7 +338,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertIs(installed[signal.SIGINT], original)
 
     def test_cli_overrides_and_invalid_frame_limit(self):
-        args = build_parser().parse_args(["--model", "override.pt", "--confidence", "0.7", "--record", "--max-frames", "1"])
+        args = build_parser().parse_args(["--model", "override.pt", "--confidence", "0.7",
+                                          "--record", "--max-frames", "1"])
         source, output = Mock(), Mock()
         source.get.return_value = FramePacket(0, 0, None)
         source.dropped_frames, source.capture_fps = 0, 15.0

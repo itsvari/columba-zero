@@ -15,3 +15,11 @@ output:
   record: false
   recording_fps: 15
   health_interval_s: 30
+tracking:
+  calibration: calibration.local.yaml
+  match_distance: 0.25
+  gain: 30
+  deadband: 0.05
+  max_speed: 30
+  loss_timeout_s: 2
+  observation_timeout_s: 1

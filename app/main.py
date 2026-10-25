@@ -10,16 +10,19 @@ from .capture import EndOfStream, LatestFrameStream, Picamera2Capture, VideoFile
 from .config import AppConfig, ConfigError
 from .detector import UltralyticsDetector
 from .output import RunOutput, health_snapshot
+from .tracking import TrackingSession
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Pi 5 pigeon detection (no actuation)")
+    parser = argparse.ArgumentParser(description="Pi 5 pigeon detection and camera tracking")
     parser.add_argument("--config", default="app/config.yaml")
     parser.add_argument("--model", help=".pt checkpoint or NCNN directory")
     parser.add_argument("--video", help="process all frames of a recorded video")
     parser.add_argument("--confidence", type=float)
     parser.add_argument("--record", action="store_true", help="save diagnostic annotated AVI")
     parser.add_argument("--max-frames", type=int, default=0, help="0 means unlimited")
+    parser.add_argument("--tracking", choices=("hardware", "simulate", "off"),
+                        help="default: hardware for CSI camera, simulate for video")
     return parser
 
 
@@ -27,16 +30,21 @@ def run(args: argparse.Namespace) -> int:
     config = AppConfig.load(args.config)
     model = replace(config.model,
                     path=args.model if args.model is not None else config.model.path,
-                    confidence=args.confidence if args.confidence is not None else config.model.confidence)
+                    confidence=(args.confidence if args.confidence is not None
+                                else config.model.confidence))
     config = replace(config, model=model,
                      output=replace(config.output, record=args.record or config.output.record))
     config.validate()
     if args.max_frames < 0:
         raise ConfigError("--max-frames must be non-negative")
+    tracking_mode = args.tracking or ("simulate" if args.video else "hardware")
+    if args.video and tracking_mode == "hardware":
+        raise ConfigError("physical tracking cannot be used with recorded video; use simulate")
     stopping = False
     handlers = {}
     source = None
     output = None
+    tracking = None
     processed = 0
     dropped = 0
     started = None
@@ -47,6 +55,8 @@ def run(args: argparse.Namespace) -> int:
     def request_stop(_signum: int, _frame: object) -> None:
         nonlocal stopping
         stopping = True
+        if tracking is not None:
+            tracking.request_stop()
 
     try:
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -58,31 +68,51 @@ def run(args: argparse.Namespace) -> int:
         output = RunOutput(config)
         print(f"Run output: {output.directory}", flush=True)
         output.event("run_start", config=asdict(config), source=args.video or "csi_camera",
-                     timestamp_semantics="Unix seconds at frame delivery; replay is not source time")
+                     tracking_mode=tracking_mode,
+                     timestamp_semantics="Unix seconds at frame delivery; "
+                                         "replay is not source time")
         output.start()
         source = (VideoFileCapture(args.video) if args.video else
                   LatestFrameStream(Picamera2Capture(config.camera.width, config.camera.height,
                                                      config.camera.fps)))
         source.start()
+        if tracking_mode != "off":
+            tracking = TrackingSession(config.tracking, tracking_mode, replay=bool(args.video))
+            tracking.start()
         started = time.monotonic()
         last_health = started
         output.event("health", processed_frames=0, dropped_frames=0, **health_snapshot())
         while not stopping:
+            if tracking is not None:
+                tracking.check()
             packet = source.get(config.camera.frame_timeout_s)
+            observed_at = packet.delivered_monotonic
+            if observed_at is None:
+                # Compatibility for custom capture sources using the original FramePacket.
+                observed_at = time.monotonic() - max(0.0, time.time() - packet.captured_at)
             inference_started = time.monotonic()
             detections = detector.detect(packet)
             inference_s = time.monotonic() - inference_started
+            tracking_state = None
+            if tracking is not None and not stopping:
+                shape = getattr(packet.frame, "shape", (config.camera.height, config.camera.width))
+                replay_fps = getattr(source, "fps", 0)
+                if not isinstance(replay_fps, (int, float)) or not 0 < replay_fps < 1000:
+                    replay_fps = config.camera.fps
+                tracking_state = tracking.submit(detections, shape[1], shape[0], observed_at,
+                                                 packet.sequence / replay_fps)
             dropped = source.dropped_frames
             next_count = processed + 1
             elapsed = time.monotonic() - started
             fps = next_count / elapsed if elapsed else 0.0
             capture_fps = source.capture_fps if isinstance(source, LatestFrameStream) else None
-            keep_running = output.render(packet.frame, detections, fps, capture_fps)
+            keep_running = output.render(packet.frame, detections, fps, capture_fps, tracking_state)
             processed = next_count
             output.event("frame", frame_number=packet.sequence, captured_at=packet.captured_at,
                          inference_s=inference_s, pigeon_count=len(detections),
                          detections=[d.as_dict() for d in detections],
-                         dropped_frames=dropped, processing_fps=fps, capture_fps=capture_fps)
+                         dropped_frames=dropped, processing_fps=fps, capture_fps=capture_fps,
+                         tracking=tracking_state)
             now = time.monotonic()
             if now - last_health >= config.output.health_interval_s:
                 output.event("health", processed_frames=processed, dropped_frames=dropped,
@@ -100,6 +130,12 @@ def run(args: argparse.Namespace) -> int:
         status, reason, failure = 1, "error", str(exc)
         print(f"error: {exc}", file=sys.stderr)
     finally:
+        if tracking is not None:
+            try:
+                tracking.close()
+            except Exception as exc:
+                status, reason, failure = 1, "cleanup_error", str(exc)
+                print(f"tracking cleanup error: {exc}", file=sys.stderr)
         if source is not None:
             try:
                 source.close()

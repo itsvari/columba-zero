@@ -35,7 +35,8 @@ class Picamera2Capture:
             self._camera.configure(config)
             self._camera.start()
         except Exception as exc:
-            raise CaptureError(f"cannot start CSI camera: {exc}; install OS Picamera2 packages") from exc
+            raise CaptureError(f"cannot start CSI camera: {exc}; "
+                               "install OS Picamera2 packages") from exc
 
     def read(self) -> Any:
         try:
@@ -81,7 +82,7 @@ class VideoFileCapture:
                 raise CaptureError(f"video decoder failed at frame {self.sequence} "
                                    f"(declared frame count: {self.frame_count})")
             raise EndOfStream("video completed")
-        packet = FramePacket(self.sequence, time.time(), frame)
+        packet = FramePacket(self.sequence, time.time(), frame, time.monotonic())
         self.sequence += 1
         return packet
 
@@ -117,7 +118,7 @@ class LatestFrameStream:
         try:
             while not self._stop.is_set():
                 frame = self.capture.read()
-                packet = FramePacket(self.captured_frames, time.time(), frame)
+                packet = FramePacket(self.captured_frames, time.time(), frame, time.monotonic())
                 with self._condition:
                     self.captured_frames += 1
                     if self._packet is not None:

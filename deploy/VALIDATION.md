@@ -1,4 +1,24 @@
-# Validation status — 10 October 2026
+# Validation status
+
+## Pan-tilt software validation — 25 October 2026
+
+- 51 automated unittest cases passed on the existing Windows desktop environment.
+  New coverage includes target association, loss/reacquisition, return-home timing,
+  stale observations, deadband, speed/travel limits, calibration/profile validation,
+  PCA9685 register/pulse writes and channel-specific disable, startup/worker/cleanup
+  failures, worker shutdown, runtime modes, overlays, and JSONL tracking fields.
+- `ruff check app tests` passed using Ruff through `uv tool run`.
+- A real NCNN replay of `outputs/validation/replay_fixture.avi` processed five frames
+  in simulation mode, selected a target in every frame, logged five tracking records,
+  and produced an annotated MJPEG AVI that decoded to five frames. It exited cleanly
+  at the requested frame limit. Evidence is in ignored
+  `outputs/validation/pan-tilt-replay/20261025T071858Z-f72ae117/`.
+- No physical Pi, HAT, servo, power, or CSI motion acceptance is claimed. Wiring,
+  axis direction, calibrated travel, stable following, target-loss return, real
+  shutdown behavior, and one-hour operation remain pending. Follow the pan-tilt
+  section of `../RASPBERRY_PI_PROTOTYPE_PLAN.md`.
+
+## Detection baseline — 10 October 2026
 
 ## Completed on Windows desktop
 

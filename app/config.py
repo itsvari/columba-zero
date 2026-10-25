@@ -40,11 +40,23 @@ class OutputConfig:
 
 
 @dataclass(frozen=True)
+class TrackingConfig:
+    calibration: str = "calibration.local.yaml"
+    match_distance: float = 0.25  # center distance in frame-width/height units
+    gain: float = 30.0  # degrees/second at normalized error 1
+    deadband: float = 0.05  # fraction of full frame dimension on each side
+    max_speed: float = 30.0  # degrees/second
+    loss_timeout_s: float = 2.0
+    observation_timeout_s: float = 1.0
+
+
+@dataclass(frozen=True)
 class AppConfig:
     camera: CameraConfig = CameraConfig()
     model: ModelConfig = ModelConfig()
     display: DisplayConfig = DisplayConfig()
     output: OutputConfig = OutputConfig()
+    tracking: TrackingConfig = TrackingConfig()
 
     @classmethod
     def load(cls, path: str | Path) -> AppConfig:
@@ -52,17 +64,18 @@ class AppConfig:
             raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
                 raise ConfigError("configuration must be a YAML mapping")
-            obsolete = set(raw) & {"tracking", "safety", "geometry", "turret", "actuator", "logging"}
+            obsolete = set(raw) & {"safety", "geometry", "turret", "actuator", "logging"}
             if obsolete:
                 raise ConfigError("obsolete actuation configuration; migrate to app/config.yaml "
                                   f"(remove {', '.join(sorted(obsolete))})")
-            unknown = set(raw) - {"camera", "model", "display", "output"}
+            unknown = set(raw) - {"camera", "model", "display", "output", "tracking"}
             if unknown:
                 raise ConfigError(f"unknown configuration sections: {', '.join(sorted(unknown))}")
             config = cls(CameraConfig(**raw.get("camera", {})),
                          ModelConfig(**raw.get("model", {})),
                          DisplayConfig(**raw.get("display", {})),
-                         OutputConfig(**raw.get("output", {})))
+                         OutputConfig(**raw.get("output", {})),
+                         TrackingConfig(**raw.get("tracking", {})))
             config.validate()
             return config
         except (OSError, yaml.YAMLError, TypeError) as exc:
@@ -91,3 +104,16 @@ class AppConfig:
             raise ConfigError("model.path must be a non-empty path")
         if not isinstance(self.output.directory, str) or not self.output.directory.strip():
             raise ConfigError("output.directory must be a non-empty path")
+        tracking = self.tracking
+        if not isinstance(tracking.calibration, str) or not tracking.calibration.strip():
+            raise ConfigError("tracking.calibration must be a non-empty path")
+        for name in ("match_distance", "gain", "max_speed", "loss_timeout_s",
+                     "observation_timeout_s"):
+            value = getattr(tracking, name)
+            if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+                raise ConfigError(f"tracking.{name} must be finite and positive")
+        if tracking.match_distance > 2 ** 0.5:
+            raise ConfigError("tracking.match_distance cannot exceed the frame diagonal")
+        if (type(tracking.deadband) not in (int, float)
+                or not math.isfinite(tracking.deadband) or not 0 <= tracking.deadband < 0.5):
+            raise ConfigError("tracking.deadband must be in [0, 0.5)")

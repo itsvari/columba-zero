@@ -54,7 +54,8 @@ class UltralyticsDetector:
         except DetectorError:
             raise
         except Exception as exc:
-            raise DetectorError(f"cannot load model: {exc}; install the vision dependencies") from exc
+            raise DetectorError(f"cannot load model: {exc}; "
+                                "install the vision dependencies") from exc
 
     def warmup(self, width: int, height: int) -> None:
         import numpy as np

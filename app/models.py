@@ -9,6 +9,7 @@ class FramePacket:
     sequence: int
     captured_at: float  # Unix wall-clock seconds
     frame: Any  # OpenCV BGR array
+    delivered_monotonic: float | None = None  # freshness, immune to wall-clock changes
 
 
 @dataclass(frozen=True, slots=True)
