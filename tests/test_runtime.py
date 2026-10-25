@@ -39,6 +39,7 @@ class ConfigTests(unittest.TestCase):
             path = Path(directory) / "config.yaml"
             for value in ({"actuator": {}}, {"unknown": {}}, {"camera": {"oops": 1}},
                           {"display": {"enabled": "false"}},
+                          {"output": {"flip_vertical": "true"}},
                           {"model": {"confidence": float("nan")}},
                           {"camera": {"fps": 0}}, {"model": {"image_size": 641}}, []):
                 path.write_text(yaml.safe_dump(value))

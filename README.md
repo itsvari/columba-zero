@@ -202,6 +202,12 @@ is reported as a runtime error. Normal shutdown disables PWM and closes the bus;
 the mount may relax when PWM is removed. Native camera/inference or I2C calls
 cannot be forcibly interrupted, and a killed process cannot guarantee cleanup.
 
+The supplied configuration sets `output.flip_vertical: true` for this camera mount.
+It flips the preview and new annotated recordings top-to-bottom, with boxes aligned
+to the flipped image and text drawn upright. Set it to `false` for the original
+view. Detection, tracking, calibration directions, and JSONL box coordinates keep
+using the original camera image. Previously recorded files are unchanged.
+
 The NCNN export is fixed at 640x640. To benchmark a different inference size,
 export a separate model with `tools/export_ncnn.py` and use a matching
 `model.image_size`. Camera FPS is not inference FPS. Live capture discards old

@@ -37,6 +37,7 @@ class OutputConfig:
     record: bool = False
     recording_fps: float = 15.0
     health_interval_s: float = 30.0
+    flip_vertical: bool = False
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,8 @@ class AppConfig:
             raise ConfigError("confidence must be in (0, 1]")
         if type(self.display.enabled) is not bool or type(self.output.record) is not bool:
             raise ConfigError("display.enabled and output.record must be YAML booleans")
+        if type(self.output.flip_vertical) is not bool:
+            raise ConfigError("output.flip_vertical must be a YAML boolean")
         if not isinstance(self.model.path, str) or not self.model.path.strip():
             raise ConfigError("model.path must be a non-empty path")
         if not isinstance(self.output.directory, str) or not self.output.directory.strip():

@@ -58,10 +58,17 @@ class RunOutput:
         if not self.config.display.enabled and not self.config.output.record:
             return True
         import cv2
-        image = frame.copy()
+        image = cv2.flip(frame, 0) if self.config.output.flip_vertical else frame.copy()
+
+        def view_box(box):
+            x1, y1, x2, y2 = box
+            if self.config.output.flip_vertical:
+                y1, y2 = image.shape[0] - y2, image.shape[0] - y1
+            return tuple(round(v) for v in (x1, y1, x2, y2))
+
         for detection in detections:
-            x1, y1, x2, y2 = (round(v) for v in
-                              (detection.x1, detection.y1, detection.x2, detection.y2))
+            x1, y1, x2, y2 = view_box(
+                (detection.x1, detection.y1, detection.x2, detection.y2))
             cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
             label = f"pigeon {detection.confidence:.2f}"
             position = (max(0, x1), min(image.shape[0] - 8, max(70, y1 + 18)))
@@ -80,7 +87,7 @@ class RunOutput:
                            cv2.MARKER_CROSS, 16, 1)
             target = tracking["selected_target"]
             if target is not None and tracking["state"] == "tracking":
-                x1, y1, x2, y2 = (round(v) for v in target["bbox"])
+                x1, y1, x2, y2 = view_box(target["bbox"])
                 cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 255), 3)
             text = (f'{tracking["mode"]}: {tracking["state"]} | Command pan '
                     f'{tracking["commanded_pan_deg"]:.1f} tilt '

@@ -431,6 +431,39 @@ class IntegrationTests(unittest.TestCase):
         frames = [c.kwargs for c in output.event.call_args_list if c.args[0] == "frame"]
         self.assertEqual(frames[0]["tracking"]["state"], "tracking")
 
+    def test_vertical_flip_aligns_boxes_in_preview_and_recording_without_mutating_input(self):
+        import cv2
+
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        frame[:40, :, 0] = 150
+        detection = Detection("pigeon", 0.9, 10, 10, 30, 30)
+        state = {"mode": "simulate", "state": "tracking",
+                 "selected_target": detection.as_dict(),
+                 "commanded_pan_deg": 90, "commanded_tilt_deg": 90}
+        original = frame.copy()
+        for flip in (False, True):
+            with tempfile.TemporaryDirectory(dir="outputs/test-tmp") as directory:
+                config = replace(AppConfig(), output=replace(
+                    AppConfig().output, directory=directory, record=True, flip_vertical=flip))
+                output = RunOutput(config)
+                writer = Mock()
+                writer.isOpened.return_value = True
+                expected = cv2.flip(frame, 0) if flip else frame.copy()
+                top, bottom = (70, 90) if flip else (10, 30)
+                cv2.rectangle(expected, (10, top), (30, bottom), (0, 255, 0), 2)
+                cv2.rectangle(expected, (10, top), (30, bottom), (255, 0, 255), 3)
+                with (patch.object(cv2, "VideoWriter", return_value=writer),
+                      patch.object(cv2, "imshow") as show,
+                      patch.object(cv2, "putText"), patch.object(cv2, "drawMarker"),
+                      patch.object(cv2, "getWindowProperty", return_value=1),
+                      patch.object(cv2, "waitKey", return_value=0)):
+                    self.assertTrue(output.render(frame, [detection], 10, 15, state))
+                output.close()
+                np.testing.assert_array_equal(show.call_args.args[1], expected)
+                np.testing.assert_array_equal(writer.write.call_args.args[0], expected)
+                np.testing.assert_array_equal(frame, original)
+                self.assertEqual(state["selected_target"]["bbox"], [10, 10, 30, 30])
+
     def test_runtime_uses_monotonic_frame_time_and_cleans_up_tracking_failure(self):
         source, output, session = Mock(), Mock(), Mock()
         source.get.return_value = FramePacket(0, -1000, np.zeros((100, 100, 3)), 123)
