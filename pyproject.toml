@@ -15,6 +15,7 @@ dependencies = [
 [project.optional-dependencies]
 vision = ["opencv-python>=4.6", "ultralytics==8.4.175", "ncnn==1.0.20260526"]
 metrics = ["psutil>=5.9"]
+hardware = ["smbus2>=0.4.3"]
 # COCO-style AP for tools/evaluate_predictions.py (WS1).
 eval = ["pycocotools>=2.0.8"]
 # Dataset fetching, perceptual-hash dedupe and archives (WS2).
