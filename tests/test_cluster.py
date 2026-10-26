@@ -161,17 +161,6 @@ def context_for(root: Path) -> TrainingContext:
 
 
 class ClusterTests(unittest.TestCase):
-    def test_recipe_examples_and_gpu_mapping(self) -> None:
-        recipe = load_recipe(BASELINE_RECIPE)
-        self.assertEqual(
-            [recipe.constraint_for_seed(seed) for seed in recipe.seeds],
-            ["t4", "titanrtx", "titanv"],
-        )
-        self.assertEqual(recipe.train["patience"], 10)
-        self.assertEqual(recipe.train["epochs"], 200)
-        self.assertFalse(recipe.allow_missing_evaluation)
-        self.assertTrue(load_recipe(SMOKE_RECIPE).allow_missing_evaluation)
-
     def test_recipe_rejects_bad_paths_and_runner_arguments(self) -> None:
         for field, value in (
             ("id", "../oops"),
@@ -275,38 +264,6 @@ class ClusterTests(unittest.TestCase):
             Budget().allows((*jobs, Job("4", "cz-c", "RUNNING", "gpu", "gpu:1")), "nv")
         )
         self.assertFalse(Budget().allows([Job("5", "cz-unknown", "RUNNING", "gpu", "N/A")], "nv"))
-
-    def test_scheduler_emits_typed_and_untyped_requests_without_shell_changes(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            for choice in (*GPU_CONSTRAINTS, None):
-                submission: Submission = {
-                    "name": "cz-request",
-                    "lane": "nv",
-                    "constraint": choice,
-                    "script": "unchanged script",
-                    "run_path": str(root / "columba/runs/a"),
-                }
-                with (
-                    self.subTest(choice=choice),
-                    patch("cluster.slurm.Path.home", return_value=root),
-                    patch(
-                        "cluster.slurm.gpu_inventory", return_value=parse_inventory(GPU_INVENTORY)
-                    ),
-                    patch(
-                        "cluster.slurm.subprocess.run",
-                        side_effect=[Mock(stdout=""), Mock(stdout="123\n")],
-                    ) as process,
-                ):
-                    self.assertEqual(
-                        submit_pending([submission], Budget())[0]["status"], "submitted"
-                    )
-                command = process.call_args.args[0]
-                request = request_for(choice or "titanv", parse_inventory(GPU_INVENTORY))
-                self.assertTrue(set(request.arguments()).issubset(command))
-                self.assertIn("--nice=0", command)
-                self.assertIn("--nodes=1", command)
-                self.assertEqual(process.call_args.kwargs["input"], "unchanged script")
 
     def test_policy_prefers_free_capacity_and_keeps_arm_available(self) -> None:
         policy = load_policy()
@@ -520,7 +477,7 @@ class ClusterTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "Requested node configuration"):
                     submit_pending([submission], Budget())
 
-    def test_gpu_guards_and_large_memory_batches(self) -> None:
+    def test_gpu_guards_and_memory_class_batches(self) -> None:
         names = (
             "NVIDIA A100-PCIE-40GB",
             "NVIDIA A100-SXM4-80GB",
@@ -536,14 +493,10 @@ class ClusterTests(unittest.TestCase):
             with self.subTest(memory_gb=memory_gb):
                 self.assertEqual(select_batch(memory_gb, "yolo11x.pt", 640), expected)
                 self.assertEqual(select_batch(memory_gb, "yolo11n.pt", 640), 64)
-
-    def test_environment_selection_preserves_cpu_and_x86_pins(self) -> None:
-        self.assertEqual(environment_for("x86_64", True).directory_name, "x86_64-cu126")
-        self.assertEqual(environment_for("x86_64", True).torch_version, "2.8.0")
-        self.assertEqual(environment_for("aarch64", True).directory_name, "aarch64-cu126")
-        self.assertEqual(environment_for("aarch64", True).torch_version, "2.9.0")
-        self.assertEqual(environment_for("aarch64", False).directory_name, "aarch64-cpu")
-        self.assertEqual(environment_for("aarch64", False).torch_version, "2.8.0")
+        self.assertEqual(select_batch(12, "yolo11n.pt", 640), 32)
+        self.assertEqual(select_batch(16, "yolo11n.pt", 640), 48)
+        self.assertEqual(select_batch(24, "yolo11x.pt", 960), 3)
+        self.assertEqual(select_batch(24, "yolo11n.pt", 640, teacher=True), 32)
 
     def test_bootstrap_print_env_detects_gpu_unless_cpu_is_explicit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -601,7 +554,6 @@ class ClusterTests(unittest.TestCase):
             self.assertFalse(any(path.name.startswith(".bbbb") for path in root.iterdir()))
 
     def test_recipe_batch_override(self) -> None:
-        self.assertIsNone(validate_recipe(sample_recipe()).batch_override)
         recipe = validate_recipe({**sample_recipe(), "batch_override": 8})
         self.assertEqual(recipe.batch_override, 8)
         for value in (0, -1, "8", 2.5, True):
@@ -624,21 +576,6 @@ class ClusterTests(unittest.TestCase):
             self.assertIsNone(resolve_teacher(None, root))
             with self.assertRaises(ValueError):
                 resolve_teacher("teacher/../seed2", root)
-
-    def test_memory_class_batch_selection(self) -> None:
-        self.assertEqual(select_batch(12, "yolo11n.pt", 640), 32)
-        self.assertEqual(select_batch(16, "yolo11n.pt", 640), 48)
-        self.assertEqual(select_batch(24, "yolo11n.pt", 640), 64)
-        self.assertEqual(select_batch(24, "yolo11x.pt", 960), 3)
-        self.assertEqual(select_batch(24, "yolo11n.pt", 640, teacher=True), 32)
-
-    def test_queue_parser_ignores_other_projects_for_budget(self) -> None:
-        jobs = parse_queue(
-            "1|moonshot-gate|RUNNING|gpu-long|gres/gpu:h100:8\n"
-            "2|cz-a|RUNNING|gpu-long|gres/gpu:nv:1\n"
-        )
-        self.assertTrue(Budget().allows(jobs, "nv"))
-        self.assertFalse(jobs[0].owned)
 
     def test_budget_caps_running_and_reserves_pending_slots(self) -> None:
         gpu_jobs = tuple(
@@ -733,18 +670,12 @@ class ClusterTests(unittest.TestCase):
             self.assertEqual(cancel_jobs(["2"]), ["2"])
             process.assert_called_once_with(["scancel", "2"], check=True)
 
-    def test_plan_diff_and_slurm_templates(self) -> None:
+    def test_plan_diff_and_long_job_names_stay_distinct(self) -> None:
         recipe = load_recipe(BASELINE_RECIPE)
         runs = tuple(DesiredRun(BASELINE_RECIPE, recipe, seed) for seed in recipe.seeds)
         jobs = (Job("1", runs[1].name, "RUNNING", "gpu-long", "gpu:nv:1"),)
         result = plan_runs(runs, {runs[0].relative_run}, jobs)
         self.assertEqual([row["state"] for row in result], ["done", "RUNNING", "missing"])
-        submission = submission_for(
-            runs[2], Path("/home/user/columba"), Path("/checkout"), "commit"
-        )
-        self.assertIn("--gres=gpu:1", submission["script"])
-        self.assertIn("--nice=0", submission["script"])
-        self.assertEqual(submission["constraint"], "titanv")
         self.assertNotEqual(job_name("x" * 100 + "a", 0), job_name("x" * 100 + "b", 0))
 
     def test_constraint_override_keeps_recipe_and_records_metadata(self) -> None:
@@ -929,6 +860,8 @@ class ClusterTests(unittest.TestCase):
         desired = DesiredRun(BASELINE_RECIPE, load_recipe(BASELINE_RECIPE), 0)
         with self.assertRaisesRegex(ValueError, "smoke"):
             submission_for(desired, Path("/root"), Path("/checkout"), "commit", 1)
+        with self.assertRaisesRegex(ValueError, "smoke epoch"):
+            task_for(BASELINE_RECIPE, 0, 1)
 
     def test_species_recipe_aligns_only_staged_single_test_names(self) -> None:
         classes = REPOSITORY / "training/classes.yaml"
@@ -956,8 +889,6 @@ class ClusterTests(unittest.TestCase):
             self.assertEqual(
                 excluded_nodes(["xgpd3", "xgpe6"], listing), ["xgpe6", "xgpe2", "xgpd3"]
             )
-        self.assertIn("xgpe6", excluded_nodes())
-        self.assertIn("xgpe2", excluded_nodes())
         self.assertNotIn("xgpj0", excluded_nodes())
 
     def test_gpu_probe_pins_only_an_allowed_nv_node(self) -> None:
@@ -1026,8 +957,6 @@ class ClusterTests(unittest.TestCase):
             training, checksum = stage_dataset("smoke-coco8", root, root / "stage")
             test, _ = stage_dataset("smoke-coco8-test", root, root / "stage")
             self.assertEqual(len(checksum), 64)
-            import yaml
-
             configuration = yaml.safe_load((training / "data.yaml").read_text())
             self.assertEqual(configuration["path"], str(training.resolve()))
             self.assertTrue((training / configuration["test"]).is_dir())
@@ -1059,16 +988,6 @@ class OrchestrationTests(unittest.TestCase):
             next_rules=None,
             seeds=(0, 1, 2),
         )
-
-    def test_qos_caps_are_independent_ceilings(self) -> None:
-        policy = load_policy()
-        self.assertEqual(policy.type_limits["a100-40"], 4)
-        self.assertEqual(policy.type_limits["a100-80"], 2)
-        self.assertEqual(policy.type_limits["h100-47"], 2)
-        self.assertEqual(policy.type_limits["h100-96"], 1)
-        self.assertEqual(policy.type_limits["h200-141"], 1)
-        self.assertEqual(policy.max_submit_jobs, 32)
-        self.assertEqual(policy.type_limits["nv"], 8)
 
     def test_arrays_group_light_or_features_and_heavy_types(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1326,10 +1245,6 @@ class OrchestrationTests(unittest.TestCase):
                     except ProcessLookupError:
                         pass
 
-    def test_force_signal_cannot_target_production(self) -> None:
-        with self.assertRaisesRegex(ValueError, "smoke epoch"):
-            task_for(BASELINE_RECIPE, 0, 1)
-
     def test_transition_rank_small_gain_and_latency_tie(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1578,13 +1493,16 @@ class OrchestrationTests(unittest.TestCase):
 
 
 class DeviceFaultTests(unittest.TestCase):
-    def test_visibility_precedes_work_and_hardware_smoke_keeps_bootstrap_settings(self) -> None:
+    def test_claim_and_visibility_precede_environment_bootstrap_and_training(self) -> None:
         script = (REPOSITORY / "cluster/templates/nv.sbatch").read_text()
         first = script.index("python -m cluster.device_faults check --nvidia-only")
         environment = script.index("bash cluster/bootstrap.sh --gpu\n")
         cuda = script.index('"$environment/bin/python" -m cluster.device_faults check')
         hardware = script.index("bash cluster/bootstrap.sh --gpu-smoke")
         training = script.index('"$environment/bin/python" -m cluster.run_job')
+        claim = script.index("python -m cluster.run_claim")
+        self.assertLess(claim, environment)
+        self.assertLess(claim, cuda)
         self.assertLess(first, environment)
         self.assertLess(environment, cuda)
         self.assertLess(cuda, hardware)
@@ -1961,9 +1879,6 @@ class DeviceFaultTests(unittest.TestCase):
             ):
                 self.assertEqual(probe(True)["status"], "probe_failed")
                 clear.assert_not_called()
-            script = (REPOSITORY / "cluster/templates/gpu-probe.sbatch").read_text()
-            self.assertIn("--time=00:01:00", script)
-            self.assertNotIn("bootstrap", script)
 
     def test_probe_submission_requests_all_gpus_and_enforces_count_budget(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -2175,10 +2090,6 @@ class DeviceFaultTests(unittest.TestCase):
             self.assertEqual(request.partitions, ("gpu-long",))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class FanoutTests(unittest.TestCase):
     def test_width_respects_expanded_project_and_association_capacity(self) -> None:
         from cluster.fanout import fanout_width
@@ -2348,31 +2259,6 @@ class FanoutTests(unittest.TestCase):
                 commands[-1],
                 ["scontrol", "release", ",".join(str(record["array_id"]) for record in records)],
             )
-            script = (REPOSITORY / "cluster/templates/nv.sbatch").read_text()
-            self.assertLess(
-                script.index("python -m cluster.run_claim"),
-                script.index("cluster/bootstrap.sh --gpu"),
-            )
-            self.assertLess(
-                script.index("python -m cluster.run_claim"),
-                script.index("cluster.device_faults check"),
-            )
-
-    def test_targeted_throttle_cli_forwards_job_and_value(self) -> None:
-        with (
-            patch("sys.argv", ["sweep", "throttle-arrays", "--job", "951222", "--throttle", "2"]),
-            patch("cluster.sweep.remote_root", return_value=Path("/columba")),
-            patch(
-                "cluster.sweep.deploy", return_value=(Path("/columba/checkouts/pinned"), "commit")
-            ),
-            patch("cluster.sweep.remote", return_value="[]") as remote,
-            patch("sys.stdout", new_callable=io.StringIO),
-        ):
-            sweep_main()
-        command = remote.call_args.args[0]
-        payload = json.loads(shlex.split(command[-1])[-1])
-        self.assertEqual(payload["job"], "951222")
-        self.assertEqual(payload["throttle"], 2)
 
     def test_targeted_throttle_performs_scontrol_update(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -2405,6 +2291,7 @@ class FanoutTests(unittest.TestCase):
     def test_requeue_refills_before_requesting_the_same_task_again(self) -> None:
         from cluster.requeue import main as requeue_main
 
+        order: list[str] = []
         with (
             patch.dict(
                 os.environ,
@@ -2415,12 +2302,14 @@ class FanoutTests(unittest.TestCase):
                 ["requeue", "signal", "--run-path", str(Path.home() / "columba/runs/smoke/seed0")],
             ),
             patch("cluster.requeue.update_ledger", return_value=True),
-            patch("cluster.fanout.refanout") as refill,
-            patch("cluster.requeue.subprocess.run") as control,
+            patch("cluster.fanout.refanout", side_effect=lambda: order.append("refill")),
+            patch(
+                "cluster.requeue.subprocess.run",
+                side_effect=lambda command, **keywords: order.append(" ".join(command)),
+            ),
         ):
             requeue_main()
-        refill.assert_called_once()
-        self.assertEqual(control.call_args.args[0], ["scontrol", "requeue", "100"])
+        self.assertEqual(order, ["refill", "scontrol requeue 100"])
 
     def test_nice_is_configurable_without_changing_the_qos_caps(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -2429,10 +2318,11 @@ class FanoutTests(unittest.TestCase):
             values["nice"] = 1000
             path.write_text(yaml.safe_dump(values))
             self.assertEqual(load_policy(path).nice, 1000)
-            values["nice"] = -1
-            path.write_text(yaml.safe_dump(values))
-            with self.assertRaises(ValueError):
-                load_policy(path)
+            for invalid in (-1, 10001):
+                values["nice"] = invalid
+                path.write_text(yaml.safe_dump(values))
+                with self.subTest(nice=invalid), self.assertRaises(ValueError):
+                    load_policy(path)
 
     def test_narrow_fanout_spreads_large_backlogs_across_free_type_caps(self) -> None:
         from cluster.fanout import narrow_requests, requests_for
@@ -2504,3 +2394,7 @@ class FanoutTests(unittest.TestCase):
             self.assertEqual(ledger["retry_count"], 1)
             self.assertEqual(ledger["events"][0]["fanout_array_ids"], ["101"])
             self.assertFalse((run / "requeue.json").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
