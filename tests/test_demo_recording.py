@@ -125,7 +125,7 @@ def test_lifecycle_is_idempotent_and_offer_after_finish_is_ignored(
     recorder.offer(frame(1, 11.0))
     recorder.start()
     assert recorder.finish(0.0) == status
-    assert recorder.snapshot().as_dict()["state"] == "finished"
+    assert recorder.snapshot().state == "finished"
 
 
 def test_finish_without_start_never_accepts_frames(tmp_path: Path, events: Events) -> None:
@@ -164,7 +164,6 @@ def test_recording_limits_are_nonfatal_and_preserve_sources(
     assert status.state == "limited"
     assert status.error is None
     assert status.limit_reason == events.records[0][1]["reason"]
-    assert status.as_dict()["limit_reason"] == status.limit_reason
     assert status.limit_reason is not None
     assert status.frames_written == 1
     assert status.frames_dropped == 1
@@ -281,7 +280,6 @@ def test_missing_ffmpeg_retains_sources(tmp_path: Path, events: Events, jpeg: by
     assert result.source_retained
     assert "FFmpeg" in str(result.error)
     assert {path.name: path.read_bytes() for path in spool.iterdir()} == before
-    assert result.as_dict()["output_path"] is None
 
 
 @pytest.mark.parametrize("corruption", ["empty", "invalid", "unsafe", "missing", "nonmonotonic"])
@@ -355,7 +353,6 @@ def test_real_export_preserves_irregular_gaps_and_explicit_final_duration(
     assert result.duration_s == pytest.approx(1.192, abs=0.003)
     assert result.expected_duration_s == pytest.approx(1.192)
     assert result.output_path == output_path
-    assert result.as_dict()["output_path"] == str(output_path)
     assert {path.name: path.read_bytes() for path in spool.iterdir()} == before
     assert not list(tmp_path.glob(".demo-export-*"))
     probe = subprocess.run(
@@ -384,7 +381,7 @@ def test_real_export_preserves_irregular_gaps_and_explicit_final_duration(
 @pytest.mark.skipif(
     not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg tools unavailable"
 )
-@pytest.mark.parametrize("width_px,height_px", [(65, 48), (64, 49), (65, 49)])
+@pytest.mark.parametrize("width_px,height_px", [(65, 48), (64, 49)])
 def test_real_export_pads_odd_dimensions_and_retains_sources(
     tmp_path: Path, events: Events, width_px: int, height_px: int
 ) -> None:

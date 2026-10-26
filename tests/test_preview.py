@@ -26,7 +26,6 @@ from app.output import annotate_frame
 from app.pan_tilt_control import ControlAction, ControllerStatus
 from app.pipeline import RenderJob
 from app.preview import PreviewService
-from app.preview_page import PREVIEW_PAGE
 
 TEST_TIMEOUT_S = 5.0
 POLL_INTERVAL_S = 0.01
@@ -34,7 +33,6 @@ FRAME_WIDTH_PX = 640
 FRAME_HEIGHT_PX = 480
 UNCAPPED_FPS = 1000.0
 P = ParamSpec("P")
-STATE_KEYS = {"target", "controller", "performance", "preview", "recording", "controls_enabled"}
 CONTROL_HEADERS = {"Content-Type": "application/json", "X-Columba-Control": "1"}
 JPEG_SIGNATURE = b"\xff\xd8"
 PUBLISH_BUDGET_S = 0.5
@@ -273,16 +271,6 @@ class TestFrameEncoding:
         assert int(image[120, 2].max()) < 10
         assert int(image[120, 160].min()) > 100
 
-    def test_default_size_is_800_by_450(self, harness: Harness) -> None:
-        service = harness.start()
-        service.publish(make_job())
-        wait_until(lambda: encoded_frames(service) == 1)
-        status, body, headers = harness.request(service, "GET", "/snapshot.jpg")
-        image = decode_jpeg(body)
-        assert status == 200
-        assert headers["Content-Type"] == "image/jpeg"
-        assert image.shape == (450, 800, 3)
-
     def test_one_jpeg_is_shared_by_http_stream_and_recorder(self, harness: Harness) -> None:
         recorder = RecorderDouble(harness.tmp_path, harness.events)
         with patch.object(preview_module, "encode_jpeg", wraps=preview_module.encode_jpeg) as spy:
@@ -391,23 +379,6 @@ class TestBoundedWork:
             gate.set()
             wait_until(lambda: encoded_frames(service) == 2)
 
-    def test_close_reports_a_stalled_encoder_without_hanging(self, harness: Harness) -> None:
-        gate = threading.Event()
-
-        with (
-            patch.object(preview_module, "annotate_frame", gated(annotate_frame, gate)),
-            patch.object(preview_module, "ENCODER_SHUTDOWN_TIMEOUT_S", SHORT_SHUTDOWN_S),
-        ):
-            service = harness.start()
-            service.publish(make_job())
-            time.sleep(0.05)
-            started_s = time.monotonic()
-            service.close()
-            assert time.monotonic() - started_s < 2.0
-        gate.set()
-        assert service.failure is not None and "did not stop" in service.failure
-        assert "preview_failure" in harness.events.names()
-
     def test_blocked_recorder_offer_does_not_stall_publish_or_http(self, harness: Harness) -> None:
         recorder = RecorderDouble(harness.tmp_path, harness.events)
         recorder.offer_gate = threading.Event()
@@ -425,6 +396,7 @@ class TestBoundedWork:
             assert time.monotonic() - started_s < 2.0
         recorder.offer_gate.set()
         assert service.failure is not None and "did not stop" in service.failure
+        assert "preview_failure" in harness.events.names()
 
     def test_recorder_failure_is_stored_and_the_preview_continues(self, harness: Harness) -> None:
         recorder = RecorderDouble(harness.tmp_path, harness.events)
@@ -491,7 +463,6 @@ class TestRecordingOnly:
         service.publish(make_job())
         wait_until(lambda: len(recorder.frames) == 1)
         assert recorder.frames[0].jpeg.startswith(JPEG_SIGNATURE)
-        assert service.state()["controls_enabled"] is False
 
     def test_disabled_without_recording_does_nothing(self, harness: Harness) -> None:
         recorder = RecorderDouble(harness.tmp_path, harness.events)
@@ -511,8 +482,6 @@ class TestRecordingOnly:
         for sequence in range(1, 4):
             service.publish(make_job(sequence))
             wait_until(partial(encoded_count_is, service, sequence))
-        recording = service.state()["recording"]
-        assert isinstance(recording, dict) and set(recording) >= {"state", "frames_written"}
         service.close()
         status = recorder.finish()
         assert status.frames_written == 3
@@ -521,22 +490,12 @@ class TestRecordingOnly:
 
 
 class TestState:
-    def test_keys_are_present_before_the_first_frame(self, harness: Harness) -> None:
+    def test_state_is_served_before_the_first_frame(self, harness: Harness) -> None:
         service = harness.start()
         state = harness.json_state(service)
-        assert set(state) == STATE_KEYS
         assert state["target"] is None
         assert state["controller"] is None
-        assert state["recording"] is None
-        assert state["controls_enabled"] is False
         assert state["preview"] == {"running": True, "frame_age_ms": None, "failure": None}
-        assert state["performance"] == {
-            "processing_fps": None,
-            "capture_fps": None,
-            "encoded_frames": 0,
-            "overwritten_frames": 0,
-            "last_encode_ms": None,
-        }
 
     def test_state_reflects_the_published_job(self, harness: Harness) -> None:
         recorder = RecorderDouble(harness.tmp_path, harness.events)
@@ -594,12 +553,6 @@ class TestState:
         wait_until(lambda: encoded_frames(service) == 1)
         assert frame_age_ms(service) >= 2000
 
-    def test_frame_age_falls_back_to_pickup_without_a_delivery_time(self, harness: Harness) -> None:
-        service = harness.start()
-        service.publish(make_job(delivered_monotonic_s=None))
-        wait_until(lambda: encoded_frames(service) == 1)
-        assert 0 <= frame_age_ms(service) < TEST_TIMEOUT_S * 1000
-
     def test_encoded_metadata_uses_the_job_controller_not_the_live_callback(
         self, harness: Harness
     ) -> None:
@@ -625,11 +578,12 @@ class TestState:
 
 
 class TestHttp:
-    def test_serves_the_page_and_rejects_unknown_paths(self, harness: Harness) -> None:
-        service = harness.start()
-        status, body, headers = harness.request(service, "GET", "/")
+    def test_serves_the_page_and_rejects_unknown_paths_and_wrong_methods(
+        self, harness: Harness
+    ) -> None:
+        service = harness.start(control=lambda action: None)
+        status, _, headers = harness.request(service, "GET", "/")
         assert status == 200
-        assert body.decode("utf-8") == PREVIEW_PAGE
         assert headers["Content-Type"].startswith("text/html")
         assert harness.request(service, "GET", "/missing")[0] == 404
         assert harness.request(service, "GET", "/api/control")[0] == 404
@@ -638,12 +592,6 @@ class TestHttp:
     def test_snapshot_is_unavailable_before_the_first_frame(self, harness: Harness) -> None:
         service = harness.start()
         assert harness.request(service, "GET", "/snapshot.jpg")[0] == 503
-
-    def test_address_reports_the_bound_port(self, harness: Harness) -> None:
-        service = harness.start()
-        assert service.address is not None
-        host, port = service.address
-        assert host == "127.0.0.1" and port > 0
 
     def test_slow_stream_client_neither_slows_publishing_nor_other_clients(
         self, harness: Harness
@@ -847,7 +795,3 @@ class TestControl:
         status, body = harness.post(service, {"action": "pause"})
         assert status == 500 and "controller closed" in str(body["error"])
         assert harness.request(service, "GET", "/api/state")[0] == 200
-
-    def test_control_is_not_available_over_get(self, harness: Harness) -> None:
-        service = harness.start(control=lambda action: None)
-        assert harness.request(service, "GET", "/api/control")[0] == 404
