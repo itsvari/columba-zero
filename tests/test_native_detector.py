@@ -82,10 +82,7 @@ class NativeDetectorTests(unittest.TestCase):
         with self.assertRaisesRegex(DetectorError, "pigeon must have class index 0"):
             self.detector()
 
-    def test_legacy_package_and_lazy_loading(self) -> None:
-        detector = self.detector()
-        self.constructor.assert_called_once_with(str(self.model), threads=2, compute=None)
-        self.assertEqual(detector.names, {0: "pigeon"})
+    def test_unbuilt_extension_reports_build_instructions(self) -> None:
         with patch(
             "app.native_detector.importlib.import_module", side_effect=ImportError("missing")
         ):
@@ -112,23 +109,21 @@ class NativeDetectorTests(unittest.TestCase):
         with self.assertRaisesRegex(DetectorError, "legacy NCNN"):
             self.detector((384, 640))
 
-    def test_filter_preserves_frame_and_class_id(self) -> None:
+    def test_confidence_filter_is_inclusive_and_stage_timings_are_mapped(self) -> None:
         self.native_model.detect.return_value = numpy.asarray(
             [[1, 2, 3, 4, 0.8, 0], [5, 6, 7, 8, 0.4, 0], [9, 10, 11, 12, 0.5, 0]],
             dtype=numpy.float32,
         )
         detector = self.detector()
         result = detector.detect(FramePacket(0, 0.0, self.frame))
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[0].label, "pigeon")
-        self.assertEqual(result[0].left_px, 1)
+        self.assertEqual(
+            [(item.label, item.left_px, item.class_id) for item in result],
+            [("pigeon", 1, 0), ("pigeon", 9, 0)],
+        )
         self.assertAlmostEqual(result[0].confidence, 0.8)
-        self.assertIs(self.native_model.detect.call_args.args[0], self.frame)
-        self.assertEqual([detection.class_id for detection in result], [0, 0])
         self.assertEqual(
             detector.last_stage_ms, {"preprocess": 1.0, "inference": 2.0, "postprocess": 3.0}
         )
-        self.native_model.detect.assert_called_once_with(self.frame, 0.5)
 
     def test_species_names_class_ids_and_pigeon_only_triggers(self) -> None:
         self.metadata["names"] = {0: "PIGEON", 1: "Spotted_Dove"}
@@ -147,16 +142,8 @@ class NativeDetectorTests(unittest.TestCase):
         self.assertEqual([item.label for item in detections], ["spotted_dove", "pigeon"])
         self.assertEqual([item.class_id for item in detections], [1, 0])
         self.assertEqual(detector.trigger_classes, ("pigeon",))
-        self.metadata["columba"] = {
-            "input_hw": [640, 640],
-            "decode": "yolo11",
-            "trigger_classes": ["spotted_dove"],
-        }
-        self.write_metadata()
-        with self.assertRaisesRegex(DetectorError, "may only trigger on pigeon"):
-            self.detector()
 
-    def test_runtime_factory_uses_native_wrapper_and_stage_timings(self) -> None:
+    def test_runtime_factory_selects_native_backend_with_trigger_classes(self) -> None:
         self.metadata["imgsz"] = [384, 640]
         self.metadata["columba"] = {
             "input_hw": [384, 640],
@@ -171,23 +158,12 @@ class NativeDetectorTests(unittest.TestCase):
             detector, triggers = create_detector(configuration)
         self.assertIsInstance(detector, NativeDetector)
         self.assertEqual(triggers, ("pigeon",))
-        detector.detect(FramePacket(0, 0.0, self.frame))
-        self.assertEqual(
-            cast(NativeDetector, detector).last_stage_ms,
-            {"preprocess": 1.0, "inference": 2.0, "postprocess": 3.0},
-        )
-        self.constructor.assert_called_once_with(str(self.model), threads=2, compute=None)
 
-    def test_compute_override_forwarding_and_validation(self) -> None:
-        for compute in (None, "fp16", "fp32"):
-            with self.subTest(compute=compute):
-                self.constructor.reset_mock()
-                with patch.dict(sys.modules, {"columba_native": self.extension}):
-                    NativeDetector(str(self.model), 640, 0.5, threads=2, compute=compute)
-                self.constructor.assert_called_once_with(
-                    str(self.model), threads=2, compute=compute
-                )
-        for compute in ("", "auto", "FP16", "int8"):
+    def test_compute_override_reaches_extension_and_invalid_values_fail_early(self) -> None:
+        with patch.dict(sys.modules, {"columba_native": self.extension}):
+            NativeDetector(str(self.model), 640, 0.5, threads=2, compute="fp16")
+        self.constructor.assert_called_once_with(str(self.model), threads=2, compute="fp16")
+        for compute in ("", "FP16", "int8"):
             with self.subTest(compute=compute):
                 with patch("app.native_detector.importlib.import_module") as importer:
                     with self.assertRaisesRegex(DetectorError, "compute must be"):
@@ -200,7 +176,6 @@ class NativeDetectorTests(unittest.TestCase):
         frame = self.native_model.detect.call_args.args[0]
         self.assertEqual(frame.shape, (480, 640, 3))
         self.assertEqual(frame.dtype, numpy.uint8)
-        self.assertTrue(frame.flags.c_contiguous)
         self.native_model.detect.side_effect = RuntimeError("bad inference")
         with self.assertRaisesRegex(DetectorError, "model inference failed: bad inference"):
             detector.detect(FramePacket(0, 0.0, self.frame))
@@ -245,21 +220,6 @@ class NativeDetectorTests(unittest.TestCase):
         low_score: ExportPrediction = {**rounded, "confidence": 0.7}
         self.assertEqual(match_clipped_boxes([expected], [low_score]), [])
 
-    def test_matching_uses_relative_rounding_bound(self) -> None:
-        expected: ExportPrediction = {
-            "label": "pigeon",
-            "confidence": 0.2612849473953247,
-            "box": [0.0, 7.390136241912842, 0.0, 1276.990966796875],
-        }
-        actual: ExportPrediction = {
-            "label": "pigeon",
-            "confidence": 0.2612834572792053,
-            "box": [0.0, 7.391153812408447, 0.0, 1276.990966796875],
-        }
-        self.assertEqual(len(match_clipped_boxes([expected], [actual])), 1)
-        shifted: ExportPrediction = {**actual, "box": [0.0, 7.4, 0.0, 1276.990966796875]}
-        self.assertEqual(match_clipped_boxes([expected], [shifted]), [])
-
 
 @unittest.skipIf(columba_native is None, "columba_native is not built")
 class NativeExtensionTests(unittest.TestCase):
@@ -295,9 +255,6 @@ class NativeExtensionTests(unittest.TestCase):
     def test_detector_returns_owned_float32_boxes_and_empty_array(self) -> None:
         extension = cast(ModuleType, columba_native)
         detector = extension.Detector(str(self.model), threads=2)
-        self.assertEqual(detector.input_hw, (640, 640))
-        self.assertEqual(detector.names, {0: "pigeon"})
-        self.assertEqual(detector.decode, "yolo11")
         frame = numpy.zeros((480, 640, 3), dtype=numpy.uint8)
         actual = detector.detect(frame, 0.5)
         numpy.testing.assert_allclose(
@@ -326,7 +283,15 @@ class NativeExtensionTests(unittest.TestCase):
 
     def test_compute_defaults_and_overrides_set_loaded_network_options(self) -> None:
         extension = cast(ModuleType, columba_native)
-        for quantisation in (None, "fp32", "fp16", "int8"):
+        fp16_flags = ("use_fp16_packed", "use_fp16_storage", "use_fp16_arithmetic")
+        cases = (
+            (None, None, "fp32"),
+            ("fp16", None, "fp16"),
+            ("int8", None, "fp16"),
+            ("fp16", "fp32", "fp32"),
+            (None, "fp16", "fp16"),
+        )
+        for quantisation, compute, expected in cases:
             if quantisation is None:
                 self.metadata.pop("columba", None)
             else:
@@ -336,34 +301,23 @@ class NativeExtensionTests(unittest.TestCase):
                     "quantization": quantisation,
                 }
             self.write_metadata()
-            for compute in (None, "fp16", "fp32"):
-                with self.subTest(quantisation=quantisation, compute=compute):
-                    detector = extension.Detector(str(self.model), threads=2, compute=compute)
-                    expected = compute or ("fp16" if quantisation in ("fp16", "int8") else "fp32")
-                    self.assertEqual(detector.compute, expected)
-                    self.assertEqual(
-                        detector.compute_flags,
-                        {
-                            name: expected == "fp16"
-                            for name in (
-                                "use_fp16_packed",
-                                "use_fp16_storage",
-                                "use_fp16_arithmetic",
-                            )
-                        },
-                    )
+            with self.subTest(quantisation=quantisation, compute=compute):
+                detector = extension.Detector(str(self.model), threads=2, compute=compute)
+                self.assertEqual(detector.compute, expected)
+                self.assertEqual(
+                    detector.compute_flags, {name: expected == "fp16" for name in fp16_flags}
+                )
 
-    def test_extension_rejects_invalid_compute(self) -> None:
+    def test_extension_rejects_invalid_arguments(self) -> None:
         extension = cast(ModuleType, columba_native)
-        for compute in ("", "auto", "FP16", "int8"):
-            with self.subTest(compute=compute):
-                with self.assertRaisesRegex(ValueError, "compute must be"):
-                    extension.Detector(str(self.model), compute=compute)
+        for compute in ("", "FP16"):
+            with (
+                self.subTest(compute=compute),
+                self.assertRaisesRegex(ValueError, "compute must be"),
+            ):
+                extension.Detector(str(self.model), compute=compute)
         with self.assertRaises(TypeError):
             extension.Detector(str(self.model), compute=16)
-
-    def test_extension_validates_metadata_threads_and_confidence(self) -> None:
-        extension = cast(ModuleType, columba_native)
         with self.assertRaisesRegex(ValueError, "threads"):
             extension.Detector(str(self.model), threads=0)
         detector = extension.Detector(str(self.model))

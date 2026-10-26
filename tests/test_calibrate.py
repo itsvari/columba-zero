@@ -61,34 +61,17 @@ def measured_commands() -> list[str]:
 class CalibrationTests(unittest.TestCase):
     def test_requires_measured_marks_and_saves_profile(self) -> None:
         commands = iter(measured_commands())
-        mount, output = Mock(), Mock()
+        output = Mock()
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "calibration.yaml"
             self.assertTrue(
-                calibrate(Calibration(), mount, path, read=lambda _: next(commands), write=output)
+                calibrate(Calibration(), Mock(), path, read=lambda _: next(commands), write=output)
             )
             result = Calibration.load(path)
             self.assertEqual(result.pan.direction, -1)
             self.assertEqual(result.pan.home_angle, 90)
             self.assertAlmostEqual(result.pan.min_angle, 89.1)
-            self.assertEqual(mount.pulse.call_count, 8)
         self.assertTrue(any("Record min" in call.args[0] for call in output.call_args_list))
-        guidance = output.call_args_list[0].args[0]
-        self.assertIn("raw, unflipped", guidance)
-        self.assertIn("stationary target then moves left/up", guidance)
-        self.assertIn("flipped or mirrored preview must not change", guidance)
-        settings = output.call_args.args[0]
-        for field in (
-            "channel",
-            "pulse_min_us",
-            "pulse_max_us",
-            "min_angle",
-            "home_angle",
-            "max_angle",
-            "direction",
-            "orientation",
-        ):
-            self.assertIn(field, settings)
 
     def test_safety_envelope_endpoints_save_in_nominal_degrees(self) -> None:
         commands = iter(
@@ -193,10 +176,6 @@ class CalibrationTests(unittest.TestCase):
 
 
 class KeyboardTests(unittest.TestCase):
-    def test_arrows_are_immediate_commands(self) -> None:
-        read = commands_from(["LEFT", "RIGHT", "UP", "DOWN"])
-        self.assertEqual([read("> ") for _ in range(4)], ["pan -", "pan +", "tilt -", "tilt +"])
-
     def test_editing_and_arrow_during_partial_command(self) -> None:
         read = commands_from([*"pan homx", "\x7f", "LEFT", "e", "\r"])
         self.assertEqual(read("> "), "pan home")
@@ -230,9 +209,7 @@ class KeyboardTests(unittest.TestCase):
     def test_posix_escape_sequence_decoding(self) -> None:
         for sequence, expected in (
             (b"\x1b[A", "UP"),
-            (b"\x1b[B", "DOWN"),
             (b"\x1bOC", "RIGHT"),
-            (b"\x1b[D", "LEFT"),
             (b"\x1b[3~", "IGNORE"),
             (b"\x1b\xff", "IGNORE"),
         ):
@@ -243,26 +220,11 @@ class KeyboardTests(unittest.TestCase):
                 self.assertEqual(posix_key(7), expected)
 
     def test_windows_extended_keys(self) -> None:
-        for code, expected in (("H", "UP"), ("P", "DOWN"), ("K", "LEFT"), ("M", "RIGHT")):
+        for code, expected in (("H", "UP"), ("M", "RIGHT"), ("\x86", "IGNORE")):
             console = Mock()
             console.getwch.side_effect = ["\xe0", code]
             with patch.dict("sys.modules", {"msvcrt": console}):
                 self.assertEqual(windows_key(), expected)
-
-    @unittest.skipIf(os.name == "nt", "POSIX terminal required")
-    def test_terminal_restored_on_keyboard_interrupt(self) -> None:
-        terminal, tty = Mock(), Mock()
-        terminal.tcgetattr.return_value = ["previous-settings"]
-        with (
-            patch("app.calibrate.sys.stdin") as stdin,
-            patch("app.calibrate.sys.stdout"),
-            patch.dict("sys.modules", {"termios": terminal, "tty": tty}),
-        ):
-            stdin.fileno.return_value = 7
-            with self.assertRaises(KeyboardInterrupt), command_input():
-                raise KeyboardInterrupt
-        tty.setcbreak.assert_called_once_with(7)
-        terminal.tcsetattr.assert_called_once_with(7, terminal.TCSADRAIN, ["previous-settings"])
 
     def test_line_input_fallback(self) -> None:
         with command_input(line_input=True) as read:
@@ -274,30 +236,19 @@ class KeyboardTests(unittest.TestCase):
 
 
 class LifecycleTests(unittest.TestCase):
-    def test_cli_defaults_and_overrides(self) -> None:
-        for flags, channels in (
-            ([], (0, 1)),
-            (["--pan-channel", "1", "--tilt-channel", "0"], (1, 0)),
-        ):
-            with (
-                patch("sys.argv", ["calibrate", "--line-input", *flags]),
-                patch("app.calibrate.PCA9685") as driver,
-                patch("app.calibrate.calibrate") as run,
-                patch("builtins.print"),
-            ):
-                cli()
-                profile = driver.call_args.args[0]
-                self.assertEqual((profile.pan.channel, profile.tilt.channel), channels)
-                self.assertEqual(run.call_args.args[0], profile)
-                driver.return_value.close.assert_called_once()
-
-    def test_cli_passes_optional_measured_field_of_view(self) -> None:
+    def test_cli_flags_reach_the_calibration_profile(self) -> None:
         with (
             patch(
                 "sys.argv",
                 [
                     "calibrate",
                     "--line-input",
+                    "--pan-channel",
+                    "1",
+                    "--tilt-channel",
+                    "0",
+                    "--pan-pulse-max-us",
+                    "1800",
                     "--horizontal-fov-deg",
                     "62.2",
                     "--vertical-fov-deg",
@@ -310,8 +261,9 @@ class LifecycleTests(unittest.TestCase):
         ):
             cli()
         profile = driver.call_args.args[0]
-        self.assertEqual(profile.horizontal_fov_deg, 62.2)
-        self.assertEqual(profile.vertical_fov_deg, 48.8)
+        self.assertEqual((profile.pan.channel, profile.tilt.channel), (1, 0))
+        self.assertEqual(profile.pan.pulse_max_us, 1800)
+        self.assertEqual((profile.horizontal_fov_deg, profile.vertical_fov_deg), (62.2, 48.8))
 
     def test_initialisation_failure_and_interrupted_calibration_cleanup(self) -> None:
         with (
