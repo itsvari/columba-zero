@@ -22,9 +22,11 @@ from typing import Protocol
 from .capture import EndOfStream
 from .config import AppConfig
 from .detector import FrameDetector, stage_timings
+from .follow_models import TargetSnapshot
 from .json_data import JsonValue
 from .models import Detection, Frame, FramePacket
 from .output import health_snapshot
+from .pan_tilt_control import ControllerStatus
 from .tracking import ConfirmationTracker, TriggerEvent
 
 RENDER_QUEUE_CAPACITY = 2
@@ -67,6 +69,16 @@ class RenderJob:
     processing_fps: float
     capture_fps: float | None
     confirmed_track_ids: frozenset[int] = frozenset()
+    target: TargetSnapshot | None = None
+    controller: ControllerStatus | None = None
+    sequence: int = 0
+    captured_at: float = 0.0
+    delivered_monotonic_s: float | None = None
+    presentation_time_s: float | None = None
+
+
+class FramePublisher(Protocol):
+    def publish(self, job: RenderJob) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
