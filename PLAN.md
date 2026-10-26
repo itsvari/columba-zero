@@ -1,6 +1,6 @@
 # Columba Zero: pan-tilt integration and demonstration video
 
-## 1. Branch strategy and current status
+## 1. Delivery status and next-session handover
 
 Use this plan to implement the demonstration on the current application architecture,
 reusing the useful hardware and controller work from
@@ -8,27 +8,30 @@ reusing the useful hardware and controller work from
 supplied demonstration plan with the findings from the Codex, Claude Opus 5.5, and
 DeepSeek reviews on 26 October 2026.
 
-### Prepared branches
+### Merged delivery, 27 October 2026
 
-- `main` remains at `36eab9a92d6808837285da097156ffbd00de511f`.
-- `integration/pan-tilt-pr2` contains merge commit
-  `a152b00c1bfecc9ed8821e6a0ac056cc15bbba1e`. Its parents are that main commit and
-  PR head `c89dab40a426a0dc7abd0d7304c76a3527e30242`.
-- `feature/pan-tilt-demo` starts from the integration merge. Its first change adds
-  this plan. Make the future implementation changes on this feature branch.
+The core demonstration and Pi bring-up changes were committed, pushed, and merged
+into `main` at `c9d31487531d5a4477690328f7a4838f8e9a5cab`. PR #2 is merged.
+Use current `origin/main` for the next session and branch new code changes from it.
+The software portions of stages 1–4 are complete. Following remains opt-in.
 
-The integration merge keeps main's versions of all 14 conflicting files. It adds
-only the unchanged PR files `app/pantilt.py` and `app/calibrate.py`. The merge
-preserves the full PR history so the controller, tests, overlays, and documentation
-remain available for the later port.
+The final four commits are:
 
-The integration branch preserves the imported source baseline. The feature branch
-now implements and checks the software portions of stages 1–4. Initial Pi camera
-and small-movement checks have passed. Following acceptance remains pending.
-Measured results and remaining tests are in
+- `ec3f538`: isolate mocked prediction metadata from installed backends.
+- `b3812d0`: configure capture rotation and bind calibration to that orientation.
+- `a61b40c`: measure controller command completion and report timing coverage.
+- `844ea01`: add Pi prerequisite checks, the hardware runbook, and bring-up evidence.
+
+`feature/pan-tilt-demo` retains that implementation history through `844ea01`.
+`integration/pan-tilt-pr2` preserves the earlier imported baseline at `a152b00`.
+Its merge retained main's versions of all 14 conflicting files and preserved the
+original PR history. These branches are historical references for the completed port.
+
+Initial Pi camera and small-movement checks have passed. Following acceptance
+remains pending. Measurements and detailed evidence are in
 [deploy/VALIDATION.md](deploy/VALIDATION.md#pi-bring-up-27-october-2026-in-progress).
 
-### Software implementation status, 26 October 2026
+### Completed software
 
 - Driver and calibration repairs include typed interfaces, nominal angle mapping,
   atomic profile saving, terminal/signal cleanup, and regression tests.
@@ -38,6 +41,14 @@ Measured results and remaining tests are in
   single hardware owner, cancellation checks, simulation, logs, and overlays.
 - Browser preview provides MJPEG, state, and pause/resume/home controls. Bounded
   JPEG recording exports a timed MP4 after processing stops and retains sources.
+- Capture supports 0° and 180° orientation. For 180°, it verifies the applied
+  libcamera transform before starting. Hardware control rejects a calibration
+  whose image orientation differs from capture before opening the driver.
+- Controller events timestamp tick start and driver return. The bounded summary
+  separates hardware from simulation and sensor timing from delivery timing.
+  It reports missing command timing and explains dropped-sample limitations.
+- `tools/pi_preflight.py` checks environment and selected configuration without
+  opening the camera or I2C bus or issuing servo commands.
 - Following, physical movement, preview, and recording remain opt-in.
   Following requires confirmation. Day/night following and zone activation are
   rejected until their prerequisites are defined or measured.
@@ -45,8 +56,89 @@ Measured results and remaining tests are in
   evidence are recorded in [deploy/VALIDATION.md](deploy/VALIDATION.md). Commands
   and configuration are in [the demonstration guide](docs/pan-tilt.md).
 
-Stage 5 still needs Pi throughput, latency, centring, servo, and one-hour evidence.
-Stage 6 remains deferred until unrestricted following passes hardware acceptance.
+The committed desktop gate passes 571 tests and 345 subtests, with six
+native-extension skips. Ruff lint, formatting, strict mypy across 108 files, and
+both model-package checks pass. Independent Opus reviews found no material
+issues after fixes. Stage 6, the fixed-zone feature, remains unimplemented and
+deferred until core following passes acceptance.
+
+### Pi state at handover
+
+- SSH access is `columba@columba-pi`. VNC is also available. Keep credentials out
+  of the repository and use existing authentication or obtain them privately.
+- The assembled device is an 8 GB Pi 5 with an IMX708 camera and PCA9685 pan-tilt
+  mount. The user reports that the official Pi 5 supply powers both Pi and mount.
+  Historical undervoltage flags were present, with none active at the last check.
+  The sensor is physically upside-down, so live configuration uses
+  `camera.rotation_deg: 180`.
+- The working deployment is `/home/columba/columba-demo`, with its own `.venv`.
+  Preserve `/home/columba/columba-zero`, which contains older local changes and
+  calibration. The new native runtime uses OS NumPy, OpenCV, and SciPy without
+  Torch or Ultralytics. NCNN, the extension, and CTest have run successfully.
+- The Pi suite passes 576 tests and 355 subtests. One optional Ultralytics
+  comparison skips, while the other native tests execute. Ruff passes. Pi mypy
+  has dependency and OS-stub discrepancies recorded in the validation document.
+  Do not report the full Pi typing gate as passing.
+- Live camera, upright browser preview, simulated controls, and timed MP4 export
+  work. Short runs reach about 10–12 FPS, below the 15 FPS target. Performance
+  optimisation may require code changes after controlled profiling.
+- The fan uses the dedicated four-pin connector. The user observed it spinning
+  despite 0 RPM telemetry. Fan trip temperatures are 45, 50, 55, and 60°C live
+  and saved in boot configuration. Persistence has not been checked by rebooting.
+  Firmware temperature limits are unchanged. Live workloads reached 85–86°C
+  with thermal limiting. The user accepts operation around 80°C in Singapore's
+  ambient conditions. Do not impose an arbitrary 80°C abort threshold.
+  Monitor sustained throttling and throughput against the acceptance targets.
+- Supervised 10 µs and 50 µs nudges returned home and disabled outputs. The 50 µs
+  test established pan direction −1 and tilt direction +1 in rotation-180 capture.
+  A separate profile restricts both axes to the saved home plus or minus 50 µs.
+  Full travel, physical angle mapping, and field of view remain unmeasured.
+- A paused hardware worker recorded 199 ticks over ten seconds, averaging
+  50.0689 ms between ticks. Both channels read back FULL_OFF after shutdown.
+  Holds perform no I2C position writes, so this proves neither tracking cadence
+  under load nor tracking-command latency. There were zero tracking moves.
+- At handover the application is stopped, outputs are disabled, and no auto-start
+  service is enabled. Automatic physical following has never been tested.
+  Verify the current state when resuming.
+
+The Pi still has revision `a999b98` plus the tested source overlay, not a clean
+checkout of the merged commit. Its file hashes are in
+`outputs/setup/deployment-final.json`. Logs and measurements are under
+`outputs/setup/`, with run outputs in `outputs/pi-*`. Local ignored evidence is
+under `outputs/validation/pi-bringup-20261027/` on the development computer.
+
+Preserve these ignored device files when updating source:
+
+- `outputs/setup/calibration-rotated.local.yaml`: the narrow rotation-180 profile.
+- `outputs/pi-hardware.yaml`: reduced-speed hardware configuration using that profile.
+- `outputs/pi-simulate.yaml` and `outputs/run-preview.sh`: upright simulation and preview.
+- Existing calibration candidates, original profiles, recordings, and setup evidence.
+
+### Resume in the next agent session
+
+Testing is intentionally deferred to another session. No additional movement or
+endurance run is authorised by this documentation update.
+
+1. Read this handover, the validation record, and
+   [the Pi hardware runbook](docs/pi-hardware-testing.md). Use current `main`
+   rather than the runbook's older feature-branch reference.
+2. Reconnect over SSH and inspect processes, PWM state, source revision, local
+   changes, and configuration. Preserve the existing deployment and ignored files.
+   Reconcile its tested overlay with current `main` before updating source.
+   Do not discard the older checkout or its calibration.
+3. Set up the physical monitor controlled by the computer running the agent.
+   Implement the test presentation and evidence collection described below.
+   Confirm through the Pi preview that the displayed content is actually visible.
+4. Start with live camera capture and simulated following. Verify a known positive
+   image, upright capture, display framing, focus, and the test sequence.
+5. Before the first short physical-following run, confirm the user is beside the
+   mount and agrees the bounded test. Retain the narrow profile and reduced speed.
+   Earlier approval covered manual nudges, not autonomous following or wider travel.
+6. Run the monitor-based campaign below, tune against recorded results, and repeat
+   the software gate after code changes. Keep throughput, timing, centring, and
+   physical observations separate in the report.
+7. Run the one-hour test only after short tracking, limits, shutdown, and restart
+   cases pass. Leave the fixed-zone feature and unattended startup deferred.
 
 To inspect the controller and tests retained in history, use:
 
@@ -55,25 +147,25 @@ git show c89dab40a426a0dc7abd0d7304c76a3527e30242:app/tracking.py
 git show c89dab40a426a0dc7abd0d7304c76a3527e30242:tests/test_tracking.py
 ```
 
-### Reuse the hardware work and adapt the controller
+### Completed port decisions
 
-- Keep the PCA9685 driver, calibration profile, manual calibration workflow, mock
-  driver, and relevant tests after fixing the confirmed defects.
-- Reuse the controller's proportional movement, speed and travel clamping,
+- Kept the PCA9685 driver, calibration profile, manual calibration workflow, mock
+  driver, and applicable tests after fixing the confirmed defects.
+- Reused proportional movement, speed and travel clamping,
   independently timed worker, latest-observation handling, and replay clock.
-- Replace the PR's nearest-centre association and raw-detection target acquisition
-  with the motion tracker and confirmed target selector specified below.
-- Port the selected-target overlay and JSONL fields into main's existing output
-  path. Add the planned target identity, deadband, limits, and lifecycle events.
-- Keep the existing detector and deployment settings. The PR's older model,
-  single-class runtime, and synchronous output loop do not replace main's versions.
+- Replaced the PR's nearest-centre association and raw-detection acquisition with
+  shared motion identities and confirmed target selection.
+- Added the selected-target overlay, identity, deadband, limits, lifecycle events,
+  and timing through the existing output path.
+- Retained the shipped detector and deployment settings rather than the PR's older
+  model, single-class runtime, or synchronous output loop.
 
 ### Preserve main's architecture
 
-Keep `app/tracking.py` and `tests/test_tracking.py` for the existing confirmation
-behaviour until the shared motion tracker replaces their identity management.
-Place camera control in a separate module, such as `app/pan_tilt_control.py`, with
-its own tests. Do not restore the PR's competing `app/tracking.py` wholesale.
+`app/tracking.py` retains confirmation for detection-only operation. Following uses
+the shared identities in `app/motion_tracking.py`. Camera control lives separately
+in `app/pan_tilt_control.py`, with its own tests. Preserve that division and do not
+restore the PR's competing `app/tracking.py` wholesale.
 
 Integrate target processing in `FrameProcessor.process` in `app/pipeline.py`.
 Keep inference, display, and log writing in their existing threads. Carry the
@@ -97,9 +189,10 @@ each camera, and how image orientation is configured. Until that is defined,
 reject that combination before opening the driver. Clear retained target state on
 every camera change.
 
-### Fix the confirmed review defects
+### Preserve the confirmed review fixes
 
-Complete these fixes as implementation work, with regression tests:
+These fixes are implemented and covered by regression tests. Preserve them when
+changing the software:
 
 1. Respect cancellation before driver construction and before the first position
    command. A stop during camera startup must not initialise or move the mount.
@@ -111,10 +204,11 @@ Complete these fixes as implementation work, with regression tests:
    because of floating-point rounding. Include the axis in validation errors.
 5. Preserve the first runtime failure. Do not report an already-observed worker
    failure again as a new cleanup failure.
-6. Restore `calibration.local.yaml` to `.gitignore`. Main removed that rule, and the
-   integration merge intentionally leaves existing main files unchanged.
-7. Explain the raw-image direction convention in the calibration tool and its
-   instructions. A flipped preview must not cause an inverted tilt calibration.
+6. Keep `calibration.local.yaml` in `.gitignore`. The completed port restored the
+   rule omitted from the imported baseline.
+7. Explain the configured-capture direction convention in calibration and its
+   instructions. Bind profiles to capture rotation so a changed orientation cannot
+   silently invert either axis. A separate preview flip must not change calibration.
 8. Meet the repository's strict typing and formatting requirements for the imported
    files and all later changes.
 
@@ -130,7 +224,16 @@ stuck. Keep the existing single-owner rule and report the shutdown failure.
 
 Keep the existing pigeon detector and add tracking, target selection, and camera control around its bounding-box output. **The first demonstration should require no retraining or detector architecture changes.**
 
-The repository already provides native NCNN inference, basic track confirmation, a local display, and diagnostic recording. Its current tracker uses box overlap, which needs improving for a moving camera. Actual Pi performance remains unverified. [Project README](https://github.com/itsvari/columba-zero), [current tracker](https://github.com/itsvari/columba-zero/blob/main/app/tracking.py), [validation status](https://github.com/itsvari/columba-zero/blob/main/deploy/VALIDATION.md).
+The repository now provides the native NCNN pipeline, shared motion tracking,
+target selection, control, preview, and recording. The following design sections
+record the implemented core and deferred zone feature. Short Pi runs achieve
+about 10–12 FPS. Sustained throughput and following acceptance remain open.
+
+The agreed test programme uses the actual Pi camera and mount pointed at a monitor
+controlled by the computer running the agent session. Static and dynamic displayed
+targets replace live subjects for this campaign. Real birds are not a prerequisite
+for completing the planned bench tests. Keep the resulting claims specific to
+monitor-based operation, as detailed under validation below.
 
 Agreed defaults:
 
@@ -147,7 +250,9 @@ Agreed defaults:
 
 Use the **Waveshare 2-DOF Pan-Tilt HAT with PCA9685** as the reference hardware. Its I²C interface supports a small driver without depending on old camera or GPIO demonstration software. Validate operation on the actual Pi 5 before integrating tracking. [Waveshare manual](https://files.waveshare.com/upload/b/b9/Pan-Tilt_HAT_user_manual_en.pdf).
 
-Before purchasing, verify that the bracket fits the chosen camera, allows its full movement, and clears the Pi's cooler. Include the correct Pi 5 CSI cable, adequate cable slack, and power sized for simultaneous Pi and servo operation.
+The assembly is available. Before expanding the tested travel range, verify
+camera-bracket fit, cooler clearance, and cable slack throughout that range.
+Retain the actual supply arrangement in each run's record.
 
 Do not make the retired Pimoroni HAT the default purchase; its original camera bracket also excludes Camera Module 3. [Pimoroni product information](https://shop.pimoroni.com/products/pan-tilt-hat).
 
@@ -226,7 +331,7 @@ Extend JSONL logs with target acquisition, switching, loss, controller state, an
 
 ## 4. Browser preview and demonstration recording
 
-This milestone is new work. PR #2 adds local overlays but no HTTP service, browser
+This milestone is implemented. PR #2 supplied local overlays but no HTTP service, browser
 controls, timestamped JPEG recorder, or timed MP4 export. Retain its AVI output only
 as the existing diagnostic mode. Do not treat that mode as demonstration recording.
 
@@ -242,7 +347,7 @@ Encoding and network delivery run outside the detection/control loop. Slow clien
 
 **Recording must preserve demonstration timing.** The current fixed-FPS AVI records processed frames and can alter playback speed.
 
-For the new demo recording mode:
+For demonstration recording:
 
 1. Save the already encoded JPEG frames with monotonic timestamps and matching metadata.
 2. After detection stops, use FFmpeg to produce an annotated MP4 with timing derived from those timestamps.
@@ -281,35 +386,30 @@ Store the reference image, polygon, calibration, and registration confidence. Sh
 
 ### Delivery sequence
 
-Implement each stage on `feature/pan-tilt-demo`. Finish its software checks before
-starting the next stage. The software portions of stages 1–4 are implemented and
-checked. Hardware steps within stages 1 and 3, hardware acceptance in stage 5,
-and the fixed-zone stretch goal remain outstanding.
+Stages 1–4 are implemented, checked, and merged. Continue from current `main`.
+Finish each new software change's checks before starting the next test phase.
 
-1. **Repair hardware bring-up.** Fix the imported driver and calibration tool,
-   establish `PanTiltDriver`, add atomic profile saving and calibration logging,
-   and restore the ignore rule. Port the applicable PR tests into a separate file.
-   Prove cancellation, terminal restoration, pulse mapping, clamping, and cleanup
-   with mocks and subprocess tests. Then verify calibrated movement on the Pi.
-2. **Implement shared tracking and selection.** Add prediction, low-confidence
-   association, camera-motion compensation, confirmation, smoothed area, and
-   switching hysteresis. Preserve one identity across confirmation, selection,
-   logs, and display. Prove identity persistence and acquisition rules with replay.
-3. **Integrate camera control.** Adapt the PR's worker and controller to typed target
-   snapshots and main's pipeline. Add acceleration limiting, freshness handling,
-   limit reporting, opt-in configuration, and reaction-test isolation. Define or
-   reject camera-switching combinations. Prove zero physical writes during replay
-   and detection-only runs, then measure single-camera centring on hardware.
-4. **Add browser preview and demonstration recording.** Implement the latest-frame
-   MJPEG service, state endpoint, pause/home controls, shared JPEG encoding,
-   bounded recording, and timed MP4 export. Prove slow clients and recorder faults
-   cannot block inference or camera control. Verify exported elapsed timing.
-5. **Tune and validate the core demonstration.** Measure tracking alone, preview,
-   recording, and both outputs. Collect latency, centring, switching, and one-hour
-   evidence against the acceptance targets below. Keep hardware following opt-in.
-6. **Implement the fixed-zone stretch goal.** Add reference registration, polygon
-   membership, uncertainty handling, and projected-zone display only after the
-   unrestricted demonstration passes acceptance.
+1. **Hardware bring-up: software complete, physical calibration partial.** The
+   driver, calibration tool, cancellation, terminal restoration, atomic saving,
+   pulse mapping, orientation binding, and cleanup have tests. Small supervised
+   moves passed. Wider travel and physical angle measurement remain open.
+2. **Shared tracking and selection: implemented.** Replay covers prediction,
+   confidence passes, optical flow, confirmation, area smoothing, identity
+   persistence, and switching. Monitor-camera sequences must validate their
+   behaviour under actual camera movement.
+3. **Camera control: implemented, closed-loop acceptance open.** Freshness,
+   acceleration, limits, replay isolation, and timing telemetry are checked.
+   Only a paused physical worker has run. Measure actual corrections, centring,
+   command age, and cadence under load next.
+4. **Browser preview and demonstration recording: implemented.** Real Pi preview,
+   simulated controls, and MP4 export work. Repeat with physical following and
+   controlled monitor content in all four output combinations.
+5. **Core demonstration tuning: next.** Build the monitor test presentation and
+   evidence analysis, run the staged campaign below, and collect acceptance
+   results. Keep hardware following opt-in.
+6. **Fixed-zone stretch goal: deferred.** Add reference registration, polygon
+   membership, uncertainty handling, and projected-zone display only after core
+   following passes the monitor-based acceptance campaign.
 
 The original estimate was 4–6 working days for the core demonstration and 2–3 more
 for the zone. That estimate predates the merge review. Re-estimate after hardware
@@ -324,7 +424,7 @@ baseline or the future implementation meets this plan. At branch preparation, th
 unchanged imported files had strict typing and formatting failures. Those files
 and the implementation now pass both checks.
 
-At branch preparation, `python -m pytest` also passes on `feature/pan-tilt-demo`:
+At branch preparation, `python -m pytest` passed on `feature/pan-tilt-demo`:
 316 tests passed, 7 skipped, and 209 subtests passed. No hardware acceptance or
 review fix is claimed by that result.
 
@@ -342,10 +442,114 @@ inference, confirmation, reaction-test, timing, and camera-switching coverage.
 Exercise the CLI and actual output artefacts as well as unit tests. Record software
 checks separately from hardware measurements in `deploy/VALIDATION.md`.
 
-Keep PR #2 open and keep this work off `main` during implementation. Before proposing
-the feature for `main`, reconcile any newer main changes and repeat the full checks.
-Complete the hardware acceptance below before considering a change to the opt-in
-default. Merge to `main` only as a separately authorised delivery step.
+The user authorised the merge to `main`, and it is complete. PR #2 is merged too.
+The merge does not establish hardware acceptance. Complete the campaign below
+before considering a change to the opt-in default. Start subsequent code changes
+from current `main` and keep measured results in `deploy/VALIDATION.md`.
+
+### Monitor-based test campaign
+
+Use the Pi's real CSI camera to observe a physical monitor controlled by the
+computer running the agent session. Drive static images, animated targets, and
+recorded clips on that monitor. The Pi must continue to run detection, tracking,
+and control locally. Do not substitute `--video` replay for this campaign:
+replay forces simulation and does not exercise physical following.
+
+This setup is the agreed replacement for difficult-to-control real subjects.
+It can qualify the demonstration with reproducible visual inputs and actual mount
+motion. It does not establish outdoor accuracy, natural-light coverage, depth
+behaviour, or performance on live birds. Those are limits on the claims, not
+additional requirements to obtain live subjects for this campaign.
+
+#### Prepare the display and test tooling
+
+1. Place the monitor within the tested movement range, with the camera initially
+   aimed near its centre. Record the camera-to-screen distance, screen dimensions,
+   resolution, refresh rate, brightness, and visible screen area. Verify clearance
+   before changing the mount's physical range.
+2. Present the stimuli full-screen on that physical display. Use browser or desktop
+   controls available to the agent session. A hidden tab or headless render is
+   insufficient. Check through live Pi preview that scene changes reach the camera.
+3. Check focus, exposure, glare, visible refresh banding, and moiré with static and
+   moving content. Record any display or camera adjustments. Establish one stable
+   baseline before varying backgrounds or motion.
+4. Build a small local stimulus page or runner with reproducible scene IDs, random
+   seeds, target paths, speeds, scales, occlusions, and background choices. It must
+   support pause, reset, and replay of an identical sequence. This tooling is
+   planned test work, not an existing application feature.
+5. Use actual pigeon photographs, cut-outs, or clips. First verify one known
+   positive example through the physical display and live camera. Geometric
+   markers alone are not a substitute for a pigeon detection test. Include empty
+   scenes and confusers, and keep final evaluation sequences separate from tuning.
+6. Log intended target identities, positions, sizes, visibility, and presentation
+   events. Add a visible scene/frame identifier outside the target region so the
+   captured frames can be matched to the sequence. Keep screen-coordinate truth
+   distinct from detector IDs and camera coordinates.
+7. Add offline analysis for time-weighted centring and expected selection/loss
+   behaviour. Existing `summarize_run.py` supplies timing distributions, not this
+   full acceptance report. Keep raw captures, scene definitions, and reports so
+   another agent can reproduce each result.
+
+#### Run progressively harder scenes
+
+Start in simulation with actual live capture, then repeat bounded cases with the
+physical mount once the user approves the short run. Keep the narrow profile and
+reduced speed initially. Expand travel or speed only after checking the new range.
+
+- A stationary pigeon at centre, then offsets on each axis and at reachable corners.
+  Check correction sign, settling, overshoot, jitter, deadband, and abrupt holds.
+- A pigeon starting from rest, moving slowly, stopping, and reversing. Progress to
+  diagonal motion, curved paths, speed changes, and scale changes.
+- Two or more pigeons of similar apparent size, followed by a persistent larger
+  challenger. Test the 25% area advantage and 0.5 s switching hold, including brief
+  challenges that must not switch selection. Screen area is the ranking proxy,
+  not a physical-distance measurement.
+- Brief occlusion, overlap, full disappearance, reappearance, and target departure.
+  Check identity retention, stale holds, loss, return home, and reacquisition.
+- Plain, textured, cluttered, low-contrast, and natural-scene backgrounds. Include
+  confusers and empty periods. Hold the background still initially, so its image
+  motion comes from the real camera. Label animated-background cases separately.
+- Targets that become unreachable within calibration or leave the visible display.
+  Record limit status and distinguish these from missed detections or wrong control.
+- Pause, resume, home-and-pause, Ctrl+C, SIGTERM, and restart. Confirm output disable
+  on normal shutdown. A disappearing image tests target loss, not a stuck camera.
+  Exercise stale observation and capture-failure handling separately using controlled
+  fault injection. Keep physical camera disconnection to power-off procedures.
+
+#### Collect comparable measurements
+
+Repeat the same scripted sequences with tracking alone, preview with a real client,
+recording alone, and both outputs. Keep camera, model, calibration, display, and
+scene definitions fixed. Record starting temperature and warm-up, and repeat runs
+to distinguish variation from an output-mode effect. Record export elapsed time
+separately from live processing.
+
+Use camera-visible reference markers or validated screen registration to map
+scripted target positions into each captured frame. The mapping changes as the
+mount moves. Do not measure centring solely against the detector's own boxes.
+Validate the mapping or annotate a sample manually. Declare the settling interval
+and unreachable, invisible, and registration-failure exclusions before scoring,
+and report excluded duration alongside the centring result.
+
+Use Pi monotonic sensor/delivery-to-driver-return measurements for command age.
+Host presentation timestamps are not camera exposure timestamps, and host and Pi
+clocks must not be subtracted without establishing their relationship. A displayed
+frame identifier associates content with observations but does not itself measure
+display latency. Report any separately measured stimulus-to-response latency with
+its own method and uncertainty.
+
+Inspect timed and untimed hardware tracking-command counts. Keep sensor and
+delivery ages separate, and account for log drops and per-command sampling.
+A paused scheduler run, simulated commands, and replay do not prove tracking
+latency or cadence under load.
+
+After the short cases pass, repeat a declared mixed-scene playlist for at least
+one hour with physical following. Record memory, temperatures, throttling,
+controller cadence, queue drops, errors, restarts, and recording limits. Preserve
+the per-run configuration, source revision, private calibration snapshot, model
+hashes, scene manifest, presentation log, camera recording, and summary. Commit
+reviewed reports and reusable test tooling. Keep local calibration and raw media
+out of Git.
 
 ### Acceptance tests
 
@@ -355,26 +559,37 @@ Controller events include monotonic tick and driver-return timestamps. The run
 summary reports cadence and hardware tracking-command age separately from
 simulation. Collect representative measurements before claiming acceptance.
 
-Use replay tests for association, camera movement, confidence gaps, target switching, timestamps, and zone geometry. Use hardware tests for centring and servo behaviour; replay cannot establish closed-loop performance.
+Use replay for deterministic software checks and the live monitor setup for
+closed-loop bench acceptance. Real subjects are not required for this campaign.
+Use the acceptance goals below without claiming that displayed-target results
+establish field accuracy.
 
 Initial acceptance targets:
 
 - At least **15 processed frames/s** sustained on the Pi, with control running at 20 Hz.
 - Frame-to-command age below **200 ms at p95** during normal operation.
 - After settling, the target centre stays within the central **20% of image width and height for at least 80%** of visible tracking time, within mechanical reach.
-- No repeated switching between similarly sized stationary pigeons.
+- No repeated switching between similarly sized stationary displayed pigeons.
 - Brief occlusion, target departure, camera failure, slow browser clients, and recording errors produce predictable recovery.
 - Demonstration recording is playable and retains real elapsed timing.
 - A one-hour run shows stable memory, acceptable temperature, and no accumulating queues.
-- Zone tests include boundary crossings, camera movement, weak texture, and registration loss.
+- After the deferred zone feature is implemented, zone tests include boundary
+  crossings, camera movement, weak texture, and registration loss.
 
 Treat these as acceptance goals to measure on hardware. Diagnose detector misses, identity errors, and controller errors separately.
 
 ### Retrain only if detector misses limit the result
 
-First adjust confidence thresholds, exposure, focus, and tracking persistence using site footage. Servo oscillation or identity switching is not a reason to retrain the detector.
+First diagnose monitor presentation, exposure, focus, and tracking persistence
+using the controlled sequences. Preserve the shipped acquisition threshold for
+the initial baseline, and record any later tuning separately. Servo oscillation
+or identity switching is not a reason to retrain the detector. Display artefacts
+alone do not justify retraining for field deployment.
 
-If persistent detection failures remain:
+The following optional field-data and fine-tuning route is outside the monitor
+campaign. It is not a prerequisite for bench acceptance.
+
+If persistent detection failures justify a separate training project:
 
 1. **Recover the shipped model's original PyTorch checkpoint from cluster artefacts.** The checkout contains its NCNN export, but not that checkpoint. NCNN is not the fine-tuning starting point.
 2. Collect roughly **600–1,000 diverse site frames**, including camera movement, partial birds, lighting changes, empty scenes, and confusing objects. Auto-label, then manually correct.
