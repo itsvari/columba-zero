@@ -16,3 +16,6 @@ native/build/
 /data/
 /columba-data/
 *.tar.zst
+
+# local measurements apply to one physical mount.
+calibration.local.yaml

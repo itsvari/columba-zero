@@ -22,9 +22,13 @@ from typing import Protocol
 from .capture import EndOfStream
 from .config import AppConfig
 from .detector import FrameDetector, stage_timings
+from .follow_models import TargetEvent, TargetSnapshot
 from .json_data import JsonValue
 from .models import Detection, Frame, FramePacket
+from .motion_tracking import MotionTracker
 from .output import health_snapshot
+from .pan_tilt_control import ControllerStatus, FollowSession, ObservationTiming
+from .target_selection import TargetSelector
 from .tracking import ConfirmationTracker, TriggerEvent
 
 RENDER_QUEUE_CAPACITY = 2
@@ -32,9 +36,8 @@ LOG_QUEUE_CAPACITY = 4096
 LOG_EVENT_ALLOWANCE = 1024
 # how long shutdown waits for the log writer to drain before giving up on it.
 LOG_DRAIN_TIMEOUT_S = 2.0
-# only per-frame records may be dropped; trigger, camera_switch, health, stimulus and
-# error/run records are always kept.
-DROPPABLE_EVENTS = frozenset({"frame"})
+# sampled frame and controller records may be dropped; lifecycle events are always kept.
+DROPPABLE_EVENTS = frozenset({"frame", "controller_state"})
 MILLISECONDS_PER_SECOND = 1000
 CONSUMER_POLL_S = 0.01
 
@@ -67,6 +70,16 @@ class RenderJob:
     processing_fps: float
     capture_fps: float | None
     confirmed_track_ids: frozenset[int] = frozenset()
+    target: TargetSnapshot | None = None
+    controller: ControllerStatus | None = None
+    sequence: int = 0
+    captured_at: float = 0.0
+    delivered_monotonic_s: float | None = None
+    presentation_time_s: float | None = None
+
+
+class FramePublisher(Protocol):
+    def publish(self, job: RenderJob) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,9 +91,9 @@ class LogRecord:
 class OutputQueue:
     """A bounded log queue and a bounded queue of frames to render.
 
-    Logs: frame records and other events wait in separate deques, merged back into
+    Logs: sampled records and lifecycle events wait in separate deques, merged back into
     order by sequence number, so enqueueing is O(1). Past `log_capacity` records
-    the oldest queued frame record is dropped, or the incoming one when none is
+    the oldest queued sample is dropped, or the incoming one when none is
     queued (both counted in `dropped_records`). Other events are never dropped:
     they may exceed the capacity by `event_allowance`. Past that the log writer is
     too far behind to record triggers, so `overflow_error` is set, `on_overflow`
@@ -279,6 +292,10 @@ class FrameProcessor:
         max_frames: int = 0,
         capture_fps: Callable[[], float | None] = lambda: None,
         camera_events: Callable[[], list[dict[str, JsonValue]]] = list,
+        follow_session: FollowSession | None = None,
+        replay_fps: float | None = None,
+        trigger_classes: tuple[str, ...] = ("pigeon",),
+        publisher: FramePublisher | None = None,
     ) -> None:
         self.config = config
         self.source = source
@@ -290,7 +307,31 @@ class FrameProcessor:
         self.max_frames = max_frames
         self.capture_fps = capture_fps
         self.camera_events = camera_events
+        self.follow_session = follow_session
+        self.replay_fps = replay_fps
+        self.publisher = publisher
+        self.motion_tracker = (
+            MotionTracker(
+                config.confirmation,
+                trigger_classes,
+                config.model.confidence,
+                config.follow.maintenance_confidence,
+                config.follow.retention_s,
+            )
+            if config.follow.enabled
+            else None
+        )
+        self.target_selector = (
+            TargetSelector(
+                config.follow.retention_s,
+                config.follow.switch_area_ratio,
+                config.follow.switch_hold_s,
+            )
+            if config.follow.enabled
+            else None
+        )
         self._camera: str | None = None
+        self._has_camera = False
         self.render_frames = config.display.enabled or config.output.record
         self.result = ProcessingResult()
         self._last_health_at_monotonic_s = started_at_monotonic_s
@@ -313,6 +354,8 @@ class FrameProcessor:
         result = self.result
         try:
             while not self.stop.is_set():
+                if self.follow_session is not None:
+                    self.follow_session.check()
                 self.process(self.source.get(self.config.camera.frame_timeout_s))
                 if self.max_frames and result.processed_frames >= self.max_frames:
                     result.reason = "max_frames"
@@ -324,14 +367,34 @@ class FrameProcessor:
             # also SystemExit and KeyboardInterrupt, which would otherwise end the
             # thread silently and look like a clean stop.
             result.reason, result.error = "error", error
+            if self.follow_session is not None:
+                self.follow_session.request_stop()
+
+    def follow_time(self, packet: FramePacket) -> tuple[float, float, ObservationTiming]:
+        if self.replay_fps is not None:
+            source_time_s = packet.sequence / self.replay_fps
+            return source_time_s, source_time_s, "replay"
+        now_s = time.monotonic()
+        if packet.delivered_monotonic_s is None:
+            return now_s, now_s, "unavailable"
+        if packet.delivery_ms is None:
+            return now_s, packet.delivered_monotonic_s, "delivery"
+        observed_at_s = packet.delivered_monotonic_s - packet.delivery_ms / MILLISECONDS_PER_SECOND
+        return now_s, observed_at_s, "sensor"
 
     def process(self, packet: FramePacket) -> None:
         result = self.result
         picked_up_monotonic_s = time.monotonic()
-        if packet.camera != self._camera:
-            if self.tracker is not None and self._camera is not None:
+        target_events: list[TargetEvent] = []
+        if self._has_camera and packet.camera != self._camera:
+            if self.tracker is not None:
                 self.tracker.reset()
-            self._camera = packet.camera
+            if self.motion_tracker is not None:
+                self.motion_tracker.reset()
+            if self.target_selector is not None:
+                target_events.extend(self.target_selector.reset())
+        self._camera = packet.camera
+        self._has_camera = True
         inference_started_at_monotonic_s = time.monotonic()
         detections = self.detector.detect(packet)
         inference_finished_at_monotonic_s = time.monotonic()
@@ -339,7 +402,34 @@ class FrameProcessor:
         triggers: list[TriggerEvent] = []
         confirmed_track_ids: frozenset[int] = frozenset()
         track_ms: float | None = None
-        if self.tracker is not None:
+        target: TargetSnapshot | None = None
+        controller: ControllerStatus | None = None
+        timing_source: ObservationTiming | None = None
+        following_fields: dict[str, JsonValue] = {}
+        if self.motion_tracker is not None and self.target_selector is not None:
+            now_s, observed_at_s, timing_source = self.follow_time(packet)
+            motion_update = self.motion_tracker.update(packet, detections, now_s, observed_at_s)
+            detections, triggers = list(motion_update.detections), list(motion_update.triggers)
+            confirmed_track_ids = self.motion_tracker.confirmed_track_ids
+            selection = self.target_selector.update(motion_update.tracks, now_s)
+            target = selection.target
+            target_events.extend(selection.events)
+            if self.follow_session is not None:
+                height_px, width_px = packet.frame.shape[:2]
+                controller = self.follow_session.submit(
+                    target, width_px, height_px, now_s, timing_source
+                )
+            following_fields = {
+                "target": target.as_dict(),
+                "controller": controller.as_dict() if controller is not None else None,
+                "follow_timebase": timing_source,
+                "sensor_timing_available": packet.delivery_ms is not None,
+                "acquisition_confidence": self.config.model.confidence,
+                "maintenance_confidence": self.config.follow.maintenance_confidence,
+                "pigeon_count_semantics": "confidence_floor_candidates",
+            }
+            track_ms = milliseconds(time.monotonic() - inference_finished_at_monotonic_s)
+        elif self.tracker is not None:
             update = self.tracker.update(detections, packet.sequence, packet.captured_at)
             detections, triggers = update.detections, update.triggers
             confirmed_track_ids = self.tracker.confirmed_track_ids
@@ -352,19 +442,41 @@ class FrameProcessor:
         elapsed_s = time.monotonic() - self.started_at_monotonic_s
         processing_fps = result.processed_frames / elapsed_s if elapsed_s else 0.0
         capture_fps = self.capture_fps()
-        if self.render_frames:
-            self.sink.render(
-                RenderJob(
-                    packet.frame, detections, processing_fps, capture_fps, confirmed_track_ids
-                )
+        if self.render_frames or self.publisher is not None:
+            job = RenderJob(
+                packet.frame,
+                detections,
+                processing_fps,
+                capture_fps,
+                confirmed_track_ids,
+                target,
+                controller,
+                packet.sequence,
+                packet.captured_at,
+                packet.delivered_monotonic_s,
+                packet.sequence / self.replay_fps if self.replay_fps is not None else None,
             )
+            if self.publisher is not None:
+                self.publisher.publish(job)
+            if self.render_frames:
+                self.sink.render(job)
         self.sink.event(
             "frame",
             frame_number=packet.sequence,
             captured_at=packet.captured_at,
             inference_s=inference_s,
             pigeon_count=sum(detection.label == "pigeon" for detection in detections),
-            detections=[detection.as_dict() for detection in detections],
+            detections=[
+                {
+                    **detection.as_dict(),
+                    **(
+                        {"maintenance_only": detection.confidence < self.config.model.confidence}
+                        if self.config.follow.enabled
+                        else {}
+                    ),
+                }
+                for detection in detections
+            ],
             dropped_frames=result.dropped_frames,
             processing_fps=processing_fps,
             capture_fps=capture_fps,
@@ -384,9 +496,12 @@ class FrameProcessor:
                 if delivered_monotonic_s is not None
                 else None
             ),
+            **following_fields,
         )
         for trigger in triggers:
             self.sink.event("trigger", **trigger.as_dict())
+        for target_event in target_events:
+            self.sink.event(target_event.name, **target_event.as_dict(), timebase=timing_source)
         for camera_switch in self.camera_events():
             self.sink.event("camera_switch", **camera_switch)
         now_monotonic_s = time.monotonic()

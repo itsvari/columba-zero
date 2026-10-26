@@ -11,6 +11,7 @@ camera:
   tuning_file: null       # e.g. imx708_noir.json for the NoIR camera
   camera_index: 0
   name: null              # logged as frame.camera; null means camera<index>
+  rotation_deg: 0         # 0 or 180; applied to capture before inference and preview
 model:
   path: models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16
   image_size: [448, 800]         # integer (square) or [height, width], e.g. [384, 640]
@@ -31,6 +32,28 @@ confirmation:
   n: 3
   iou: 0.3
   max_age_frames: 2
+# following uses shared motion identities; physical movement needs an explicit hardware mode.
+follow:
+  enabled: false
+  maintenance_confidence: 0.15
+  retention_s: 0.75
+  switch_area_ratio: 1.25
+  switch_hold_s: 0.5
+pan_tilt:
+  mode: simulate
+  calibration: calibration.local.yaml
+  control_hz: 20
+  deadband: 0.05
+  gain_deg_s: 60
+  max_speed_deg_s: 30
+  max_acceleration_deg_s2: 60
+  observation_timeout_s: 0.25
+  home_speed_deg_s: 10
+preview:
+  enabled: false
+  record: false
+zone:
+  enabled: false
 # Day/night switching is off unless a cameras list is given: exactly one day and
 # one night camera; unset values inherit from camera:. Only one camera is open.
 # cameras:

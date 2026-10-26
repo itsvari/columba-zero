@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TypeAlias, cast
+from typing import Literal, TypeAlias, cast
 
 import yaml
 
@@ -11,7 +11,19 @@ from .json_data import JsonValue
 
 MODEL_STRIDE_PX = 32
 CONFIG_SECTIONS = frozenset(
-    {"camera", "model", "display", "output", "confirmation", "cameras", "camera_switch"}
+    {
+        "camera",
+        "model",
+        "display",
+        "output",
+        "confirmation",
+        "cameras",
+        "camera_switch",
+        "follow",
+        "pan_tilt",
+        "preview",
+        "zone",
+    }
 )
 OBSOLETE_SECTIONS = frozenset({"tracking", "safety", "geometry", "turret", "actuator", "logging"})
 CAMERA_STREAMS = ("main", "lores")
@@ -30,13 +42,29 @@ CAMERA_FIELDS = frozenset(
         "tuning_file",
         "camera_index",
         "name",
+        "rotation_deg",
     }
 )
 CAMERA_ENTRY_FIELDS = frozenset(
-    {"name", "role", "camera_index", "tuning_file", "lens_position", "max_exposure_us"}
+    {
+        "name",
+        "role",
+        "camera_index",
+        "tuning_file",
+        "lens_position",
+        "max_exposure_us",
+        "rotation_deg",
+    }
 )
+PAN_TILT_MODES = ("simulate", "hardware")
+PREVIEW_PORT_MAX = 65535
+PREVIEW_FPS_MAX = 10.0
+PREVIEW_QUALITY_MIN = 1
+PREVIEW_QUALITY_MAX = 100
+PAN_TILT_DEADBAND_MAX = 0.5
 
 ImageSize: TypeAlias = int | tuple[int, int]
+CameraRotation: TypeAlias = Literal[0, 180]
 
 
 class ConfigError(ValueError):
@@ -70,6 +98,18 @@ def positive_integer(value: JsonValue, name: str) -> int:
 def non_negative_integer(value: JsonValue, name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise ConfigError(f"{name} must be a non-negative integer")
+    return value
+
+
+def rotation_degrees(value: JsonValue, name: str) -> CameraRotation:
+    if not isinstance(value, int) or isinstance(value, bool) or value not in (0, 180):
+        raise ConfigError(f"{name} must be an integer of 0 or 180 degrees")
+    return cast(CameraRotation, value)
+
+
+def bounded_integer(value: JsonValue, name: str, minimum: int, maximum: int) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum:
+        raise ConfigError(f"{name} must be an integer in [{minimum}, {maximum}]")
     return value
 
 
@@ -139,6 +179,7 @@ class CameraConfig:
     tuning_file: str | None = None
     camera_index: int = 0
     name: str | None = None
+    rotation_deg: CameraRotation = 0
 
     @property
     def label(self) -> str:
@@ -155,6 +196,7 @@ class CameraEntry:
     tuning_file: str | None = None
     lens_position: float | None = None
     max_exposure_us: int | None = None
+    rotation_deg: CameraRotation | None = None
 
 
 @dataclass(frozen=True)
@@ -180,6 +222,49 @@ class ConfirmationConfig:
     n: int = 3
     iou: float = 0.3
     max_age_frames: int = 2
+
+
+@dataclass(frozen=True)
+class FollowConfig:
+    enabled: bool = False
+    maintenance_confidence: float = 0.15
+    retention_s: float = 0.75
+    switch_area_ratio: float = 1.25
+    switch_hold_s: float = 0.5
+
+
+@dataclass(frozen=True)
+class PanTiltConfig:
+    mode: Literal["simulate", "hardware"] = "simulate"
+    calibration: str = "calibration.local.yaml"
+    control_hz: float = 20.0
+    deadband: float = 0.05
+    gain_deg_s: float = 60.0
+    max_speed_deg_s: float = 30.0
+    max_acceleration_deg_s2: float = 60.0
+    observation_timeout_s: float = 0.25
+    home_speed_deg_s: float = 10.0
+
+
+@dataclass(frozen=True)
+class PreviewConfig:
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8080
+    max_fps: float = 10.0
+    width_px: int = 800
+    height_px: int = 450
+    jpeg_quality: int = 80
+    record: bool = False
+    record_max_duration_s: float = 600.0
+    record_max_bytes: int = 536870912
+    record_min_free_bytes: int = 268435456
+    export_timeout_s: float = 900.0
+
+
+@dataclass(frozen=True)
+class ZoneConfig:
+    enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -223,6 +308,9 @@ def read_camera(section: dict[str, JsonValue], defaults: CameraConfig) -> Camera
             section.get("camera_index", defaults.camera_index), "camera_index"
         ),
         name=None if name is None else non_empty_path(name, "camera.name"),
+        rotation_deg=rotation_degrees(
+            section.get("rotation_deg", defaults.rotation_deg), "camera.rotation_deg"
+        ),
     )
 
 
@@ -241,6 +329,7 @@ def read_camera_entries(value: JsonValue) -> tuple[CameraEntry, ...]:
         tuning_file = entry.get("tuning_file")
         lens_position = entry.get("lens_position")
         max_exposure_us = entry.get("max_exposure_us")
+        rotation_deg = entry.get("rotation_deg")
         entries.append(
             CameraEntry(
                 name=non_empty_path(entry.get("name"), f"cameras[{index}].name"),
@@ -261,6 +350,11 @@ def read_camera_entries(value: JsonValue) -> tuple[CameraEntry, ...]:
                     if max_exposure_us is None
                     else positive_integer(max_exposure_us, "max_exposure_us")
                 ),
+                rotation_deg=(
+                    None
+                    if rotation_deg is None
+                    else rotation_degrees(rotation_deg, f"cameras[{index}].rotation_deg")
+                ),
             )
         )
     return tuple(entries)
@@ -275,9 +369,13 @@ class AppConfig:
     confirmation: ConfirmationConfig = ConfirmationConfig()
     cameras: tuple[CameraEntry, ...] = ()
     camera_switch: CameraSwitchConfig = CameraSwitchConfig()
+    follow: FollowConfig = FollowConfig()
+    pan_tilt: PanTiltConfig = PanTiltConfig()
+    preview: PreviewConfig = PreviewConfig()
+    zone: ZoneConfig = ZoneConfig()
 
     @classmethod
-    def load(cls, path: str | Path) -> AppConfig:
+    def load(cls, path: str | Path, *, follow_enabled: bool | None = None) -> AppConfig:
         try:
             raw = read_mapping(
                 cast(JsonValue, yaml.safe_load(Path(path).read_text(encoding="utf-8"))),
@@ -314,6 +412,57 @@ class AppConfig:
         camera_switch = read_section(
             raw, "camera_switch", frozenset({"night_below_lux", "day_above_lux", "hold_s"})
         )
+        follow = read_section(
+            raw,
+            "follow",
+            frozenset(
+                {
+                    "enabled",
+                    "maintenance_confidence",
+                    "retention_s",
+                    "switch_area_ratio",
+                    "switch_hold_s",
+                }
+            ),
+        )
+        pan_tilt = read_section(
+            raw,
+            "pan_tilt",
+            frozenset(
+                {
+                    "mode",
+                    "calibration",
+                    "control_hz",
+                    "deadband",
+                    "gain_deg_s",
+                    "max_speed_deg_s",
+                    "max_acceleration_deg_s2",
+                    "observation_timeout_s",
+                    "home_speed_deg_s",
+                }
+            ),
+        )
+        preview = read_section(
+            raw,
+            "preview",
+            frozenset(
+                {
+                    "enabled",
+                    "host",
+                    "port",
+                    "max_fps",
+                    "width_px",
+                    "height_px",
+                    "jpeg_quality",
+                    "record",
+                    "record_max_duration_s",
+                    "record_max_bytes",
+                    "record_min_free_bytes",
+                    "export_timeout_s",
+                }
+            ),
+        )
+        zone = read_section(raw, "zone", frozenset({"enabled"}))
         if "camera_switch" in raw and raw.get("cameras") is None:
             raise ConfigError("camera_switch requires a cameras list")
         defaults = cls()
@@ -379,7 +528,119 @@ class AppConfig:
                     camera_switch.get("hold_s", defaults.camera_switch.hold_s), "hold_s"
                 ),
             ),
+            follow=FollowConfig(
+                enabled=boolean(follow.get("enabled", defaults.follow.enabled), "follow.enabled"),
+                maintenance_confidence=finite_positive_number(
+                    follow.get("maintenance_confidence", defaults.follow.maintenance_confidence),
+                    "follow.maintenance_confidence",
+                ),
+                retention_s=finite_positive_number(
+                    follow.get("retention_s", defaults.follow.retention_s), "follow.retention_s"
+                ),
+                switch_area_ratio=finite_positive_number(
+                    follow.get("switch_area_ratio", defaults.follow.switch_area_ratio),
+                    "follow.switch_area_ratio",
+                ),
+                switch_hold_s=finite_number(
+                    follow.get("switch_hold_s", defaults.follow.switch_hold_s),
+                    "follow.switch_hold_s",
+                ),
+            ),
+            pan_tilt=PanTiltConfig(
+                mode=cast(
+                    Literal["simulate", "hardware"],
+                    choice(
+                        pan_tilt.get("mode", defaults.pan_tilt.mode),
+                        "pan_tilt.mode",
+                        PAN_TILT_MODES,
+                    ),
+                ),
+                calibration=non_empty_path(
+                    pan_tilt.get("calibration", defaults.pan_tilt.calibration),
+                    "pan_tilt.calibration",
+                ),
+                control_hz=finite_positive_number(
+                    pan_tilt.get("control_hz", defaults.pan_tilt.control_hz),
+                    "pan_tilt.control_hz",
+                ),
+                deadband=finite_number(
+                    pan_tilt.get("deadband", defaults.pan_tilt.deadband), "pan_tilt.deadband"
+                ),
+                gain_deg_s=finite_positive_number(
+                    pan_tilt.get("gain_deg_s", defaults.pan_tilt.gain_deg_s),
+                    "pan_tilt.gain_deg_s",
+                ),
+                max_speed_deg_s=finite_positive_number(
+                    pan_tilt.get("max_speed_deg_s", defaults.pan_tilt.max_speed_deg_s),
+                    "pan_tilt.max_speed_deg_s",
+                ),
+                max_acceleration_deg_s2=finite_positive_number(
+                    pan_tilt.get(
+                        "max_acceleration_deg_s2", defaults.pan_tilt.max_acceleration_deg_s2
+                    ),
+                    "pan_tilt.max_acceleration_deg_s2",
+                ),
+                observation_timeout_s=finite_positive_number(
+                    pan_tilt.get("observation_timeout_s", defaults.pan_tilt.observation_timeout_s),
+                    "pan_tilt.observation_timeout_s",
+                ),
+                home_speed_deg_s=finite_positive_number(
+                    pan_tilt.get("home_speed_deg_s", defaults.pan_tilt.home_speed_deg_s),
+                    "pan_tilt.home_speed_deg_s",
+                ),
+            ),
+            preview=PreviewConfig(
+                enabled=boolean(
+                    preview.get("enabled", defaults.preview.enabled), "preview.enabled"
+                ),
+                host=non_empty_path(preview.get("host", defaults.preview.host), "preview.host"),
+                port=bounded_integer(
+                    preview.get("port", defaults.preview.port),
+                    "preview.port",
+                    minimum=0,
+                    maximum=PREVIEW_PORT_MAX,
+                ),
+                max_fps=finite_positive_number(
+                    preview.get("max_fps", defaults.preview.max_fps), "preview.max_fps"
+                ),
+                width_px=positive_integer(
+                    preview.get("width_px", defaults.preview.width_px), "preview.width_px"
+                ),
+                height_px=positive_integer(
+                    preview.get("height_px", defaults.preview.height_px), "preview.height_px"
+                ),
+                jpeg_quality=bounded_integer(
+                    preview.get("jpeg_quality", defaults.preview.jpeg_quality),
+                    "preview.jpeg_quality",
+                    minimum=PREVIEW_QUALITY_MIN,
+                    maximum=PREVIEW_QUALITY_MAX,
+                ),
+                record=boolean(preview.get("record", defaults.preview.record), "preview.record"),
+                record_max_duration_s=finite_positive_number(
+                    preview.get("record_max_duration_s", defaults.preview.record_max_duration_s),
+                    "preview.record_max_duration_s",
+                ),
+                record_max_bytes=positive_integer(
+                    preview.get("record_max_bytes", defaults.preview.record_max_bytes),
+                    "preview.record_max_bytes",
+                ),
+                record_min_free_bytes=non_negative_integer(
+                    preview.get("record_min_free_bytes", defaults.preview.record_min_free_bytes),
+                    "preview.record_min_free_bytes",
+                ),
+                export_timeout_s=finite_positive_number(
+                    preview.get("export_timeout_s", defaults.preview.export_timeout_s),
+                    "preview.export_timeout_s",
+                ),
+            ),
+            zone=ZoneConfig(
+                enabled=boolean(zone.get("enabled", defaults.zone.enabled), "zone.enabled")
+            ),
         )
+        if follow_enabled is not None:
+            configuration = replace(
+                configuration, follow=replace(configuration.follow, enabled=follow_enabled)
+            )
         configuration.validate()
         return configuration
 
@@ -405,6 +666,9 @@ class AppConfig:
                 entry.camera_index if entry.camera_index is not None else camera.camera_index
             ),
             name=entry.name,
+            rotation_deg=(
+                entry.rotation_deg if entry.rotation_deg is not None else camera.rotation_deg
+            ),
         )
 
     def validate(self) -> None:
@@ -429,6 +693,7 @@ class AppConfig:
         choice(self.model.backend, "model.backend", MODEL_BACKENDS)
         positive_integer(self.model.threads, "model.threads")
         choice(self.camera.stream, "camera.stream", CAMERA_STREAMS)
+        rotation_degrees(self.camera.rotation_deg, "camera.rotation_deg")
         if self.camera.main_size is not None:
             main_width, main_height = size_pair(self.camera.main_size, "camera.main_size")
             if main_width < self.camera.width or main_height < self.camera.height:
@@ -446,15 +711,83 @@ class AppConfig:
         if not 0 < confirmation.iou <= 1:
             raise ConfigError("confirmation.iou must be in (0, 1]")
         non_negative_integer(confirmation.max_age_frames, "max_age_frames")
+        follow = self.follow
+        boolean(follow.enabled, "follow.enabled")
+        finite_positive_number(follow.maintenance_confidence, "follow.maintenance_confidence")
+        finite_positive_number(follow.retention_s, "follow.retention_s")
+        finite_positive_number(follow.switch_area_ratio, "follow.switch_area_ratio")
+        finite_number(follow.switch_hold_s, "follow.switch_hold_s")
+        if follow.maintenance_confidence > 1:
+            raise ConfigError("follow.maintenance_confidence must be in (0, 1]")
+        if follow.enabled and follow.maintenance_confidence > self.model.confidence:
+            raise ConfigError("follow.maintenance_confidence must not exceed model.confidence")
+        if follow.switch_area_ratio <= 1:
+            raise ConfigError("follow.switch_area_ratio must exceed 1")
+        if follow.switch_hold_s < 0:
+            raise ConfigError("follow.switch_hold_s must be non-negative")
+        if follow.enabled and not confirmation.enabled:
+            raise ConfigError("following requires confirmation.enabled: true")
+        pan_tilt = self.pan_tilt
+        choice(pan_tilt.mode, "pan_tilt.mode", PAN_TILT_MODES)
+        non_empty_path(pan_tilt.calibration, "pan_tilt.calibration")
+        finite_positive_number(pan_tilt.control_hz, "pan_tilt.control_hz")
+        finite_number(pan_tilt.deadband, "pan_tilt.deadband")
+        if not 0 <= pan_tilt.deadband < PAN_TILT_DEADBAND_MAX:
+            raise ConfigError("pan_tilt.deadband must be in [0, 0.5)")
+        for name, measurement in (
+            ("gain_deg_s", pan_tilt.gain_deg_s),
+            ("max_speed_deg_s", pan_tilt.max_speed_deg_s),
+            ("max_acceleration_deg_s2", pan_tilt.max_acceleration_deg_s2),
+            ("observation_timeout_s", pan_tilt.observation_timeout_s),
+            ("home_speed_deg_s", pan_tilt.home_speed_deg_s),
+        ):
+            finite_positive_number(measurement, f"pan_tilt.{name}")
+        if pan_tilt.home_speed_deg_s > pan_tilt.max_speed_deg_s:
+            raise ConfigError("pan_tilt.home_speed_deg_s must not exceed max_speed_deg_s")
+        if follow.enabled and pan_tilt.observation_timeout_s > follow.retention_s:
+            raise ConfigError(
+                "pan_tilt.observation_timeout_s must not exceed follow.retention_s when following"
+            )
+        preview = self.preview
+        boolean(preview.enabled, "preview.enabled")
+        non_empty_path(preview.host, "preview.host")
+        bounded_integer(preview.port, "preview.port", 0, PREVIEW_PORT_MAX)
+        finite_positive_number(preview.max_fps, "preview.max_fps")
+        if preview.max_fps > PREVIEW_FPS_MAX:
+            raise ConfigError(f"preview.max_fps must not exceed {PREVIEW_FPS_MAX:g}")
+        positive_integer(preview.width_px, "preview.width_px")
+        positive_integer(preview.height_px, "preview.height_px")
+        bounded_integer(
+            preview.jpeg_quality,
+            "preview.jpeg_quality",
+            PREVIEW_QUALITY_MIN,
+            PREVIEW_QUALITY_MAX,
+        )
+        boolean(preview.record, "preview.record")
+        finite_positive_number(preview.record_max_duration_s, "preview.record_max_duration_s")
+        positive_integer(preview.record_max_bytes, "preview.record_max_bytes")
+        non_negative_integer(preview.record_min_free_bytes, "preview.record_min_free_bytes")
+        finite_positive_number(preview.export_timeout_s, "preview.export_timeout_s")
+        boolean(self.zone.enabled, "zone.enabled")
+        if self.zone.enabled:
+            raise ConfigError(
+                "zone.enabled is deferred until fixed-zone hardware acceptance is complete"
+            )
         if self.cameras:
             roles = sorted(entry.role for entry in self.cameras)
             if roles != sorted(CAMERA_ROLES):
                 raise ConfigError("cameras must list exactly one day and one night camera")
             if len({entry.name for entry in self.cameras}) != len(self.cameras):
                 raise ConfigError("camera names must be unique")
-            for entry in self.cameras:
+            for index, entry in enumerate(self.cameras):
+                if entry.rotation_deg is not None:
+                    rotation_degrees(entry.rotation_deg, f"cameras[{index}].rotation_deg")
                 if entry.lens_position is not None and entry.lens_position < 0:
                     raise ConfigError("lens_position must be non-negative")
+            if follow.enabled:
+                raise ConfigError(
+                    "follow.enabled cannot be used with cameras; camera switching is unsupported"
+                )
             switch = self.camera_switch
             finite_number(switch.hold_s, "hold_s")
             if switch.hold_s < 0:

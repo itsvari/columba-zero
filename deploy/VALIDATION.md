@@ -1,5 +1,263 @@
 # Validation status
 
+## Pi bring-up, 27 October 2026, in progress
+
+SSH access to the assembled Pi, IMX708 camera, and pan-tilt mount is working.
+The device is an 8 GB Raspberry Pi 5 Model B Rev 1.0, running 64-bit Debian 13.7,
+kernel `6.18.50+rpt-rpi-2712`, and Python 3.13.5. The user reports the official
+Pi 5 supply powers both the Pi and mount.
+
+### Software and camera checks
+
+Created `/home/columba/columba-demo` separately from the existing
+`/home/columba/columba-zero` checkout. The older checkout, its modified model
+metadata, and its local calibration remain untouched. The new deployment is
+revision `a999b98` with working changes overlaid. Per-file SHA-256 values are
+recorded in `outputs/setup/deployment-final.json` on the Pi. Earlier deployment
+manifests describe earlier checkpoints.
+
+- Installed CMake, OpenCV development libraries, SciPy 1.15.3, and a separate
+  system-site-packages environment. Runtime OpenCV 4.10.0 and NumPy 2.2.4 come
+  from OS packages. Both model packages pass `prepare_models.py` checksums.
+- Built pinned NCNN and the native extension. CTest passes its native test.
+  The Pi Python suite passes 576 tests and 355 subtests, with one optional
+  comparison skipped because Ultralytics is absent. The other five native tests
+  execute. Mocked evaluation tests now supply package metadata themselves.
+  No Torch, CUDA, or pip OpenCV was added to this native runtime.
+- Pi Ruff lint and formatting pass. The full Pi mypy run reports 47 errors
+  involving absent optional Torch imports, missing OS OpenCV typing, and OS stub
+  differences. The desktop gate passes 571 tests and 345 subtests, with six
+  native-extension skips, Ruff lint and formatting clean, and strict mypy clean
+  across 108 source files. These are separate environments and checks.
+- The IMX708 captures through the application. The sensor is physically inverted.
+  `camera.rotation_deg: 180` applies both libcamera flips, and the application
+  verifies the applied transform before starting capture. A real preview image
+  was checked upright. Hardware following rejects calibration made for a
+  different capture orientation before opening the driver.
+- A real browser decodes advancing 800×450 frames over the SSH tunnel. In
+  simulation, Pause reaches `paused`, Home stays paused, and Resume returns to
+  acquisition. The indoor scene contains no representative pigeon target.
+- A live simulated-following run with preview and recording retained 573 JPEGs
+  with no writer-queue drops. The exported H.264 MP4 decodes at 800×450 and lasts
+  58.152 s against 58.150863 s expected. Source JPEGs and metadata remain.
+- A 60-frame positive replay selected a target in 59 frames and ended cleanly.
+  It configured hardware mode and a nonexistent calibration path, but correctly
+  ran in simulation without loading that file. Replay logs `as_stored` orientation
+  and applies no extra rotation. The repeated historical image is a smoke test,
+  not representative field or closed-loop evidence.
+
+### Cooling and live processing
+
+The first four-job NCNN build reached 85.1 degrees C and was stopped. The user
+confirmed that the fan on the dedicated four-pin connector was spinning, despite
+0 RPM telemetry, and authorised continued work at high ambient temperature.
+Active fan trip temperatures were lowered to 45, 50, 55, and 60 degrees C.
+The same settings are saved under `[pi5]` in `/boot/firmware/config.txt`, with a
+backup at `/boot/firmware/config.txt.columba-before-cooling-20261027`.
+The live values were read back. The boot configuration has not been tested by
+rebooting. PWM levels, hysteresis, firmware temperature limits, and the 110-degree
+critical trip remain unchanged.
+
+The incremental build completed at two jobs in 98.125 s. Its 49 two-second samples
+peaked at 79.6 degrees C, with no active throttling sampled. Job count also changed,
+so this does not isolate the fan curve's effect. Live camera workloads later
+reached 85–86 degrees C, with active thermal limiting and a 1.5 GHz CPU frequency
+observed. Fan tachometer telemetry remains 0 RPM and is not evidence that the fan
+is stopped. Earlier undervoltage remains recorded, but no active undervoltage was
+observed in these checks. Flag interpretation follows the
+[official Pi documentation](https://www.raspberrypi.com/documentation/computers/os.html#vcgencmd).
+
+Single live runs using the shipped native model produced these results:
+
+| Workload | Frames | Processing FPS | Capture drops | Peak sampled temperature, degrees C |
+|---|---:|---:|---:|---:|
+| Detection, four threads, active OpenMP wait | 900 | 10.35 | 1674 | 85.35 |
+| Detection, four threads, passive wait | 450 | 12.39 | 605 | 85.90 |
+| Detection, two threads, active wait | 600 | 11.06 | 994 | 85.35 |
+| Simulated following, preview and recording, passive wait | 600 | 10.26 | 1122 | 85.90 |
+| Rotated capture, simulated following and preview, passive wait | 600 | 10.75 | 1042 | 85.35 |
+| Rotated capture at 15 FPS, preview at 5 FPS, simulated following | 600 | 11.84 | 141 | 85.90 |
+
+The first five runs request 30 FPS capture and 10 FPS preview. All end cleanly
+with no log drops. Scenes, run lengths, rotation, and starting temperatures differ,
+so these are diagnostic observations, not controlled comparisons. The 15 FPS
+processing target is unmet. The lower-rate configuration was retained as an
+experiment, not adopted as the default. `outputs/run-preview.sh` launches the
+upright, native, loopback preview with simulated following and passive wait.
+
+### Small movements and controller timing
+
+The user observed and approved the small movement checks. Both channels moved
+cleanly with cable clearance in the initial 10-microsecond test. That step was
+too small for reliable image displacement, so it was not used to establish
+configured-image directions.
+
+The separately approved 50-microsecond check used actual rotation-180 application
+frames, returned home after each axis, and disabled outputs. Pan produced a
+background displacement of +36.80 pixels horizontally, and tilt produced
+−24.55 pixels vertically. These establish pan direction −1 and tilt direction +1
+for that capture orientation. PCA9685 FULL_OFF readback was true for both channels.
+
+A separate local rotation-180 profile preserves the old home pulses, records the
+measured directions, and restricts each axis to home plus or minus 50 microseconds.
+The original profile and pulse-preserving migration candidate remain untouched.
+Physical degrees, full travel, field of view, and cable clearance outside that
+small range remain unmeasured. The hardware prerequisite report passes for the
+new profile and rejects the orientation-mismatched candidate.
+
+A real hardware `FollowSession`, paused before startup, reached the saved home,
+held without target corrections, and closed cleanly. With command-completion
+telemetry enabled, a ten-second paused run recorded 199 hardware ticks. Its 198
+intervals averaged 50.0689 ms, with a 50.1092 ms maximum and a histogram p95 of
+50.1 ms. No log records were dropped. Both channels read back FULL_OFF afterward.
+This measures scheduler and log cadence without camera, inference, or I2C position
+writes during ticks. It does not establish 20 Hz under tracking load.
+
+`controller_state` now records monotonic tick-start and driver-return timestamps.
+The summariser separates simulation from hardware and sensor from delivery timing.
+It reports coverage and excludes holds, home moves, and replay from tracking-command
+ages. The paused run contains zero hardware tracking position moves, so both age
+distributions are null. There is no measured tracking-latency or physical-response
+claim. Claude Opus 5.5 independently reviewed the orientation and telemetry changes
+and found no material issues. Its diagnostic, coverage-wording, and unit-naming
+suggestions were also applied.
+
+### Remaining acceptance work
+
+Automatic physical following remains off, and no application service was enabled.
+Next, test a visible stationary target, then a walking target, using the reduced
+speed and narrow profile while the user observes. Verify correction direction,
+centring, overshoot, abrupt holds, stale observations, and shutdown before widening
+travel or increasing speed. Record command ages during actual tracking, with
+sensor and delivery timing kept separate.
+
+Sustained 15 FPS processing, cadence under tracking load, p95 tracking-command age
+below 200 ms, centring, real-pigeon association and switching, wider mechanical
+travel, direct LAN overhead, and one-hour stability remain unverified. Follow
+[the staged hardware runbook](../docs/pi-hardware-testing.md) for these tests.
+
+Device evidence remains under `/home/columba/columba-demo/outputs/setup/`, with run
+logs in `outputs/pi-*`. Local ignored copies are under
+`outputs/validation/pi-bringup-20261027/`. These include deployment manifests,
+build and test logs, per-run summaries, media checks, direction measurements, and
+`paused-controller-cadence-summary.json`. Calibration files and room images remain
+outside Git.
+
+## Pi test preparation, 27 October 2026
+
+Added [the SSH hardware test runbook](../docs/pi-hardware-testing.md) and
+`tools/pi_preflight.py`. The tool checks the selected environment, dependency
+imports, model metadata, camera utility availability, and optional recording and
+mount prerequisites. Picamera2, libcamera, and smbus2 are checked for installation
+without importing them, because importing Picamera2 can query video devices.
+Their runtime importability remains unverified. The tool does not start capture
+or inference, open the I2C bus, or issue servo commands. A passing prerequisite
+report does not establish hardware compatibility or acceptance.
+
+The actual CLI ran on this Mac and returned status 1 with the expected failures
+for the Pi platform, Picamera2, libcamera, native extension, and camera utility.
+Python, NumPy, PyYAML, OpenCV, psutil, and shipped model metadata checks passed.
+Focused tests cover import failures and timeouts, conditional hardware and
+recording dependencies, invalid configuration, I2C permission checks, and actual
+child-process checks proving hardware-library initialisers do not execute.
+At this preparation checkpoint, the full software gate passed 539 tests, with
+6 native-extension skips and 307 subtests. Ruff lint, formatting, and strict
+mypy were clean.
+Claude Opus 5.5 independently verified these results and found no material
+issues. Its small runbook sequencing correction puts the SSH tunnel before the
+short camera run, so the browser can connect while frames are available.
+
+At this checkpoint, controller snapshots reported observation age but did not
+timestamp completed I2C writes or prove worker cadence. That instrumentation was
+still needed before measuring the frame-to-command and 20 Hz targets. Physical
+response required observation on the assembled mount. No Pi or mount was used
+for this preparation work.
+
+## Pan-tilt software, 26 October 2026
+
+The software portions of demonstration stages 1–4 are implemented on
+`feature/pan-tilt-demo`. Following, hardware mode, browser preview, and demonstration
+recording remain opt-in. No Pi, CSI camera, or mount was available. The fixed-zone
+stage remains deferred until the core demonstration passes hardware acceptance.
+
+- `python tools/verify_demo.py` passes: 577 tests, 7 skipped, and 320 subtests.
+  Ruff lint and formatting pass, and strict mypy passes across the application,
+  tests, tools, cluster, training, and native Python sources. The seven skips need
+  the unbuilt `columba_native` extension. C++ tests were not rerun.
+- Driver/calibration tests cover nominal pulse mapping, measured travel bounds,
+  partial bus failures, preservation of the first error, atomic profile saving,
+  permissions, non-ASCII input, and subprocess terminal restoration after Ctrl+C,
+  SIGTERM, and SIGHUP. No test sent commands to physical hardware.
+- Replay tests cover shared identities, high/low-confidence association, masked
+  sparse optical flow, confirmation, area smoothing, switching, occlusion, source
+  clocks, stale observations, acceleration, limits, and home/pause behaviour.
+  Four start-from-rest cases reproduced an identity break before the Kalman noise
+  correction and pass afterward, at 15/30 FPS with 40/80-pixel boxes.
+- Runtime tests prove no physical driver or calibration load during replay,
+  including when hardware mode is configured. They also cover detection-only
+  isolation, cancellation during camera startup, reaction-test isolation, camera
+  resets, simultaneous worker/log failures, and controller telemetry backlogs.
+- The real shipped NCNN package ran through the Ultralytics adapter on an existing
+  five-frame clip. Following selected a confirmed identity, used simulation with
+  a missing calibration path, completed cleanly, and produced a five-frame AVI
+  that decoded successfully. A recording-only run produced a playable 800×450 MP4
+  of 0.334 s from a 0.333333 s source span. Source JPEGs and metadata remain.
+- Browser verification used the real HTTP backend and NCNN detections on a static
+  reference image with a simulated mount. The browser decoded 800×450 frames;
+  pause, home-and-pause, and resume reached the controller; a 375 CSS-pixel view
+  had no horizontal overflow. Stopping the server marked the image disconnected
+  and disabled controls. This local check processed 2,651 reference frames and
+  does not establish live camera, centring, or LAN behaviour.
+- Real socket tests cover state, control requests, connection bounds, slow clients,
+  and encoder/storage faults. Real FFmpeg tests cover irregular timestamp gaps,
+  a single-frame hold, odd image dimensions, decode counts, duration verification,
+  and source retention. Forged rebinding hostnames are rejected. Cancellation tests
+  prove child-process reaping during both FFmpeg and ffprobe, with signal-handler
+  restoration through the runtime. Manual re-export through `tools/export_demo.py`
+  succeeded. A real browser showed the recorder's byte-limit reason while preview
+  continued streaming.
+- `tools/benchmark_demo.py` ran tracking, preview, recording, and both outputs on
+  the same 300-frame, 15 FPS reference replay. All four runs processed 300 frames
+  and ended cleanly. Both MP4s decode and measure 20.001 s against an expected
+  20.000 s. Recording retained 56 JPEGs, and both outputs retained 52; timestamp
+  gaps preserve the source span. An extra final image represents the final hold.
+  No browser client was connected during this comparison.
+- `python tools/prepare_models.py` verifies the shipped model and fallback. Model
+  files, acquisition threshold, native backend default, and rectangular input
+  configuration are unchanged.
+
+Environment: macOS 27.0.1 ARM64, project Python 3.14.10, OpenCV 5.0.0, SciPy 1.18.1,
+and FFmpeg/ffprobe 9.0.2. Local, ignored artefacts are under
+`outputs/validation/pan-tilt-demo/`: `follow-replay/`, `timed-recording/`,
+`comparison/benchmark.json`, and `reexport.mp4`. The footage repeats an existing
+historical positive tile; it supplies software checks, with no new accuracy or
+representative field-footage evidence. The comparison is unpaced desktop replay.
+
+Claude Opus 5.5 independently reviewed the driver, core integration, and complete
+software change. Its findings were corrected with regressions. A separate final
+review of hostname validation, recording status, and cancellable export found no
+material flaws and independently passed the 86 preview/recording tests. Pi export
+speed remains unmeasured; the default timeout is 900 s with the `veryfast` preset.
+
+Reproduce the software checks and compare a representative clip:
+
+```sh
+python tools/verify_demo.py
+python tools/prepare_models.py
+python tools/benchmark_demo.py /path/to/clip.mp4 --frames 300 --output outputs/demo-benchmark
+```
+
+Add `--backend ultralytics` when the native extension is unavailable. See
+[the demonstration guide](../docs/pan-tilt.md) for calibration, preview, recording,
+and export recovery.
+
+At this desktop checkpoint, pending physical measurements included Pi 5, HAT,
+and camera compatibility, measured angle mapping and direction, safe travel and
+cable limits, gains and stopping behaviour,
+15 FPS throughput with 20 Hz control, p95 frame-to-command age, centring, switching
+under occlusion, LAN overhead, and one-hour memory/thermal stability. No hardware
+acceptance target is claimed by these desktop results.
+
 ## Shipped model — 16 October 2026
 
 The deployed package is `yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16`
@@ -156,15 +414,16 @@ These smoke clips reuse existing derived imagery. They do not add independent
 accuracy evidence or establish Pi performance. Reproduce automated checks with
 the commands above; hardware and field-footage acceptance remains pending below.
 
-## Pending on physical Pi 5 (WS10)
+## Earlier physical Pi 5 acceptance scope (WS10)
 
-Pi OS installation, the NCNN and native extension builds, and ARM dependency
+Before the 27 October bring-up, the pending work included Pi OS installation,
+the NCNN and native extension builds, and ARM dependency
 compatibility; measured latency calibration; 800×450 lores capture geometry,
 CSI colours and box alignment; monitor interaction, camera restart/shutdown and
 recording overhead; one-hour memory/thermal/throttling behaviour; reaction time
 for both cameras by day and night; the OpenMP wait policy; and site footage
 (`columba-test-site-v1`), the site fine-tune and the final threshold and k/n.
-No Raspberry Pi or camera is connected to this workspace, so no Pi performance
-or hardware acceptance is claimed. Follow the
+No Raspberry Pi or camera was connected at that checkpoint. The current results
+and remaining acceptance tests are recorded at the top of this document. Follow the
 [Pi acceptance checklist](../RASPBERRY_PI_PROTOTYPE_PLAN.md) and append actual
 measurements here.

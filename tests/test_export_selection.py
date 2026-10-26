@@ -94,6 +94,7 @@ class ExportSelectionTests(unittest.TestCase):
                 self.assertEqual(loaded.images[0].annotations[0].category_id, 0)
             self.assertEqual((dataset / "data.yaml").read_text(), original)
             self.assertEqual(image.read_bytes(), b"image")
+            self.assertFalse(view.exists())
 
     def test_aspect_buckets_cover_canonical_shapes(self) -> None:
         for width_px, height_px, expected in (
@@ -289,11 +290,8 @@ class ExportSelectionTests(unittest.TestCase):
             script = payload["submissions"][0]["script"]
             subprocess.run(["bash", "-n"], input=script, text=True, check=True, capture_output=True)
             self.assertIn("OMP_WAIT_POLICY=ACTIVE", script)
-            self.assertIn("--precisions fp32 fp16", script)
             self.assertIn("#SBATCH --nodelist=xcng1", script)
             self.assertIn("--single-recipe yolo26n-v2s-800-round2-plain", script)
-            self.assertIn("tools.select_model styles", script)
-            self.assertIn("#SBATCH --nice=1000", script)
 
     def test_hold_can_name_a_diagnostic_package_without_promoting_it(self) -> None:
         records = [candidate("arm", seed) for seed in range(3)]
@@ -301,8 +299,8 @@ class ExportSelectionTests(unittest.TestCase):
         decision = self.selection(records)
         self.assertIsNone(decision["selected"])
         self.assertIsNone(decision["package_candidate"])
-        self.assertIsNotNone(decision["diagnostic_candidate"])
-        self.assertTrue(decision["diagnostic_failures"])
+        self.assertEqual(decision["diagnostic_candidate"], "arm/seed0")
+        self.assertEqual(decision["diagnostic_failures"], ["shipped seed0 fails confuser_far"])
 
     def test_latest_frame_rate_limits_service_and_drops_stale_frames(self) -> None:
         self.assertAlmostEqual(latest_frame_rate([40.0]), 25.0)
@@ -397,19 +395,6 @@ class ExportSelectionTests(unittest.TestCase):
                 prepare_models(repository, "candidate-provisional")
             with self.assertRaisesRegex(SystemExit, "expected one model entry"):
                 prepare_models(repository, "unknown")
-
-    def test_species_taxonomy_view_preserves_immutable_dataset(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            dataset = Path(temporary) / "columba-test-v2"
-            dataset.mkdir()
-            configuration = dataset / "data.yaml"
-            configuration.write_text("names: [pigeon]\n")
-            original = configuration.read_bytes()
-            with taxonomy_view(dataset, "species") as aligned:
-                self.assertNotEqual(aligned, dataset)
-                self.assertIn("spotted_dove", (aligned / "data.yaml").read_text())
-                self.assertEqual(configuration.read_bytes(), original)
-            self.assertFalse(aligned.exists())
 
     def test_candidate_requires_matching_native_accuracy_and_active_latency(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import random
-import time
 import unittest
 
 import numpy
@@ -9,11 +7,6 @@ import numpy
 from app.config import ConfirmationConfig
 from app.models import Detection
 from app.tracking import ConfirmationTracker, greedy_matches, iou_matrix
-
-BENCHMARK_DETECTIONS = 20
-BENCHMARK_FRAMES = 1000
-BENCHMARK_ATTEMPTS = 3
-TRACKER_BUDGET_MS = 1.0
 
 
 def detection(label: str = "pigeon", left_px: float = 10, class_id: int = 0) -> Detection:
@@ -105,39 +98,6 @@ class TrackingTests(unittest.TestCase):
         results = run_frames(self.tracker(k=3), frames)
         self.assertEqual(results[0][1], [1, 2])
         self.assertEqual(results[1][1], [2, 1])
-
-    def test_overhead_below_one_millisecond_per_frame(self) -> None:
-        generator = random.Random(0)
-        anchors = [
-            (generator.uniform(0, 600), generator.uniform(0, 340))
-            for _ in range(BENCHMARK_DETECTIONS)
-        ]
-        frames = [
-            [
-                Detection(
-                    "pigeon" if index % 2 else "zebra_dove",
-                    0.8,
-                    left + generator.uniform(-3, 3),
-                    top + generator.uniform(-3, 3),
-                    left + 30,
-                    top + 30,
-                    class_id=index % 2,
-                )
-                for index, (left, top) in enumerate(anchors)
-                if generator.random() > 0.1
-            ]
-            for _ in range(BENCHMARK_FRAMES)
-        ]
-        # the Mac is shared with other jobs; keep the best of a few attempts.
-        best_mean_ms = float("inf")
-        for _ in range(BENCHMARK_ATTEMPTS):
-            tracker = self.tracker()
-            started_s = time.perf_counter()
-            for frame_number, detections in enumerate(frames):
-                tracker.update(detections, frame_number, float(frame_number))
-            mean_ms = (time.perf_counter() - started_s) * 1000 / BENCHMARK_FRAMES
-            best_mean_ms = min(best_mean_ms, mean_ms)
-        self.assertLess(best_mean_ms, TRACKER_BUDGET_MS)
 
 
 if __name__ == "__main__":

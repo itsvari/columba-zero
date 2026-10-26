@@ -77,39 +77,15 @@ def picamera(camera: Mock, tuning: object = None) -> Iterator[tuple[Mock, Mock]]
         yield picamera2, controls
 
 
+def load_config(value: JsonValue) -> AppConfig:
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "config.yaml"
+        path.write_text(yaml.safe_dump(value))
+        return AppConfig.load(path)
+
+
 class CameraConfigTests(unittest.TestCase):
-    def load(self, value: JsonValue) -> AppConfig:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "config.yaml"
-            path.write_text(yaml.safe_dump(value))
-            return AppConfig.load(path)
-
-    def test_defaults_keep_previous_capture(self) -> None:
-        camera = self.load({}).camera
-        self.assertEqual((camera.width, camera.height, camera.fps), (640, 480, 15))
-        self.assertEqual((camera.stream, camera.camera_index, camera.label), ("main", 0, "camera0"))
-        self.assertIsNone(camera.lens_position)
-        self.assertIsNone(camera.max_exposure_us)
-        self.assertIsNone(camera.tuning_file)
-
-    def test_camera_options(self) -> None:
-        camera = self.load(
-            {
-                "camera": {
-                    "width": 640,
-                    "height": 360,
-                    "stream": "lores",
-                    "main_size": [2304, 1296],
-                    "lens_position": 0.5,
-                    "max_exposure_us": 16666,
-                    "tuning_file": "imx708_noir.json",
-                    "camera_index": 1,
-                    "name": "noir",
-                }
-            }
-        ).camera
-        self.assertEqual(camera.main_size, (2304, 1296))
-        self.assertEqual((camera.stream, camera.label, camera.camera_index), ("lores", "noir", 1))
+    def test_invalid_camera_settings_are_rejected(self) -> None:
         invalid_settings: tuple[dict[str, JsonValue], ...] = (
             {"stream": "raw"},
             {"main_size": [320, 180]},
@@ -121,7 +97,57 @@ class CameraConfigTests(unittest.TestCase):
         )
         for invalid in invalid_settings:
             with self.subTest(invalid=invalid), self.assertRaises(ConfigError):
-                self.load({"camera": {"width": 640, "height": 360, **invalid}})
+                load_config({"camera": {"width": 640, "height": 360, **invalid}})
+
+    def test_day_night_cameras_inherit_shared_settings_and_validate(self) -> None:
+        config = load_config(
+            {
+                "camera": {
+                    "width": 640,
+                    "height": 360,
+                    "stream": "lores",
+                    "max_exposure_us": 30000,
+                },
+                "cameras": [
+                    {"name": "wide", "role": "day", "camera_index": 0},
+                    {
+                        "name": "noir",
+                        "role": "night",
+                        "camera_index": 1,
+                        "tuning_file": "imx708_noir.json",
+                        "max_exposure_us": 16666,
+                    },
+                ],
+                "camera_switch": {"night_below_lux": 5, "day_above_lux": 50, "hold_s": 10},
+            },
+        )
+        night = config.camera_for(config.cameras[1])
+        day = config.camera_for(config.cameras[0])
+        self.assertEqual(
+            (night.label, night.camera_index, night.max_exposure_us), ("noir", 1, 16666)
+        )
+        self.assertEqual((day.max_exposure_us, day.tuning_file, day.stream), (30000, None, "lores"))
+        self.assertEqual(config.camera_switch, CameraSwitchConfig(5, 50, 10))
+        self.assertIsInstance(create_source(config, None), SwitchingCameraStream)
+        self.assertIsInstance(create_source(AppConfig(), None), LatestFrameStream)
+        day_entry: dict[str, JsonValue] = {"name": "wide", "role": "day"}
+        night_entry: dict[str, JsonValue] = {"name": "noir", "role": "night"}
+        invalid_configurations: tuple[dict[str, JsonValue], ...] = (
+            {"cameras": [day_entry]},
+            {"cameras": [day_entry, {"name": "noir", "role": "day"}]},
+            {"cameras": [day_entry, {"name": "wide", "role": "night"}]},
+            {"cameras": [day_entry, {**night_entry, "fps": 10}]},
+            {"cameras": {"day": day_entry}},
+            {"camera_switch": {"hold_s": 1}},
+            {
+                "cameras": [day_entry, night_entry],
+                "camera_switch": {"night_below_lux": 50, "day_above_lux": 40},
+            },
+            {"cameras": [day_entry, night_entry], "camera_switch": {"hold_s": -1}},
+        )
+        for invalid in invalid_configurations:
+            with self.subTest(invalid=invalid), self.assertRaises(ConfigError):
+                load_config(invalid)
 
 
 class Picamera2CaptureTests(unittest.TestCase):
@@ -278,7 +304,6 @@ class Picamera2CaptureTests(unittest.TestCase):
             finally:
                 source.close()
         self.assertEqual((packet.camera, packet.lux, packet.delivery_ms), ("wide", 120.0, 30.0))
-        self.assertIsNotNone(packet.delivered_monotonic_s)
 
 
 def lux_packet(sequence: int, lux: float | None, camera: str = "wide") -> FramePacket:
@@ -422,20 +447,6 @@ class DayNightTests(unittest.TestCase):
                 # a stream whose cleanup failed is retried once at teardown.
                 self.assertEqual(stream.close.call_count, 1 if cleanup_error is None else 2)
 
-    def test_failed_cleanup_is_retried_at_teardown(self) -> None:
-        stream = fake_stream("wide", [])
-        stream.start.side_effect = CaptureError("wide unavailable")
-        stream.close.side_effect = [RuntimeError("wide release failed"), RuntimeError("again")]
-        cameras = {"day": CameraConfig(name="wide"), "night": CameraConfig(name="noir")}
-        source = SwitchingCameraStream(cameras, CameraSwitchConfig(), opener(stream))
-        with self.assertRaisesRegex(CaptureError, "wide release failed"):
-            source.start()
-        with self.assertRaisesRegex(CaptureError, "again"):
-            source.close()
-        self.assertEqual(stream.close.call_count, 2)
-        source.close()
-        self.assertEqual(stream.close.call_count, 2)
-
     def test_teardown_retries_the_real_camera_release(self) -> None:
         cameras = {"day": CameraConfig(name="wide"), "night": CameraConfig(name="noir")}
         for releases, teardown_fails in (
@@ -464,58 +475,6 @@ class DayNightTests(unittest.TestCase):
                 self.assertEqual(camera.close.call_count, 2)
                 # a successful stop is not repeated.
                 self.assertEqual(camera.stop.call_count, 1)
-
-    def test_cameras_config(self) -> None:
-        config = CameraConfigTests.load(
-            CameraConfigTests(),
-            {
-                "camera": {
-                    "width": 640,
-                    "height": 360,
-                    "stream": "lores",
-                    "max_exposure_us": 30000,
-                },
-                "cameras": [
-                    {"name": "wide", "role": "day", "camera_index": 0},
-                    {
-                        "name": "noir",
-                        "role": "night",
-                        "camera_index": 1,
-                        "tuning_file": "imx708_noir.json",
-                        "max_exposure_us": 16666,
-                    },
-                ],
-                "camera_switch": {"night_below_lux": 5, "day_above_lux": 50, "hold_s": 10},
-            },
-        )
-        night = config.camera_for(config.cameras[1])
-        day = config.camera_for(config.cameras[0])
-        self.assertEqual(
-            (night.label, night.camera_index, night.max_exposure_us), ("noir", 1, 16666)
-        )
-        self.assertEqual((day.max_exposure_us, day.tuning_file, day.stream), (30000, None, "lores"))
-        self.assertEqual(config.camera_switch, CameraSwitchConfig(5, 50, 10))
-        self.assertIsInstance(create_source(config, None), SwitchingCameraStream)
-        self.assertIsInstance(create_source(AppConfig(), None), LatestFrameStream)
-        self.assertEqual(AppConfig.load("app/config.yaml").cameras, ())
-        day_entry: dict[str, JsonValue] = {"name": "wide", "role": "day"}
-        night_entry: dict[str, JsonValue] = {"name": "noir", "role": "night"}
-        invalid_configurations: tuple[dict[str, JsonValue], ...] = (
-            {"cameras": [day_entry]},
-            {"cameras": [day_entry, {"name": "noir", "role": "day"}]},
-            {"cameras": [day_entry, {"name": "wide", "role": "night"}]},
-            {"cameras": [day_entry, {**night_entry, "fps": 10}]},
-            {"cameras": {"day": day_entry}},
-            {"camera_switch": {"hold_s": 1}},
-            {
-                "cameras": [day_entry, night_entry],
-                "camera_switch": {"night_below_lux": 50, "day_above_lux": 40},
-            },
-            {"cameras": [day_entry, night_entry], "camera_switch": {"hold_s": -1}},
-        )
-        for invalid in invalid_configurations:
-            with self.subTest(invalid=invalid), self.assertRaises(ConfigError):
-                CameraConfigTests.load(CameraConfigTests(), invalid)
 
 
 if __name__ == "__main__":

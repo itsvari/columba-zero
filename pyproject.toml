@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "columba-zero"
 version = "0.2.0"
-description = "Detection-only Raspberry Pi 5 pigeon camera prototype"
+description = "Raspberry Pi 5 pigeon detection and opt-in camera following"
 requires-python = ">=3.11"
 dependencies = [
   "numpy>=1.24,<3",
@@ -15,6 +15,8 @@ dependencies = [
 [project.optional-dependencies]
 vision = ["opencv-python>=4.6", "ultralytics==8.4.175", "ncnn==1.0.20260526"]
 metrics = ["psutil>=5.9"]
+hardware = ["smbus2>=0.4.3"]
+follow = ["scipy>=1.11", "opencv-python>=4.6"]
 # COCO-style AP for tools/evaluate_predictions.py (WS1).
 eval = ["pycocotools>=2.0.8"]
 # Dataset fetching, perceptual-hash dedupe and archives (WS2).

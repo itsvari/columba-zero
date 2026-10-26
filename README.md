@@ -1,10 +1,10 @@
 # Columba Zero
 
-Detection-only pigeon prototype for **Raspberry Pi 5, 64-bit Raspberry Pi OS,
-CSI camera, and a connected monitor**. It displays pigeon boxes, confidence,
-current-frame count, capture FPS, and processing FPS, and logs confirmed
-per-track triggers. There is no GPIO or actuation code, calibration, or
-unique-bird counting.
+Pigeon detection and opt-in camera following for **Raspberry Pi 5, 64-bit Raspberry
+Pi OS, and a CSI camera**. Detection-only operation remains the default. The local
+view displays boxes, confidence, capture FPS, processing FPS, and confirmed tracks.
+Following adds shared motion identities, target selection, and a calibrated I²C
+pan-tilt controller. Physical operation and Pi performance await hardware acceptance.
 
 The shipped model is `yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16`, a
 single-class YOLO26n NCNN package: 448×800, fp16, yolo11 decode, threshold
@@ -15,6 +15,8 @@ baseline and fallback.
 
 Further documents:
 
+- [Pan-tilt calibration, following, and desktop verification](docs/pan-tilt.md).
+- [Pi setup over SSH and pan-tilt hardware testing](docs/pi-hardware-testing.md).
 - [Pi acceptance checklist](RASPBERRY_PI_PROTOTYPE_PLAN.md) and
   [validation results](deploy/VALIDATION.md).
 - [Model-improvement plan](plans/model-improvement/PLAN.md) (closed except WS10,
@@ -79,7 +81,9 @@ dependency resolution so it cannot replace OS OpenCV. `pip check` may report OS
 OpenCV as missing or too old even when `cv2` works: verify imports, GUI build
 information and predictions. Do not install `opencv-python-headless` or combine
 pip OpenCV variants. If OS NumPy is older than 1.24, use a newer Pi OS image.
-This setup has not yet been verified on a Pi.
+This Ultralytics dependency set has not yet been verified on a Pi. The native-only
+runtime was built and exercised without Torch or Ultralytics. See
+[the Pi validation record](deploy/VALIDATION.md#pi-bring-up-27-october-2026-in-progress).
 
 Ultralytics 8.4.175 and ncnn 1.0.20260526 are pinned; the models were exported
 with them. Camera format `RGB888` provides BGR bytes for OpenCV (despite its
@@ -105,7 +109,9 @@ ctest --test-dir native/build/pi5 --output-on-failure
 cmake --install native/build/pi5 --prefix "$(python -c 'import sysconfig; print(sysconfig.get_path("platlib"))')"
 ```
 
-The Pi build has not been run yet (WS10). [native/README.md](native/README.md)
+The Pi 5 build, CTest, and native Python tests pass on the assembled device.
+Live capture and inference run, with throughput acceptance still pending.
+[native/README.md](native/README.md)
 covers the macOS and cluster builds, the Python API, decoding and parity
 tools. To use the Ultralytics backend instead, set `model.backend: ultralytics`;
 it only supports yolo11-decode packages and applies its own NMS.
@@ -148,8 +154,9 @@ so a stalled display never delays logging and the processing loop never waits
 for either. When drawing falls behind, the oldest waiting frame is dropped from
 the display and recording (`render_dropped_frames` in `health` and `run_end`).
 Replay waits for the display instead, so replay recordings keep every frame. If
-the log writer falls more than 4096 records behind, the oldest queued `frame`
-record is dropped (or the incoming one, when only other events are queued) and
+the log writer falls more than 4096 records behind, the oldest queued `frame` or
+`controller_state` sample is dropped (or the incoming sample, when only lifecycle
+events are queued) and
 counted as `log_dropped_records`. `trigger`, `camera_switch`, `health` and run
 records are never dropped; they may exceed the limit by 1024. Beyond that the
 run stops with an error, because triggers could no longer be recorded; records
@@ -181,6 +188,7 @@ defaults equal the values shown.
 | `tuning_file` | null | Camera tuning by name (e.g. `imx708_noir.json` for the NoIR camera) or path. If it cannot be loaded, the default tuning is used with a warning. |
 | `camera_index` | 0 | Which CSI camera to open. |
 | `name` | null | Camera name in frame records; null means `camera<index>`. |
+| `rotation_deg` | 0 | Live capture rotation, either 0 or 180 degrees, applied before detection, tracking, and preview. Hardware calibration must record the same orientation. Replay uses the video frames as stored. |
 
 `model:`
 
@@ -213,6 +221,13 @@ packages with `columba.decode: yolo26` (NMS-free) need `model.backend: native`.
 Each track confirms at most once. Confirmed tracks are drawn in red. `output:`
 sets `directory` [`outputs`], `record` [false], `recording_fps` [15] and
 `health_interval_s` [30]; `display.enabled` defaults to true.
+
+`follow.enabled: true` uses motion tracking and confirmed target selection, with
+low-confidence detections retained only for association. `pan_tilt.mode` defaults
+to `simulate`; physical following requires `hardware` and a local calibration
+profile. Replay always simulates. See the [following guide](docs/pan-tilt.md).
+Following with day/night camera switching is rejected until mounted-camera
+calibration and orientation are defined. Reaction tests disable following.
 
 `cameras:` and `camera_switch:` (off unless `cameras` is given)
 
@@ -288,7 +303,7 @@ them); past that, affected percentiles are reported as 10000 ms and listed under
 ```bash
 python -m venv .venv
 # Activate .venv using your shell's activation script.
-python -m pip install -e '.[vision,metrics,eval,data,native,dev]'
+python -m pip install -e '.[vision,follow,metrics,eval,data,native,dev]'
 python -m pytest
 python -m ruff check app tests tools cluster training native
 python -m ruff format --check app tests tools cluster training native
