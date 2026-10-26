@@ -22,11 +22,29 @@ only the unchanged PR files `app/pantilt.py` and `app/calibrate.py`. The merge
 preserves the full PR history so the controller, tests, overlays, and documentation
 remain available for the later port.
 
-No runtime port or review fix is implemented at this stage. The new calibration
-tool still has the reviewed defects. Do not run it against hardware until the
-first implementation stage fixes them. The integration branch is a source baseline,
-not a hardware-ready release. Its additional files also have known formatting and
-strict typing failures.
+The integration branch preserves the imported source baseline. The feature branch
+now implements and checks the software portions of stages 1–4. Physical hardware
+acceptance is pending; no Pi, camera, or mount was available for this implementation.
+
+### Software implementation status, 26 October 2026
+
+- Driver and calibration repairs include typed interfaces, nominal angle mapping,
+  atomic profile saving, terminal/signal cleanup, and regression tests.
+- Following uses shared Kalman identities, high/low-confidence association, masked
+  sparse optical flow, confirmation, smoothed area, and target-switch hysteresis.
+- The timed controller enforces freshness, acceleration and travel bounds, with a
+  single hardware owner, cancellation checks, simulation, logs, and overlays.
+- Browser preview provides MJPEG, state, and pause/resume/home controls. Bounded
+  JPEG recording exports a timed MP4 after processing stops and retains sources.
+- Following, physical movement, preview, and recording remain opt-in.
+  Following requires confirmation. Day/night following and zone activation are
+  rejected until their prerequisites are defined or measured.
+- Desktop verification, real NCNN replay, browser interaction, and FFmpeg export
+  evidence are recorded in [deploy/VALIDATION.md](deploy/VALIDATION.md). Commands
+  and configuration are in [the demonstration guide](docs/pan-tilt.md).
+
+Stage 5 still needs Pi throughput, latency, centring, servo, and one-hour evidence.
+Stage 6 remains deferred until unrestricted following passes hardware acceptance.
 
 To inspect the controller and tests retained in history, use:
 
@@ -261,8 +279,10 @@ Store the reference image, polygon, calibration, and registration confidence. Sh
 
 ### Delivery sequence
 
-Implement each stage on `feature/pan-tilt-demo`. Finish its checks before starting
-the next stage. The branch preparation and this plan are the only completed work.
+Implement each stage on `feature/pan-tilt-demo`. Finish its software checks before
+starting the next stage. The software portions of stages 1–4 are implemented and
+checked. Hardware steps within stages 1 and 3, hardware acceptance in stage 5,
+and the fixed-zone stretch goal remain outstanding.
 
 1. **Repair hardware bring-up.** Fix the imported driver and calibration tool,
    establish `PanTiltDriver`, add atomic profile saving and calibration logging,
@@ -298,8 +318,9 @@ completed hardware acceptance or completed tracking and control.
 
 The earlier review measured 61 passing PR tests and 316 passing main tests with
 7 skipped. Those are separate revision results, not evidence that the integration
-baseline or the future implementation meets this plan. The unchanged imported
-files have known strict typing and formatting failures.
+baseline or the future implementation meets this plan. At branch preparation, the
+unchanged imported files had strict typing and formatting failures. Those files
+and the implementation now pass both checks.
 
 At branch preparation, `python -m pytest` also passes on `feature/pan-tilt-demo`:
 316 tests passed, 7 skipped, and 209 subtests passed. No hardware acceptance or

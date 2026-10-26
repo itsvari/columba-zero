@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "columba-zero"
 version = "0.2.0"
-description = "Detection-only Raspberry Pi 5 pigeon camera prototype"
+description = "Raspberry Pi 5 pigeon detection and opt-in camera following"
 requires-python = ">=3.11"
 dependencies = [
   "numpy>=1.24,<3",

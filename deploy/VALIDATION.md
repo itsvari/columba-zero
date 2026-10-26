@@ -1,5 +1,89 @@
 # Validation status
 
+## Pan-tilt software, 26 October 2026
+
+The software portions of demonstration stages 1–4 are implemented on
+`feature/pan-tilt-demo`. Following, hardware mode, browser preview, and demonstration
+recording remain opt-in. No Pi, CSI camera, or mount was available. The fixed-zone
+stage remains deferred until the core demonstration passes hardware acceptance.
+
+- `python tools/verify_demo.py` passes: 577 tests, 7 skipped, and 320 subtests.
+  Ruff lint and formatting pass, and strict mypy passes across the application,
+  tests, tools, cluster, training, and native Python sources. The seven skips need
+  the unbuilt `columba_native` extension. C++ tests were not rerun.
+- Driver/calibration tests cover nominal pulse mapping, measured travel bounds,
+  partial bus failures, preservation of the first error, atomic profile saving,
+  permissions, non-ASCII input, and subprocess terminal restoration after Ctrl+C,
+  SIGTERM, and SIGHUP. No test sent commands to physical hardware.
+- Replay tests cover shared identities, high/low-confidence association, masked
+  sparse optical flow, confirmation, area smoothing, switching, occlusion, source
+  clocks, stale observations, acceleration, limits, and home/pause behaviour.
+  Four start-from-rest cases reproduced an identity break before the Kalman noise
+  correction and pass afterward, at 15/30 FPS with 40/80-pixel boxes.
+- Runtime tests prove no physical driver or calibration load during replay,
+  including when hardware mode is configured. They also cover detection-only
+  isolation, cancellation during camera startup, reaction-test isolation, camera
+  resets, simultaneous worker/log failures, and controller telemetry backlogs.
+- The real shipped NCNN package ran through the Ultralytics adapter on an existing
+  five-frame clip. Following selected a confirmed identity, used simulation with
+  a missing calibration path, completed cleanly, and produced a five-frame AVI
+  that decoded successfully. A recording-only run produced a playable 800×450 MP4
+  of 0.334 s from a 0.333333 s source span. Source JPEGs and metadata remain.
+- Browser verification used the real HTTP backend and NCNN detections on a static
+  reference image with a simulated mount. The browser decoded 800×450 frames;
+  pause, home-and-pause, and resume reached the controller; a 375 CSS-pixel view
+  had no horizontal overflow. Stopping the server marked the image disconnected
+  and disabled controls. This local check processed 2,651 reference frames and
+  does not establish live camera, centring, or LAN behaviour.
+- Real socket tests cover state, control requests, connection bounds, slow clients,
+  and encoder/storage faults. Real FFmpeg tests cover irregular timestamp gaps,
+  a single-frame hold, odd image dimensions, decode counts, duration verification,
+  and source retention. Forged rebinding hostnames are rejected. Cancellation tests
+  prove child-process reaping during both FFmpeg and ffprobe, with signal-handler
+  restoration through the runtime. Manual re-export through `tools/export_demo.py`
+  succeeded. A real browser showed the recorder's byte-limit reason while preview
+  continued streaming.
+- `tools/benchmark_demo.py` ran tracking, preview, recording, and both outputs on
+  the same 300-frame, 15 FPS reference replay. All four runs processed 300 frames
+  and ended cleanly. Both MP4s decode and measure 20.001 s against an expected
+  20.000 s. Recording retained 56 JPEGs, and both outputs retained 52; timestamp
+  gaps preserve the source span. An extra final image represents the final hold.
+  No browser client was connected during this comparison.
+- `python tools/prepare_models.py` verifies the shipped model and fallback. Model
+  files, acquisition threshold, native backend default, and rectangular input
+  configuration are unchanged.
+
+Environment: macOS 27.0.1 ARM64, project Python 3.14.10, OpenCV 5.0.0, SciPy 1.18.1,
+and FFmpeg/ffprobe 9.0.2. Local, ignored artefacts are under
+`outputs/validation/pan-tilt-demo/`: `follow-replay/`, `timed-recording/`,
+`comparison/benchmark.json`, and `reexport.mp4`. The footage repeats an existing
+historical positive tile; it supplies software checks, with no new accuracy or
+representative field-footage evidence. The comparison is unpaced desktop replay.
+
+Claude Opus 5.5 independently reviewed the driver, core integration, and complete
+software change. Its findings were corrected with regressions. A separate final
+review of hostname validation, recording status, and cancellable export found no
+material flaws and independently passed the 86 preview/recording tests. Pi export
+speed remains unmeasured; the default timeout is 900 s with the `veryfast` preset.
+
+Reproduce the software checks and compare a representative clip:
+
+```sh
+python tools/verify_demo.py
+python tools/prepare_models.py
+python tools/benchmark_demo.py /path/to/clip.mp4 --frames 300 --output outputs/demo-benchmark
+```
+
+Add `--backend ultralytics` when the native extension is unavailable. See
+[the demonstration guide](../docs/pan-tilt.md) for calibration, preview, recording,
+and export recovery.
+
+Pending physical measurements include Pi 5/HAT/camera compatibility, measured
+angle mapping and direction, safe travel/cable limits, gains and stopping behaviour,
+15 FPS throughput with 20 Hz control, p95 frame-to-command age, centring, switching
+under occlusion, LAN overhead, and one-hour memory/thermal stability. No hardware
+acceptance target is claimed by these desktop results.
+
 ## Shipped model — 16 October 2026
 
 The deployed package is `yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16`
