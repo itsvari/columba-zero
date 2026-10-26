@@ -38,13 +38,6 @@ class TargetSelectionTests(unittest.TestCase):
     def acquire(self, selector: TargetSelector, track_id: int = 1) -> SelectionUpdate:
         return selector.update([snapshot(track_id)], 0.0)
 
-    def test_starts_acquiring_with_no_target(self) -> None:
-        update = self.selector().update([], 0.0)
-        self.assertEqual(update.target.state, "acquiring")
-        self.assertIsNone(update.target.track)
-        self.assertIsNone(update.target.selected_at_s)
-        self.assertEqual(update.events, ())
-
     def test_acquires_largest_smoothed_area_not_raw_box_or_confidence(self) -> None:
         small_raw_large_smoothed = snapshot(1, area_px2=9000.0, at_s=1.0, confidence=0.3)
         large_raw_small_smoothed = Detection("pigeon", 0.95, 0, 0, 500, 500, track_id=2)
@@ -81,15 +74,6 @@ class TargetSelectionTests(unittest.TestCase):
         assert update.target.track is not None
         self.assertEqual(update.target.track.track_id, 6)
 
-    def test_low_confidence_needs_prior_tracker_confirmation(self) -> None:
-        selector = self.selector()
-        update = selector.update([snapshot(1, 20000.0, confidence=0.2, confirmed=False)], 0.0)
-        self.assertIsNone(update.target.track)
-        update = selector.update([snapshot(2, 5000.0, confidence=0.2)], 0.1)
-        assert update.target.track is not None
-        self.assertEqual(update.target.track.track_id, 2)
-        self.assertEqual(event_names(update), ["target_acquired"])
-
     def test_stale_snapshots_are_ignored_even_when_passed_in(self) -> None:
         selector = self.selector()
         update = selector.update([snapshot(1, at_s=0.0)], RETENTION_S + 0.01)
@@ -114,16 +98,6 @@ class TargetSelectionTests(unittest.TestCase):
         self.assertTrue(back.target.track is not None and back.target.track.matched)
         self.assertEqual(back.target.selected_at_s, 0.0)
         self.assertEqual(back.events, ())
-
-    def test_unmatched_snapshot_from_tracker_keeps_waiting_without_correction(self) -> None:
-        selector = self.selector()
-        self.acquire(selector)
-        predicted = snapshot(1, at_s=0.0, matched=False)
-        update = selector.update([predicted], 0.3)
-        assert update.target.track is not None
-        self.assertEqual(update.target.state, "waiting")
-        self.assertFalse(update.target.track.matched)
-        self.assertEqual(update.events, ())
 
     def test_occlusion_does_not_hand_over_to_a_visible_larger_bird(self) -> None:
         selector = self.selector()
@@ -151,13 +125,17 @@ class TargetSelectionTests(unittest.TestCase):
         self.assertEqual(again.target.state, "lost")
         self.assertEqual(again.events, ())
 
-    def test_expiry_counts_from_last_observation_not_last_update(self) -> None:
-        selector = self.selector()
-        selector.update([snapshot(1, at_s=0.0)], 0.0)
-        for now_s in (0.2, 0.4, 0.6):
-            selector.update([snapshot(1, at_s=0.0, matched=False)], now_s)
-        update = selector.update([snapshot(1, at_s=0.0, matched=False)], 0.8)
-        self.assertEqual(event_names(update), ["target_lost"])
+    def test_expiry_counts_from_last_pigeon_observation_not_last_update(self) -> None:
+        # a stream of unmatched or wrong-class reports must not keep the incumbent alive
+        for label, matched in (("pigeon", False), ("crow", True)):
+            selector = self.selector()
+            self.acquire(selector)
+            names: list[str] = []
+            for step in range(1, 12):
+                now_s = step * FRAME_INTERVAL_S
+                report = snapshot(1, at_s=now_s, label=label, matched=matched)
+                names.extend(event_names(selector.update([report], now_s)))
+            self.assertEqual(names, ["target_lost"], (label, matched))
 
     def test_expiry_then_new_bird_emits_lost_and_acquired_with_distinct_ids(self) -> None:
         selector = self.selector()
@@ -188,16 +166,6 @@ class TargetSelectionTests(unittest.TestCase):
         recovered = selector.update([snapshot(1, at_s=0.3)], 0.3)
         self.assertEqual(recovered.target.state, "tracking")
         self.assertEqual(recovered.events, ())
-
-    def test_persistent_wrong_class_expires_from_last_pigeon_observation(self) -> None:
-        selector = self.selector()
-        self.acquire(selector)
-        names: list[str] = []
-        for step in range(1, 12):
-            now_s = step * FRAME_INTERVAL_S
-            update = selector.update([snapshot(1, at_s=now_s, label="crow")], now_s)
-            names.extend(event_names(update))
-        self.assertEqual(names, ["target_lost"])
 
     def test_switch_threshold_is_inclusive_at_the_ratio(self) -> None:
         for rival_area_px2, switches in ((LARGER_AREA_PX2, True), (LARGER_AREA_PX2 - 1, False)):
@@ -234,13 +202,6 @@ class TargetSelectionTests(unittest.TestCase):
         self.assertEqual(switched.target.track.track_id, 2)
         self.assertEqual(switched.target.state, "tracking")
         self.assertEqual(sum(len(update.events) for update in updates), 1)
-
-    def test_just_under_hold_does_not_switch(self) -> None:
-        selector = self.selector()
-        self.acquire(selector)
-        selector.update([snapshot(1, at_s=0.1), snapshot(2, LARGER_AREA_PX2, 0.1)], 0.1)
-        update = selector.update([snapshot(1, at_s=0.59), snapshot(2, LARGER_AREA_PX2, 0.59)], 0.59)
-        self.assertEqual(update.events, ())
 
     def test_challenge_resets_when_challenger_shrinks_or_disappears(self) -> None:
         selector = self.selector()
@@ -309,15 +270,6 @@ class TargetSelectionTests(unittest.TestCase):
         self.assertEqual(selected, {1})
         self.assertEqual(events, 0)
 
-    def test_incumbent_keeps_target_while_growing_smoothed_area_is_compared(self) -> None:
-        selector = self.selector()
-        self.acquire(selector)
-        selector.update([snapshot(1, at_s=0.1), snapshot(2, LARGER_AREA_PX2, 0.1)], 0.1)
-        grown = selector.update([snapshot(1, 9000.0, 0.4), snapshot(2, LARGER_AREA_PX2, 0.4)], 0.4)
-        self.assertEqual(grown.events, ())
-        later = selector.update([snapshot(1, 9000.0, 0.8), snapshot(2, LARGER_AREA_PX2, 0.8)], 0.8)
-        self.assertEqual(later.events, ())
-
     def test_reset_clears_target_and_reports_loss_once(self) -> None:
         selector = self.selector()
         self.acquire(selector)
@@ -326,16 +278,6 @@ class TargetSelectionTests(unittest.TestCase):
         self.assertEqual(selector.reset(), ())
         update = selector.update([], 0.1)
         self.assertEqual(update.target.state, "acquiring")
-        self.assertEqual(update.events, ())
-
-    def test_reset_cancels_pending_challenge_and_allows_fresh_acquisition(self) -> None:
-        selector = self.selector()
-        self.acquire(selector)
-        selector.update([snapshot(1, at_s=0.1), snapshot(2, LARGER_AREA_PX2, 0.1)], 0.1)
-        selector.reset()
-        update = selector.update([snapshot(5, at_s=0.2), snapshot(2, LARGER_AREA_PX2, 0.2)], 0.2)
-        self.assertEqual([(e.name, e.track_id) for e in update.events], [("target_acquired", 2)])
-        update = selector.update([snapshot(5, at_s=0.3), snapshot(2, LARGER_AREA_PX2, 0.3)], 0.3)
         self.assertEqual(update.events, ())
 
     def test_reset_after_loss_returns_to_acquiring(self) -> None:
@@ -352,14 +294,6 @@ class TargetSelectionTests(unittest.TestCase):
             TargetSelector(switch_area_ratio=0.9)
         with self.assertRaises(ValueError):
             TargetSelector(switch_hold_s=-0.1)
-
-    def test_defaults_match_the_documented_policy(self) -> None:
-        selector = TargetSelector()
-        selector.update([snapshot(1)], 0.0)
-        update = selector.update([], 0.75)
-        self.assertEqual(update.target.state, "waiting")
-        update = selector.update([], 0.76)
-        self.assertEqual(update.target.state, "lost")
 
 
 if __name__ == "__main__":

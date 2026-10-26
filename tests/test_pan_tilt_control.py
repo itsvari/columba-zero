@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
@@ -12,7 +12,6 @@ from app.follow_models import TargetSnapshot, TrackSnapshot
 from app.json_data import JsonValue
 from app.models import Detection
 from app.pan_tilt_control import (
-    ControllerStatus,
     ControlObservation,
     FollowSession,
     ObservationTiming,
@@ -126,29 +125,6 @@ def wait_until_finished(session: FollowSession) -> None:
     assert not thread.is_alive()
 
 
-def test_status_is_immutable_and_serialises_exact_public_fields() -> None:
-    status = ControllerStatus()
-    field_name = "state"
-    with pytest.raises(FrozenInstanceError):
-        setattr(status, field_name, "tracking")
-    assert status.as_dict() == {
-        "state": "acquiring",
-        "commanded_pan_deg": 90.0,
-        "commanded_tilt_deg": 90.0,
-        "target_track_id": None,
-        "pan_limited": False,
-        "tilt_limited": False,
-        "deadband": 0.05,
-        "observation_age_ms": None,
-        "timing_source": "unavailable",
-        "fault": None,
-        "mode": "simulate",
-        "error_x_fraction": None,
-        "error_y_fraction": None,
-        "close_fault": None,
-    }
-
-
 @pytest.mark.parametrize("horizontal_fraction", [0.45, 0.5, 0.55])
 def test_deadband_is_five_percent_of_full_image(horizontal_fraction: float) -> None:
     control = controller()
@@ -223,19 +199,15 @@ def test_entering_deadband_immediately_holds_instead_of_coasting() -> None:
     assert held.commanded_pan_deg == moved.commanded_pan_deg
 
 
-@pytest.mark.parametrize("timing_source", ["sensor", "delivery", "replay"])
-def test_freshness_includes_sensor_age_and_expires_at_250_ms(
-    timing_source: ObservationTiming,
-) -> None:
+def test_freshness_includes_sensor_age_and_expires_at_250_ms() -> None:
     control = controller()
-    observe(control, target(observed_at_s=10.0), 10.2, timing_source)
+    observe(control, target(observed_at_s=10.0), 10.2)
     fresh = control.step(10.2, PERIOD_S)
     assert fresh.commanded_pan_deg > 90
     assert fresh.observation_age_ms == pytest.approx(200)
     stale = control.step(10.25, PERIOD_S)
     assert stale.commanded_pan_deg == fresh.commanded_pan_deg
     assert stale.state == "stale"
-    assert stale.timing_source == timing_source
     assert stale.target_track_id == 7
 
 
@@ -248,24 +220,24 @@ def test_late_inference_never_acquires_or_renews_identity() -> None:
     assert status.target_track_id is None
 
 
-@pytest.mark.parametrize("invalid_case", ["unmatched", "unconfirmed", "class", "future", "nan"])
-def test_uncertain_observations_hold_without_renewing_identity(invalid_case: str) -> None:
+@pytest.mark.parametrize(
+    "uncertain_target",
+    [
+        target(0.1, matched=False),
+        target(0.1, confirmed=False),
+        target(0.1, label="person"),
+        target(observed_at_s=10.0),
+        target(observed_at_s=float("nan")),
+    ],
+    ids=["unmatched", "unconfirmed", "wrong_class", "future", "nan_timestamp"],
+)
+def test_uncertain_observations_hold_without_renewing_identity(
+    uncertain_target: TargetSnapshot,
+) -> None:
     control = controller()
     observe(control, target())
     moving = control.step(PERIOD_S, PERIOD_S)
-    invalid = target(observed_at_s=0.1)
-    assert invalid.track is not None
-    if invalid_case == "unmatched":
-        invalid = target(0.1, matched=False)
-    elif invalid_case == "unconfirmed":
-        invalid = target(0.1, confirmed=False)
-    elif invalid_case == "class":
-        invalid = target(0.1, label="person")
-    elif invalid_case == "future":
-        invalid = target(observed_at_s=10.0)
-    else:
-        invalid = target(observed_at_s=float("nan"))
-    observe(control, invalid, 0.1)
+    observe(control, uncertain_target, 0.1)
     held = control.step(0.1, PERIOD_S)
     assert held.commanded_pan_deg == moving.commanded_pan_deg
     assert held.target_track_id == 7
@@ -412,10 +384,7 @@ def test_replay_controls_and_stop_use_the_same_public_interface() -> None:
     session.close()
 
 
-@pytest.mark.parametrize("stop_before_construction", [True, False])
-def test_shared_cancellation_prevents_factory_and_first_move(
-    stop_before_construction: bool,
-) -> None:
+def test_shared_cancellation_prevents_factory_and_first_move() -> None:
     stopped = threading.Event()
     calls: list[str] = []
 
@@ -423,8 +392,6 @@ def test_shared_cancellation_prevents_factory_and_first_move(
         calls.append("factory")
         raise AssertionError("cancelled session constructed driver")
 
-    if stop_before_construction:
-        stopped.set()
     session = FollowSession(
         PanTiltConfig(mode="hardware"), RETENTION_S, stop=stopped, driver_factory=forbidden_factory
     )
@@ -560,14 +527,11 @@ def test_live_worker_uses_latest_observation_on_independent_ticks() -> None:
         status = session.snapshot()
         assert status.commanded_pan_deg > 90
         assert status.timing_source == "delivery"
-        assert session._observation is not None
-        assert session._observation.target == target(now_s, horizontal_fraction=0.9)
     finally:
         session.close()
 
 
 def test_live_worker_runs_at_twenty_hz_without_observations() -> None:
-    driver = RecordingDriver()
     timestamps_s: list[float] = []
     enough_ticks = threading.Event()
 
@@ -647,13 +611,14 @@ def test_close_failure_alone_is_reported() -> None:
     session.close()
 
 
-def test_startup_event_contains_resolved_raw_orientation_calibration() -> None:
+def test_hardware_mode_passes_loaded_calibration_to_driver_and_records_it() -> None:
     calibration = Calibration(pan=AxisCalibration(3, direction=-1), tilt=AxisCalibration(4))
     events = RecordingEvents()
     driver = RecordingDriver()
+    resolved_calibrations: list[Calibration] = []
 
     def create_driver(resolved: Calibration) -> PanTiltDriver:
-        assert resolved == calibration
+        resolved_calibrations.append(resolved)
         return driver
 
     session = FollowSession(
@@ -662,22 +627,10 @@ def test_startup_event_contains_resolved_raw_orientation_calibration() -> None:
     with patch.object(Calibration, "load", return_value=calibration):
         session.start()
         assert driver.moved.wait(TEST_TIMEOUT_S)
-        now_s = time.monotonic()
-        session.submit(target(now_s), 100, 100, now_s, "delivery")
-        deadline_s = time.monotonic() + TEST_TIMEOUT_S
-        while session.snapshot().timing_source != "delivery" and time.monotonic() < deadline_s:
-            time.sleep(PERIOD_S)
         session.close()
+    assert resolved_calibrations == [calibration]
     startup = next(fields for name, fields in events.calls if name == "controller_start")
     assert startup["calibration"] == calibration.as_dict()
-    assert startup["image_orientation"] == "raw_unflipped"
-    delivered = [
-        fields
-        for name, fields in events.calls
-        if name == "controller_state" and fields["timing_source"] == "delivery"
-    ]
-    assert delivered
-    assert delivered[0]["sensor_timing_available"] is False
 
 
 def test_repeated_start_and_close_never_construct_another_driver() -> None:

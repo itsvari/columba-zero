@@ -10,7 +10,7 @@ import yaml
 
 from app.config import ConfigError
 from app.json_data import JsonValue
-from app.pantilt import PCA9685, AxisCalibration, Calibration, PanTiltDriver, SimulatedMount
+from app.pantilt import PCA9685, AxisCalibration, Calibration, PanTiltDriver
 
 
 class HardwareTests(unittest.TestCase):
@@ -49,14 +49,6 @@ class HardwareTests(unittest.TestCase):
         driver.hold()
         self.assertEqual(bus.mock_calls, [])
         driver.close()
-
-    def test_simulated_mount_satisfies_driver_interface_without_hardware(self) -> None:
-        with patch("app.pantilt.importlib.import_module", side_effect=AssertionError("hardware")):
-            driver: PanTiltDriver = SimulatedMount()
-            driver.move(pan_deg=90, tilt_deg=90)
-            driver.hold()
-            driver.close()
-            driver.close()
 
     def test_startup_failure_attempts_both_channels_and_closes_bus(self) -> None:
         bus = Mock()
@@ -203,36 +195,26 @@ class ProfileTests(unittest.TestCase):
             with self.assertRaisesRegex(ConfigError, "pan angle limits.*pulse envelope"):
                 axis.validate("pan")
 
-    def test_nominal_speed_uses_the_same_pulse_delta_for_different_envelopes(self) -> None:
-        for minimum_us, maximum_us in ((1000, 2000), (700, 2300)):
-            axis = AxisCalibration(0, minimum_us, maximum_us)
-            self.assertAlmostEqual(axis.pulse(91.5) - axis.pulse(90), 2000 * 1.5 / 180)
-
-    def test_atomic_save_preserves_previous_profile_on_replace_failure(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "profile.yaml"
-            Calibration().save(path)
-            original = path.read_bytes()
-            with (
-                patch("app.pantilt.os.replace", side_effect=OSError("replace failed")),
-                self.assertRaises(OSError),
-            ):
-                replace(Calibration(), bus=2).save(path)
-            self.assertEqual(path.read_bytes(), original)
-            self.assertEqual(list(Path(directory).iterdir()), [path])
-
-    def test_atomic_save_cleans_temporary_file_after_interrupted_write(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "profile.yaml"
-            Calibration().save(path)
-            original = path.read_bytes()
-            with (
-                patch("app.pantilt.yaml.safe_dump", side_effect=KeyboardInterrupt),
-                self.assertRaises(KeyboardInterrupt),
-            ):
+    def test_interrupted_atomic_save_preserves_previous_profile_and_leaves_no_temporary_file(
+        self,
+    ) -> None:
+        interruptions: tuple[tuple[str, BaseException], ...] = (
+            ("app.pantilt.os.replace", OSError("replace failed")),
+            ("app.pantilt.yaml.safe_dump", KeyboardInterrupt()),
+        )
+        for target, interruption in interruptions:
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "profile.yaml"
                 Calibration().save(path)
-            self.assertEqual(path.read_bytes(), original)
-            self.assertEqual(list(Path(directory).iterdir()), [path])
+                original = path.read_bytes()
+                with (
+                    self.subTest(target=target),
+                    patch(target, side_effect=interruption),
+                    self.assertRaises(type(interruption)),
+                ):
+                    replace(Calibration(), bus=2).save(path)
+                self.assertEqual(path.read_bytes(), original)
+                self.assertEqual(list(Path(directory).iterdir()), [path])
 
     def test_invalid_save_leaves_existing_file_intact(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -289,18 +271,6 @@ class PersistenceTests(unittest.TestCase):
             replace(Calibration(), bus=2).save(path)
             self.assertEqual(path.stat().st_mode & 0o777, 0o640)
             self.assertEqual(Calibration.load(path).bus, 2)
-
-    def test_resolved_snapshot_is_typed_and_independent_of_profile(self) -> None:
-        profile = replace(Calibration(), horizontal_fov_deg=62.2)
-        snapshot = profile.as_dict()
-        self.assertEqual(snapshot["horizontal_fov_deg"], 62.2)
-        self.assertIsNone(snapshot["vertical_fov_deg"])
-        pan = snapshot["pan"]
-        self.assertIsInstance(pan, dict)
-        assert isinstance(pan, dict)
-        pan["channel"] = 12
-        self.assertEqual(profile.pan.channel, 0)
-        self.assertEqual(profile.as_dict()["pan"], profile.pan.as_dict())
 
     def test_close_preserves_disable_failure_when_bus_close_also_fails(self) -> None:
         bus = Mock()

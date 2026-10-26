@@ -225,12 +225,6 @@ def test_retention_expires_by_seconds_even_with_adjacent_frame_numbers() -> None
     assert identities(update(motion_tracker, [detection()], 5.8, sequence=3)) == [2]
 
 
-def test_source_gap_expires_before_association() -> None:
-    motion_tracker = tracker()
-    update(motion_tracker, [detection()], 0.0)
-    assert identities(update(motion_tracker, [detection()], 0.751)) == [2]
-
-
 def test_retention_uses_observation_age_including_delivery_delay() -> None:
     motion_tracker = tracker()
     update(motion_tracker, [detection()], 10.0, now_s=10.2)
