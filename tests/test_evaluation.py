@@ -413,9 +413,11 @@ class EvaluationTests(unittest.TestCase):
         model = Mock(names={0: "pigeon"})
         model.predict.return_value = [Mock(names={0: "pigeon"}, boxes=[box])]
         factory = Mock(return_value=model)
+        versions = {"ultralytics": "mock-ultralytics", "torch": "mock-torch"}
         with (
             patch.dict("sys.modules", {"ultralytics": Mock(YOLO=factory), "torch": Mock()}),
             patch("tools.predict_to_coco.configure_ultralytics"),
+            patch("importlib.metadata.version", side_effect=versions.__getitem__),
         ):
             metadata = predict_to_coco(
                 weights,
@@ -431,6 +433,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(values[0]["bbox"], list(PERFECT_BOX))
         self.assertEqual(metadata["input_hw"], list(RECTANGULAR_INPUT_HW))
         self.assertEqual(metadata["image_id_source"], "manifest")
+        self.assertEqual(metadata["versions"], versions)
         self.assertEqual(
             json.loads(sidecar_path(self.predictions).read_text())["model_id"], "test-model"
         )
@@ -497,7 +500,11 @@ class EvaluationTests(unittest.TestCase):
         network_context = Mock(
             __enter__=Mock(return_value=network), __exit__=Mock(return_value=False)
         )
-        with patch.dict("sys.modules", {"ncnn": Mock(Net=Mock(return_value=network_context))}):
+        versions = {"ncnn": "mock-ncnn", "numpy": "mock-numpy"}
+        with (
+            patch.dict("sys.modules", {"ncnn": Mock(Net=Mock(return_value=network_context))}),
+            patch("importlib.metadata.version", side_effect=versions.__getitem__),
+        ):
             metadata = predict_to_coco(package, self.root, "val", self.predictions, ncnn_fp32=True)
         values = json.loads(self.predictions.read_text())
         self.assertEqual(len(values), 2)
@@ -509,6 +516,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(metadata["format"], "ncnn-fp16")
         self.assertEqual(metadata["ncnn_compute"], "fp32")
         self.assertIsNone(metadata["nms_iou"])
+        self.assertEqual(metadata["versions"], versions)
 
     def test_subset_filters_images_and_predictions_after_full_split_validation(self) -> None:
         self.dataset(
