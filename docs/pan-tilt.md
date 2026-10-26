@@ -1,8 +1,12 @@
 # Prepare the pan-tilt demonstration
 
-Physical movement and Pi performance have not been verified. The software uses the
+Initial Pi camera and small-movement checks have passed. Following, performance
+targets, and endurance remain unverified. The software uses the
 Waveshare PCA9685 mount described in the [assembly manual](https://files.waveshare.com/upload/b/b9/Pan-Tilt_HAT_user_manual_en.pdf).
 Complete assembly and check cable clearance before calibration.
+
+For remote setup and the sequence from camera bring-up to endurance testing, use
+[the Pi hardware test runbook](pi-hardware-testing.md).
 
 ## Calibrate the mount
 
@@ -32,10 +36,19 @@ when the wiring differs. The command's `--help` lists pulse-envelope overrides.
 3. Set `pan direction 1` or `pan direction -1`, then set the tilt direction.
 4. Use `status` to inspect the marks, then `save` to write the profile.
 
-Direction refers to the raw, unflipped camera image. A positive direction means
+Set `camera.rotation_deg: 180` when the mounted sensor is upside-down. Capture
+rotation applies to the frames used by detection, tracking, control, and preview.
+Replay uses video frames as stored and does not apply the live camera rotation.
+Pass `--image-rotation-deg 180` when calibrating that capture orientation. Profiles
+without this field default to 0. Hardware following refuses a profile whose
+`image_rotation_deg` differs from `camera.rotation_deg`, before opening the driver.
+Changing the capture orientation requires checking both axis directions again.
+
+Direction refers to the configured capture image. A positive direction means
 increasing the pulse aims the camera towards a target to the right for pan, or
-down for tilt. A stationary target then moves left or up in the raw image. Use this
-convention even when a separate viewer flips or mirrors its preview.
+down for tilt. A stationary target then moves left or up in the configured image. Use this
+convention even when a separate viewer flips or mirrors its preview. The
+calibration command records the selected rotation but does not open a camera.
 
 The command refuses to save incomplete or unordered marks. It replaces the profile
 atomically after validation. `quit`, Ctrl+C, SIGTERM, and SIGHUP close the driver;
@@ -109,11 +122,22 @@ acceleration of 60 nominal degrees per second squared, and home speed of 10 nomi
 degrees per second. Each command respects the marked travel limits. Tune the gain
 and motion limits on hardware before field use.
 
-`controller_start` records the resolved calibration and raw image orientation.
+`controller_start` records the resolved calibration and configured capture orientation.
+Replay reports `image_orientation: as_stored` and applies no additional rotation.
 Frame records contain the selected target, controller state, limits, and observation
 age. `target_acquired`, `target_switched`, and `target_lost` record identity changes.
 The overlay labels the selected bird as "nearest-looking" and draws the deadband.
 Box area provides a ranking, with no distance estimate.
+
+`controller_state` events include `tick_started_at_monotonic_s`, `driver_action`,
+`driver_action_completed_at_monotonic_s`, and
+`tracking_observation_age_at_command_ms`. Completion is sampled after the driver
+returns. Initial and replay events have no live timing. The command age applies
+only to tracking position commands with known sensor or delivery timing.
+`tools/summarize_run.py` reports live cadence by mode and hardware tracking ages
+by timing source under `controller_metrics`. It also counts untimed hardware
+tracking moves. Check log drops and coverage before interpreting the report.
+Driver return does not measure physical movement or settling.
 
 In following mode, `pigeon_count` counts candidates at the maintenance floor.
 Each detection has a `maintenance_only` flag, and the frame records both thresholds.
@@ -121,8 +145,9 @@ Low-confidence boxes appear grey with an association or maintenance label; the
 selected target remains cyan. Detection-only counts and thresholds are unchanged.
 
 Following with day/night camera switching is rejected before driver construction.
-`--reaction-test` disables following. Hardware compatibility, centring, latency,
-and a one-hour run remain unverified. The fixed-zone mode is deferred until the core
+`--reaction-test` disables following. Initial Pi camera and small-movement checks
+have passed. Centring, tracking latency, and a one-hour run remain unverified.
+The fixed-zone mode is deferred until the core
 demonstration passes hardware acceptance; `zone.enabled: true` reports that explicitly.
 
 ## Watch the browser preview

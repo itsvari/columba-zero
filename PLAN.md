@@ -23,8 +23,10 @@ preserves the full PR history so the controller, tests, overlays, and documentat
 remain available for the later port.
 
 The integration branch preserves the imported source baseline. The feature branch
-now implements and checks the software portions of stages 1–4. Physical hardware
-acceptance is pending; no Pi, camera, or mount was available for this implementation.
+now implements and checks the software portions of stages 1–4. Initial Pi camera
+and small-movement checks have passed. Following acceptance remains pending.
+Measured results and remaining tests are in
+[deploy/VALIDATION.md](deploy/VALIDATION.md#pi-bring-up-27-october-2026-in-progress).
 
 ### Software implementation status, 26 October 2026
 
@@ -346,6 +348,12 @@ Complete the hardware acceptance below before considering a change to the opt-in
 default. Merge to `main` only as a separately authorised delivery step.
 
 ### Acceptance tests
+
+Use [the Pi hardware test runbook](docs/pi-hardware-testing.md) for SSH setup,
+non-actuating environment checks, supervised calibration, and staged measurements.
+Controller events include monotonic tick and driver-return timestamps. The run
+summary reports cadence and hardware tracking-command age separately from
+simulation. Collect representative measurements before claiming acceptance.
 
 Use replay tests for association, camera movement, confidence gaps, target switching, timestamps, and zone geometry. Use hardware tests for centring and servo behaviour; replay cannot establish closed-loop performance.
 

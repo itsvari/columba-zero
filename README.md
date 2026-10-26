@@ -16,6 +16,7 @@ baseline and fallback.
 Further documents:
 
 - [Pan-tilt calibration, following, and desktop verification](docs/pan-tilt.md).
+- [Pi setup over SSH and pan-tilt hardware testing](docs/pi-hardware-testing.md).
 - [Pi acceptance checklist](RASPBERRY_PI_PROTOTYPE_PLAN.md) and
   [validation results](deploy/VALIDATION.md).
 - [Model-improvement plan](plans/model-improvement/PLAN.md) (closed except WS10,
@@ -80,7 +81,9 @@ dependency resolution so it cannot replace OS OpenCV. `pip check` may report OS
 OpenCV as missing or too old even when `cv2` works: verify imports, GUI build
 information and predictions. Do not install `opencv-python-headless` or combine
 pip OpenCV variants. If OS NumPy is older than 1.24, use a newer Pi OS image.
-This setup has not yet been verified on a Pi.
+This Ultralytics dependency set has not yet been verified on a Pi. The native-only
+runtime was built and exercised without Torch or Ultralytics. See
+[the Pi validation record](deploy/VALIDATION.md#pi-bring-up-27-october-2026-in-progress).
 
 Ultralytics 8.4.175 and ncnn 1.0.20260526 are pinned; the models were exported
 with them. Camera format `RGB888` provides BGR bytes for OpenCV (despite its
@@ -106,7 +109,9 @@ ctest --test-dir native/build/pi5 --output-on-failure
 cmake --install native/build/pi5 --prefix "$(python -c 'import sysconfig; print(sysconfig.get_path("platlib"))')"
 ```
 
-The Pi build has not been run yet (WS10). [native/README.md](native/README.md)
+The Pi 5 build, CTest, and native Python tests pass on the assembled device.
+Live capture and inference run, with throughput acceptance still pending.
+[native/README.md](native/README.md)
 covers the macOS and cluster builds, the Python API, decoding and parity
 tools. To use the Ultralytics backend instead, set `model.backend: ultralytics`;
 it only supports yolo11-decode packages and applies its own NMS.
@@ -183,6 +188,7 @@ defaults equal the values shown.
 | `tuning_file` | null | Camera tuning by name (e.g. `imx708_noir.json` for the NoIR camera) or path. If it cannot be loaded, the default tuning is used with a warning. |
 | `camera_index` | 0 | Which CSI camera to open. |
 | `name` | null | Camera name in frame records; null means `camera<index>`. |
+| `rotation_deg` | 0 | Live capture rotation, either 0 or 180 degrees, applied before detection, tracking, and preview. Hardware calibration must record the same orientation. Replay uses the video frames as stored. |
 
 `model:`
 
