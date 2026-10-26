@@ -576,6 +576,20 @@ class FastCamera:
 
 
 class OutputQueueTests(unittest.TestCase):
+    def test_controller_samples_cannot_exhaust_lifecycle_event_capacity(self) -> None:
+        stop = threading.Event()
+        queue = OutputQueue(log_capacity=4, event_allowance=2, on_overflow=stop.set)
+        queue.event("target_acquired", track_id=1)
+        for sequence in range(10_000):
+            queue.event("controller_state", commanded_pan_deg=sequence)
+            queue.event("frame", frame_number=sequence)
+        self.assertFalse(stop.is_set())
+        self.assertIsNone(queue.overflow_error)
+        records = queue.take_logs()
+        self.assertLessEqual(len(records), queue.log_capacity)
+        self.assertEqual(records[0].event, "target_acquired")
+        self.assertGreater(queue.dropped_records, 0)
+
     def test_log_queue_is_bounded_but_keeps_events(self) -> None:
         queue = OutputQueue(log_capacity=4)
         for index in range(10):
