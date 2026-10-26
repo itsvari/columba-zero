@@ -28,6 +28,8 @@ HISTOGRAM_RANGE_MS = 10_000.0
 OVERFLOW_EXACT_LIMIT = 1000
 REPORTED_PERCENTILES = (("p50", 0.50), ("p95", 0.95), ("p99", 0.99))
 STAGES = ("wait", "preprocess", "inference", "postprocess", "track")
+LIVE_CONTROL_MODES = ("hardware", "simulate")
+COMMAND_TIMING_SOURCES = ("sensor", "delivery")
 
 
 def numeric_field(record: dict[str, JsonValue], name: str) -> int | float | None:
@@ -36,6 +38,13 @@ def numeric_field(record: dict[str, JsonValue], name: str) -> int | float | None
         return None
     if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
         raise ValueError(f"{name} must be a finite number")
+    return value
+
+
+def non_negative_numeric_field(record: dict[str, JsonValue], name: str) -> int | float | None:
+    value = numeric_field(record, name)
+    if value is not None and value < 0:
+        raise ValueError(f"{name} must be non-negative")
     return value
 
 
@@ -110,6 +119,90 @@ class Distribution:
         return summary
 
 
+class ControllerMetrics:
+    """Bounded live cadence and hardware position-command timing evidence."""
+
+    def __init__(self) -> None:
+        self.live_samples_by_mode = dict.fromkeys(LIVE_CONTROL_MODES, 0)
+        self.previous_tick_started_at_s: dict[str, int | float] = {}
+        self.tick_intervals_ms = {mode: Distribution() for mode in LIVE_CONTROL_MODES}
+        self.hardware_tracking_position_moves = 0
+        self.untimed_hardware_tracking_position_moves = 0
+        self.command_ages_ms = {source: Distribution() for source in COMMAND_TIMING_SOURCES}
+
+    def add(self, record: dict[str, JsonValue]) -> None:
+        started_at_s = non_negative_numeric_field(record, "tick_started_at_monotonic_s")
+        completed_at_s = non_negative_numeric_field(
+            record, "driver_action_completed_at_monotonic_s"
+        )
+        age_at_command_ms = non_negative_numeric_field(
+            record, "tracking_observation_age_at_command_ms"
+        )
+        if (
+            started_at_s is not None
+            and completed_at_s is not None
+            and completed_at_s < started_at_s
+        ):
+            raise ValueError("driver_action_completed_at_monotonic_s must be >= tick start")
+        mode = record.get("mode")
+        if not isinstance(mode, str) or mode not in LIVE_CONTROL_MODES:
+            return
+        if started_at_s is not None:
+            previous_at_s = self.previous_tick_started_at_s.get(mode)
+            if previous_at_s is not None:
+                interval_ms = (started_at_s - previous_at_s) * MILLISECONDS_PER_SECOND
+                if not math.isfinite(interval_ms) or interval_ms < 0:
+                    raise ValueError(
+                        "live controller tick intervals must be finite and non-negative"
+                    )
+                self.tick_intervals_ms[mode].add(interval_ms)
+            self.previous_tick_started_at_s[mode] = started_at_s
+            self.live_samples_by_mode[mode] += 1
+        if (
+            mode != "hardware"
+            or record.get("state") != "tracking"
+            or record.get("driver_action") != "move"
+        ):
+            return
+        self.hardware_tracking_position_moves += 1
+        timing_source = record.get("timing_source")
+        if (
+            started_at_s is None
+            or completed_at_s is None
+            or age_at_command_ms is None
+            or not isinstance(timing_source, str)
+            or timing_source not in COMMAND_TIMING_SOURCES
+        ):
+            self.untimed_hardware_tracking_position_moves += 1
+            return
+        self.command_ages_ms[timing_source].add(age_at_command_ms)
+
+    def summary(self) -> dict[str, JsonValue]:
+        return {
+            "live_samples_by_mode": dict(self.live_samples_by_mode),
+            "observed_tick_intervals_ms_by_mode": {
+                mode: distribution.summary()
+                for mode, distribution in self.tick_intervals_ms.items()
+            },
+            "hardware_tracking_position_moves": self.hardware_tracking_position_moves,
+            "untimed_hardware_tracking_position_moves": (
+                self.untimed_hardware_tracking_position_moves
+            ),
+            "tracking_observation_age_at_command_ms_by_timing_source": {
+                source: distribution.summary()
+                for source, distribution in self.command_ages_ms.items()
+            },
+            "basis": (
+                "Software driver-return timing only; sensor and delivery ages are separate. "
+                "Dropped controller log samples can widen observed tick intervals, "
+                "undercount commands and bias age distributions. Counts are lower bounds "
+                "when run_end.log_dropped_records is non-zero; this combined frame/controller "
+                "drop count is an upper bound on controller sample loss. Ages are per command, "
+                "not per frame. No physical response or automatic acceptance is inferred."
+            ),
+        }
+
+
 def summarize_log(path: Path) -> dict[str, JsonValue]:
     frame_count = 0
     inference_total_ms = 0.0
@@ -127,6 +220,7 @@ def summarize_log(path: Path) -> dict[str, JsonValue]:
     frames_by_camera: Counter[str] = Counter()
     trigger_count = 0
     camera_switch_count = 0
+    controller_metrics = ControllerMetrics()
     with path.open(encoding="utf-8") as log:
         for line_number, line in enumerate(log, start=1):
             record = cast(dict[str, JsonValue], json.loads(line))
@@ -166,6 +260,11 @@ def summarize_log(path: Path) -> dict[str, JsonValue]:
                     )
             elif event == "camera_switch":
                 camera_switch_count += 1
+            elif event == "controller_state":
+                try:
+                    controller_metrics.add(record)
+                except ValueError as error:
+                    raise ValueError(f"{path}:{line_number}: {error}") from error
             memory_bytes = numeric_field(record, "memory_rss_bytes")
             if memory_bytes is not None:
                 if memory_first_bytes is None:
@@ -210,6 +309,7 @@ def summarize_log(path: Path) -> dict[str, JsonValue]:
         "triggers": trigger_count,
         "camera_switches": camera_switch_count,
         "frames_by_camera": cast(JsonValue, dict(frames_by_camera)),
+        "controller_metrics": controller_metrics.summary(),
     }
 
 

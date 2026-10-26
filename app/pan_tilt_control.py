@@ -20,6 +20,7 @@ ControlState = Literal[
     "acquiring", "tracking", "waiting", "stale", "uncertain", "paused", "returning", "home", "fault"
 ]
 ControlMode = Literal["simulate", "hardware"]
+DriverAction = Literal["move", "hold"]
 SECONDS_TO_MILLISECONDS = 1000.0
 NORMALISED_ERROR_SCALE = 2.0
 IMAGE_CENTRE_FRACTION = 0.5
@@ -477,9 +478,17 @@ class FollowSession:
                 previous.commanded_tilt_deg,
             ):
                 driver.move(status.commanded_pan_deg, status.commanded_tilt_deg)
+                driver_action: DriverAction = "move"
             else:
                 driver.hold()
-            self._publish(status)
+                driver_action = "hold"
+            completed_at_s = self._clock()
+            self._publish(
+                status,
+                tick_started_at_monotonic_s=now_s,
+                driver_action=driver_action,
+                driver_action_completed_at_monotonic_s=completed_at_s,
+            )
 
     def _advance_replay(self, observation: ControlObservation) -> None:
         controller = self._controller
@@ -505,13 +514,39 @@ class FollowSession:
         controller.observe(observation)
         self._publish(controller.step(now_s, 0.0))
 
-    def _publish(self, status: ControllerStatus) -> None:
+    def _publish(
+        self,
+        status: ControllerStatus,
+        *,
+        tick_started_at_monotonic_s: float | None = None,
+        driver_action: DriverAction | None = None,
+        driver_action_completed_at_monotonic_s: float | None = None,
+    ) -> None:
+        tracking_observation_age_at_command_ms = None
+        if (
+            status.state == "tracking"
+            and driver_action == "move"
+            and status.timing_source in ("sensor", "delivery")
+            and status.observation_age_ms is not None
+            and status.observation_age_ms >= 0
+            and tick_started_at_monotonic_s is not None
+            and driver_action_completed_at_monotonic_s is not None
+        ):
+            tracking_observation_age_at_command_ms = (
+                status.observation_age_ms
+                + (driver_action_completed_at_monotonic_s - tick_started_at_monotonic_s)
+                * SECONDS_TO_MILLISECONDS
+            )
         with self._lock:
             self._status = status
         self._emit(
             "controller_state",
             **status.as_dict(),
             sensor_timing_available=status.timing_source == "sensor",
+            tick_started_at_monotonic_s=tick_started_at_monotonic_s,
+            driver_action=driver_action,
+            driver_action_completed_at_monotonic_s=driver_action_completed_at_monotonic_s,
+            tracking_observation_age_at_command_ms=tracking_observation_age_at_command_ms,
         )
 
     def _emit(self, event: str, **fields: JsonValue) -> None:
