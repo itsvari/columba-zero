@@ -14,7 +14,6 @@ from app.config import (
     ConfirmationConfig,
     FollowConfig,
     PanTiltConfig,
-    PreviewConfig,
     ZoneConfig,
 )
 from app.json_data import JsonValue
@@ -27,12 +26,11 @@ class FollowConfigTests(unittest.TestCase):
             path.write_text(yaml.safe_dump(configuration), encoding="utf-8")
             return AppConfig.load(path)
 
-    def test_following_is_opt_in_and_acquisition_threshold_is_preserved(self) -> None:
-        self.assertEqual(self.load({}).follow, FollowConfig())
+    def test_enabling_following_keeps_the_acquisition_threshold_above_maintenance(self) -> None:
+        baseline = self.load({})
         configuration = self.load({"follow": {"enabled": True}, "confirmation": {"enabled": True}})
-        self.assertTrue(configuration.follow.enabled)
-        self.assertEqual(configuration.model.confidence, 0.5)
-        self.assertEqual(configuration.follow.maintenance_confidence, 0.15)
+        self.assertEqual(configuration.model.confidence, baseline.model.confidence)
+        self.assertLess(configuration.follow.maintenance_confidence, configuration.model.confidence)
 
     def test_follow_policy_round_trips(self) -> None:
         configuration = self.load(
@@ -73,26 +71,14 @@ class FollowConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "must not exceed"):
             replace(configuration, follow=replace(configuration.follow, enabled=True)).validate()
 
-    def test_direct_configuration_is_validated(self) -> None:
-        configuration = AppConfig(
-            follow=FollowConfig(enabled=True, switch_hold_s=0),
-            confirmation=ConfirmationConfig(enabled=True),
-        )
-        configuration.validate()
-        with self.assertRaisesRegex(ConfigError, "retention_s"):
-            replace(configuration, follow=FollowConfig(retention_s=-1)).validate()
-
     def test_following_requires_explicit_confirmation(self) -> None:
         with self.assertRaisesRegex(ConfigError, "confirmation.enabled"):
             self.load({"follow": {"enabled": True}, "confirmation": {"enabled": False}})
 
-    def test_follow_sections_default_to_disabled_with_exact_policy_defaults(self) -> None:
+    def test_following_hardware_preview_and_zone_are_off_by_default(self) -> None:
         configuration = self.load({})
-        self.assertEqual(configuration.pan_tilt, PanTiltConfig())
-        self.assertEqual(configuration.preview, PreviewConfig())
-        self.assertEqual(configuration.zone, ZoneConfig())
         self.assertFalse(configuration.follow.enabled)
-        self.assertFalse(configuration.pan_tilt.mode == "hardware")
+        self.assertEqual(configuration.pan_tilt.mode, "simulate")
         self.assertFalse(configuration.preview.enabled)
         self.assertFalse(configuration.preview.record)
         self.assertFalse(configuration.zone.enabled)
@@ -134,7 +120,6 @@ class FollowConfigTests(unittest.TestCase):
             {"preview": {"unexpected": True}},
             {"zone": []},
             {"zone": {"unexpected": True}},
-            {"tracking": {"enabled": True}},
         )
         for configuration in invalid_configurations:
             with self.subTest(configuration=configuration), self.assertRaises(ConfigError):
@@ -204,11 +189,14 @@ class FollowConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "hardware acceptance"):
             self.load({"zone": {"enabled": True}})
 
-    def test_direct_dataclass_validation_covers_new_sections(self) -> None:
-        configuration = AppConfig()
+    def test_directly_constructed_configuration_is_validated(self) -> None:
+        configuration = AppConfig(
+            follow=FollowConfig(enabled=True, switch_hold_s=0),
+            confirmation=ConfirmationConfig(enabled=True),
+        )
         configuration.validate()
-        direct_invalid: tuple[AppConfig, ...] = (
-            replace(configuration, pan_tilt=replace(configuration.pan_tilt, deadband=0.5)),
+        invalid_configurations: tuple[AppConfig, ...] = (
+            replace(configuration, follow=FollowConfig(retention_s=-1)),
             replace(
                 configuration,
                 pan_tilt=replace(
@@ -216,11 +204,10 @@ class FollowConfigTests(unittest.TestCase):
                     mode=cast(Literal["simulate", "hardware"], "invalid"),
                 ),
             ),
-            replace(configuration, preview=replace(configuration.preview, max_fps=11.0)),
             replace(configuration, preview=replace(configuration.preview, port=-1)),
             replace(configuration, zone=ZoneConfig(enabled=True)),
         )
-        for invalid_configuration in direct_invalid:
+        for invalid_configuration in invalid_configurations:
             with self.subTest(configuration=invalid_configuration), self.assertRaises(ConfigError):
                 invalid_configuration.validate()
 

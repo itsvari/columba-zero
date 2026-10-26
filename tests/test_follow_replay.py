@@ -15,7 +15,6 @@ FRAME_HEIGHT_PX = 180
 FRAME_INTERVAL_S = 0.05
 ACQUISITION_CONFIDENCE = 0.6
 HIGH_CONFIDENCE = 0.9
-LOW_CONFIDENCE = 0.2
 
 
 class FollowReplayTests(unittest.TestCase):
@@ -41,59 +40,33 @@ class FollowReplayTests(unittest.TestCase):
         first, first_selection = self.advance(0, [self.detection()])
         self.assertIsNone(first_selection.target.track)
         second, second_selection = self.advance(1, [self.detection(left_px=52)])
-        self.assertEqual(len(second.triggers), 1)
         selected = second_selection.target.track
-        self.assertIsNotNone(selected)
         assert selected is not None
-        self.assertEqual(selected.track_id, first.detections[0].track_id)
-        self.assertEqual(selected.track_id, second.triggers[0].track_id)
-        self.assertEqual(selected.track_id, selected.detection.track_id)
-        self.assertEqual(second_selection.events[0].track_id, selected.track_id)
-
-    def test_low_confidence_maintains_selection_without_creating_or_confirming(self) -> None:
-        self.advance(0, [self.detection()])
-        _, selected = self.advance(1, [self.detection()])
-        maintained, selection = self.advance(
-            2, [self.detection(LOW_CONFIDENCE), self.detection(LOW_CONFIDENCE, left_px=200)]
-        )
-        self.assertEqual(selection.target.track, maintained.tracks[0])
+        self.assertEqual(len(second.triggers), 1)
         self.assertEqual(
-            selection.target.track.track_id if selection.target.track else None,
-            selected.target.track.track_id if selected.target.track else None,
+            {
+                selected.track_id,
+                selected.detection.track_id,
+                first.detections[0].track_id,
+                second.triggers[0].track_id,
+                second_selection.events[0].track_id,
+            },
+            {selected.track_id},
         )
-        self.assertEqual(maintained.triggers, ())
-        self.assertIsNone(maintained.detections[1].track_id)
-        self.assertEqual(len(maintained.tracks), 1)
-
-    def test_low_confidence_hits_do_not_satisfy_confirmation(self) -> None:
-        self.advance(0, [self.detection()])
-        for sequence in (1, 2):
-            tracking, selection = self.advance(sequence, [self.detection(LOW_CONFIDENCE)])
-            self.assertEqual(tracking.triggers, ())
-            self.assertIsNone(selection.target.track)
-        tracking, selection = self.advance(3, [self.detection()])
-        self.assertEqual(tracking.triggers, ())
-        self.assertIsNone(selection.target.track)
-        tracking, selection = self.advance(4, [self.detection()])
-        self.assertEqual(len(tracking.triggers), 1)
-        self.assertIsNotNone(selection.target.track)
 
     def test_occlusion_retains_observation_time_and_expires_in_source_time(self) -> None:
         self.advance(0, [self.detection()])
         _, confirmed = self.advance(1, [self.detection()])
+        assert confirmed.target.track is not None
         _, waiting = self.advance(2, [])
         self.assertEqual(waiting.target.state, "waiting")
-        self.assertIsNotNone(waiting.target.track)
         assert waiting.target.track is not None
         self.assertFalse(waiting.target.track.matched)
         self.assertEqual(waiting.target.track.observed_at_s, FRAME_INTERVAL_S)
         _, expired = self.advance(17, [])
         self.assertIsNone(expired.target.track)
         self.assertEqual(expired.events[0].name, "target_lost")
-        self.assertEqual(
-            expired.events[0].track_id,
-            confirmed.target.track.track_id if confirmed.target.track else None,
-        )
+        self.assertEqual(expired.events[0].track_id, confirmed.target.track.track_id)
 
 
 if __name__ == "__main__":

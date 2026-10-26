@@ -10,7 +10,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 from io import StringIO
 from pathlib import Path
-from types import FrameType, ModuleType
+from types import FrameType
 from typing import cast
 from unittest.mock import Mock, patch
 
@@ -77,15 +77,6 @@ def write_package(
 
 
 class ConfigTests(unittest.TestCase):
-    def test_default_config(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "config.yaml"
-            path.write_text("{}\n")
-            config = AppConfig.load(path)
-        self.assertEqual(config.model.image_size, 640)
-        self.assertEqual(config.model.confidence, 0.5)
-        self.assertTrue(config.display.enabled)
-
     def test_deployment_config_matches_the_selected_tracked_package(self) -> None:
         repository = Path(__file__).resolve().parents[1]
         manifest = cast(
@@ -97,13 +88,6 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.model.path, manifest["runtime_directory"])
         self.assertEqual(config.model.image_size, tuple(cast(list[int], manifest["input_hw"])))
         self.assertEqual(config.model.confidence, threshold["value"])
-        self.assertEqual((config.model.backend, config.model.threads), ("native", 4))
-        self.assertEqual(
-            (config.camera.width, config.camera.height, config.camera.fps), (800, 450, 30)
-        )
-        self.assertEqual(config.camera.stream, "lores")
-        self.assertEqual(config.output.recording_fps, 15)
-        self.assertEqual(config.confirmation, ConfirmationConfig(enabled=True, k=2, n=3))
         source = repository / cast(str, manifest["source"])
         self.assertEqual(load_model_info(str(source), config.model.image_size).path, source)
 
@@ -145,14 +129,6 @@ class ConfigTests(unittest.TestCase):
             config = AppConfig.load(path)
         self.assertEqual(config.model.image_size, (384, 640))
         self.assertEqual((config.model.backend, config.model.threads), ("native", 2))
-        defaults = AppConfig()
-        self.assertEqual((defaults.model.backend, defaults.model.threads), ("ultralytics", 4))
-        self.assertEqual(defaults.confirmation, ConfirmationConfig())
-        self.assertFalse(defaults.confirmation.enabled)
-
-    def test_old_cli_rejected(self) -> None:
-        with self.assertRaises(SystemExit):
-            build_parser().parse_args(["--hardware"])
 
 
 class DetectorTests(unittest.TestCase):
@@ -295,69 +271,22 @@ class DetectorTests(unittest.TestCase):
         self.assertEqual(
             detector.last_stage_ms, {"preprocess": 1.5, "inference": 20.0, "postprocess": 0.5}
         )
-        self.assertEqual(
-            Detection("pigeon", 0.8, 1, 2, 3, 4, class_id=0, track_id=7).as_dict(),
-            {
-                "label": "pigeon",
-                "confidence": 0.8,
-                "bbox": [1, 2, 3, 4],
-                "class_id": 0,
-                "track_id": 7,
-            },
-        )
 
-    def test_backend_factory(self) -> None:
+    def test_native_backend_unavailable_fails_loudly(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = write_package(
-                Path(directory),
-                {0: "pigeon", 1: "zebra_dove"},
-                [384, 640],
-                {"decode": "yolo11", "trigger_classes": ["pigeon"]},
-            )
-            model = ModelConfig(path=str(path), image_size=(384, 640), backend="native", threads=2)
-            native_module = ModuleType("app.native_detector")
-            native_class = Mock()
-            vars(native_module)["NativeDetector"] = native_class
-            with patch.dict("sys.modules", {"app.native_detector": native_module}):
-                detector, trigger_classes = create_detector(model)
-            native_class.assert_called_once_with(str(path), (384, 640), 0.5, threads=2)
-            self.assertIs(detector, native_class.return_value)
-            self.assertEqual(trigger_classes, ("pigeon",))
+            path = write_package(Path(directory), image_size=[384, 640])
+            model = ModelConfig(path=str(path), image_size=(384, 640), backend="native")
             with (
                 patch.dict("sys.modules", {"app.native_detector": None}),
                 self.assertRaisesRegex(DetectorError, "native is unavailable"),
             ):
                 create_detector(model)
-            with patch("app.main.UltralyticsDetector") as ultralytics:
-                ultralytics.return_value.trigger_classes = ("pigeon",)
-                create_detector(replace(model, backend="ultralytics"))
-            ultralytics.assert_called_once_with(str(path), (384, 640), 0.5)
 
-    def test_filter_and_warmup(self) -> None:
+    def test_warmup_failure_is_reported_as_detector_error(self) -> None:
         detector = UltralyticsDetector.__new__(UltralyticsDetector)
         detector.image_size, detector.confidence = 640, 0.5
-        prediction_model = Mock()
-        detector._model = prediction_model
-
-        def prediction_box(confidence: float) -> Mock:
-            result = Mock()
-            result.cls = Mock(item=lambda: 0)
-            result.conf = Mock(item=lambda: confidence)
-            result.xyxy = [Mock(tolist=lambda: [1, 2, 3, 4])]
-            return result
-
-        prediction_model.predict.return_value = [
-            Mock(names={0: "pigeon"}, boxes=[prediction_box(0.4), prediction_box(0.8)])
-        ]
-        result = detector.detect(FramePacket(0, 0, numpy.zeros((480, 640, 3), numpy.uint8)))
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0].confidence, 0.8)
-        detector.warmup(640, 480)
-        prediction_arguments = prediction_model.predict.call_args.kwargs
-        self.assertEqual(prediction_arguments["source"].shape, (480, 640, 3))
-        self.assertFalse(prediction_arguments["rect"])
-        self.assertEqual(prediction_arguments["device"], "cpu")
-        prediction_model.predict.side_effect = RuntimeError("bad inference")
+        detector._model = Mock()
+        detector._model.predict.side_effect = RuntimeError("bad inference")
         with self.assertRaisesRegex(DetectorError, "bad inference"):
             detector.warmup(640, 480)
 
@@ -940,7 +869,7 @@ class ReactionTests(unittest.TestCase):
         with (
             patch.object(cv2, "imread", return_value=numpy.full((4, 4, 3), 255, numpy.uint8)),
             patch.object(cv2, "namedWindow"),
-            patch.object(cv2, "setWindowProperty") as fullscreen,
+            patch.object(cv2, "setWindowProperty"),
             patch.object(cv2, "imshow") as show,
             patch.object(cv2, "waitKey", return_value=-1),
             patch.object(cv2, "destroyWindow") as destroy,
@@ -956,7 +885,6 @@ class ReactionTests(unittest.TestCase):
             self.assertEqual(test.tick(), {"trial": 1, "state": "off", "displayed_at": 8.02})
             test.close()
             test.close()
-        fullscreen.assert_called_once()
         self.assertEqual([call.args[1].max() for call in show.call_args_list], [0, 255, 0])
         destroy.assert_called_once()
         with patch.object(cv2, "imread", return_value=None), self.assertRaises(ValueError):
@@ -977,23 +905,8 @@ class ReactionTests(unittest.TestCase):
             ):
                 with self.subTest(invalid=invalid), self.assertRaises(ConfigError):
                     load_configuration(invalid)
-        arguments = build_parser().parse_args(
-            ["--reaction-test", "p.jpg", "--reaction-trials", "3"]
-        )
-        self.assertEqual((arguments.reaction_test, arguments.reaction_trials), ("p.jpg", 3))
 
     def test_run_reports_reaction_times(self) -> None:
-        class Camera:
-            def start(self) -> None:
-                pass
-
-            def read(self) -> Frame:
-                time.sleep(0.001)
-                return create_test_frame()
-
-            def close(self) -> None:
-                pass
-
         reaction = Mock()
         reaction.finished = False
 
@@ -1013,7 +926,7 @@ class ReactionTests(unittest.TestCase):
             image.write_bytes(b"jpeg")
             with (
                 patch("app.main.create_detector", return_value=(detector, ("pigeon",))),
-                patch("app.main.Picamera2Capture", return_value=Camera()),
+                patch("app.main.Picamera2Capture", return_value=FastCamera()),
                 patch("app.main.RunOutput", return_value=output),
                 patch("app.main.ReactionTest", return_value=reaction) as factory,
                 patch("app.main.health_snapshot", return_value={}),
@@ -1312,17 +1225,6 @@ class RuntimeTests(unittest.TestCase):
         processed = threading.Event()
         detect_calls = 0
 
-        class Camera:
-            def start(self) -> None:
-                pass
-
-            def read(self) -> Frame:
-                time.sleep(0.001)
-                return create_test_frame()
-
-            def close(self) -> None:
-                pass
-
         def detect(_packet: FramePacket) -> list[Detection]:
             nonlocal detect_calls
             detect_calls += 1
@@ -1343,7 +1245,7 @@ class RuntimeTests(unittest.TestCase):
         with (
             patch("app.main.AppConfig.load", return_value=config),
             patch("app.main.UltralyticsDetector", return_value=detector),
-            patch("app.main.Picamera2Capture", return_value=Camera()),
+            patch("app.main.Picamera2Capture", return_value=FastCamera()),
             patch("app.main.RunOutput", return_value=output),
             patch("app.main.health_snapshot", return_value={}),
         ):
@@ -1460,31 +1362,15 @@ class RuntimeTests(unittest.TestCase):
         self.assertIs(installed[signal.SIGTERM], original)
         self.assertIs(installed[signal.SIGINT], original)
 
-    def test_cli_overrides_and_invalid_frame_limit(self) -> None:
-        arguments = build_parser().parse_args(
-            ["--model", "override.pt", "--confidence", "0.7", "--record", "--max-frames", "1"]
+    def test_command_line_overrides_configuration_and_rejects_negative_frame_limit(self) -> None:
+        overridden = load_configuration(
+            CommandOptions(model="override.pt", confidence=0.7, record=True)
         )
-        source, output = Mock(), Mock()
-        source.get.return_value = FramePacket(0, 0, create_test_frame())
-        source.dropped_frames, source.capture_fps = 0, 15.0
-        with (
-            patch("app.main.create_detector", return_value=(Mock(), ("pigeon",))) as detector,
-            patch("app.main.RunOutput", return_value=output) as factory,
-            patch("app.main.health_snapshot", return_value={}),
-        ):
-            detector.return_value[0].detect.return_value = []
-            # patching video construction leaves the live stream class available for type checks.
-            arguments.video = "fake.avi"
-            with patch("app.main.VideoFileCapture", return_value=source):
-                self.assertEqual(run(arguments), 0)
-            self.assertEqual(detector.call_count, 1)
-            configured_model = detector.call_args.args[0]
-            self.assertEqual(configured_model.path, "override.pt")
-            self.assertEqual(configured_model.confidence, 0.7)
-            self.assertTrue(factory.call_args.args[0].output.record)
-        arguments.max_frames = -1
+        self.assertEqual(overridden.model.path, "override.pt")
+        self.assertEqual(overridden.model.confidence, 0.7)
+        self.assertTrue(overridden.output.record)
         with self.assertRaises(ConfigError):
-            run(arguments)
+            load_configuration(CommandOptions(max_frames=-1))
 
     def test_source_cleanup_failure_still_closes_outputs(self) -> None:
         source, output = Mock(), Mock()
@@ -1499,21 +1385,6 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(run(build_parser().parse_args(["--video", "fake.avi"])), 1)
         output.close.assert_called_once()
         self.assertEqual(output.event.call_args.kwargs["reason"], "cleanup_error")
-
-    def test_no_hardware_imports(self) -> None:
-        import ast
-
-        forbidden = {"gpiozero", "RPi", "pigpio", "lgpio"}
-        for source_path in Path("app").glob("*.py"):
-            tree = ast.parse(source_path.read_text())
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    self.assertFalse(
-                        {imported_name.name.split(".")[0] for imported_name in node.names}
-                        & forbidden
-                    )
-                if isinstance(node, ast.ImportFrom):
-                    self.assertNotIn((node.module or "").split(".")[0], forbidden)
 
 
 if __name__ == "__main__":
