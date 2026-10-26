@@ -612,7 +612,9 @@ def test_close_failure_alone_is_reported() -> None:
 
 
 def test_hardware_mode_passes_loaded_calibration_to_driver_and_records_it() -> None:
-    calibration = Calibration(pan=AxisCalibration(3, direction=-1), tilt=AxisCalibration(4))
+    calibration = Calibration(
+        pan=AxisCalibration(3, direction=-1), tilt=AxisCalibration(4), image_rotation_deg=180
+    )
     events = RecordingEvents()
     driver = RecordingDriver()
     resolved_calibrations: list[Calibration] = []
@@ -622,7 +624,11 @@ def test_hardware_mode_passes_loaded_calibration_to_driver_and_records_it() -> N
         return driver
 
     session = FollowSession(
-        PanTiltConfig(mode="hardware"), RETENTION_S, events=events, driver_factory=create_driver
+        PanTiltConfig(mode="hardware"),
+        RETENTION_S,
+        events=events,
+        driver_factory=create_driver,
+        image_rotation_deg=180,
     )
     with patch.object(Calibration, "load", return_value=calibration):
         session.start()
@@ -631,6 +637,8 @@ def test_hardware_mode_passes_loaded_calibration_to_driver_and_records_it() -> N
     assert resolved_calibrations == [calibration]
     startup = next(fields for name, fields in events.calls if name == "controller_start")
     assert startup["calibration"] == calibration.as_dict()
+    assert startup["image_rotation_deg"] == 180
+    assert startup["image_orientation"] == "capture_rotated_180"
 
 
 def test_repeated_start_and_close_never_construct_another_driver() -> None:

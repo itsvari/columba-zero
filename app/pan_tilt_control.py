@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
-from .config import PanTiltConfig
+from .config import CameraRotation, PanTiltConfig
 from .follow_models import TargetSnapshot
 from .json_data import JsonValue
 from .pantilt import PCA9685, AxisCalibration, Calibration, PanTiltDriver, SimulatedMount
@@ -321,6 +321,7 @@ class FollowSession:
         events: ControlEventSink | None = None,
         driver_factory: Callable[[Calibration], PanTiltDriver] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        image_rotation_deg: CameraRotation = 0,
     ) -> None:
         self._config = replace(config, mode="simulate") if replay else config
         self._retention_s = retention_s
@@ -330,6 +331,7 @@ class FollowSession:
         self._events = events
         self._driver_factory = driver_factory
         self._clock = clock
+        self._image_rotation_deg = 0 if replay else image_rotation_deg
         self._lock = threading.Lock()
         self._observation: ControlObservation | None = None
         self._action: ControlAction | None = None
@@ -354,7 +356,9 @@ class FollowSession:
                 return
             self._started = True
         if self._replay:
-            self._controller = self._make_controller(Calibration())
+            self._controller = self._make_controller(
+                Calibration(image_rotation_deg=self._image_rotation_deg)
+            )
             return
         thread = threading.Thread(target=self._run, name="pan-tilt", daemon=True)
         with self._lock:
@@ -368,7 +372,12 @@ class FollowSession:
             "controller_start",
             mode=self._config.mode,
             calibration=calibration.as_dict(),
-            image_orientation="raw_unflipped",
+            image_orientation=(
+                "as_stored"
+                if self._replay
+                else ("capture_rotated_180" if self._image_rotation_deg == 180 else "raw_unflipped")
+            ),
+            image_rotation_deg=self._image_rotation_deg,
             control_hz=self._config.control_hz,
             observation_timeout_s=self._config.observation_timeout_s,
             sensor_timing_available=None,
@@ -419,8 +428,9 @@ class FollowSession:
             calibration = (
                 Calibration.load(self._config.calibration)
                 if self._config.mode == "hardware"
-                else Calibration()
+                else Calibration(image_rotation_deg=self._image_rotation_deg)
             )
+            calibration.validate_image_rotation(self._image_rotation_deg)
             controller = self._make_controller(calibration)
             if self._cancelled():
                 return

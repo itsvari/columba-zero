@@ -11,6 +11,7 @@ camera:
   tuning_file: null       # e.g. imx708_noir.json for the NoIR camera
   camera_index: 0
   name: null              # logged as frame.camera; null means camera<index>
+  rotation_deg: 0         # 0 or 180; applied to capture before inference and preview
 model:
   path: models/yolo26n-v2s-800-round2-plain-seed1-yolo11-fp16
   image_size: [448, 800]         # integer (square) or [height, width], e.g. [384, 640]

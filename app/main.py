@@ -115,6 +115,7 @@ def create_camera(camera: CameraConfig) -> Picamera2Capture:
         tuning_file=camera.tuning_file,
         camera_index=camera.camera_index,
         name=camera.label,
+        rotation_deg=camera.rotation_deg,
     )
 
 
@@ -409,6 +410,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
                 replay=bool(options.video),
                 stop=stop,
                 events=queue,
+                image_rotation_deg=0 if options.video else config.camera.rotation_deg,
             )
         if config.preview.record and not stop.is_set():
             recorder = FrameRecorder(config.preview, output.directory, queue)

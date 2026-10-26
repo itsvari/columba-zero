@@ -14,7 +14,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Protocol, TextIO, cast
 
-from .config import ConfigError
+from .config import CameraRotation, ConfigError
 from .pantilt import PCA9685, AxisCalibration, Calibration
 
 INITIAL_PULSE_US = 1500.0
@@ -222,13 +222,14 @@ def calibrate(
         "Commands: pan + | pan - | tilt + | tilt - (10 us per step);\n"
         "pan min|home|max (mark current position); pan direction 1|-1;\n"
         "use tilt for the other axis; status; save; quit.\n"
-        "Direction uses the raw, unflipped detector image: x right, y down.\n"
+        "Direction uses the configured capture image: x right, y down.\n"
         "Direction 1 means increasing pulse aims the camera towards a target right/down;\n"
-        "a stationary target then moves left/up in the raw image.\n"
-        "A flipped or mirrored preview must not change this direction convention.\n"
+        "a stationary target then moves left/up in that image.\n"
+        "Match --image-rotation-deg to camera.rotation_deg and recheck both directions.\n"
+        "A separate preview flip must not change this direction convention.\n"
         "Verify each axis direction and mark both travel limits and home before saving."
     )
-    write(f"Calibration settings: {profile}; image orientation: raw, unflipped.")
+    write(f"Calibration settings: {profile}; capture rotation: {profile.image_rotation_deg} deg.")
     while True:
         try:
             parts = read("calibrate> ").strip().lower().split()
@@ -252,7 +253,7 @@ def calibrate(
             except (ConfigError, OSError) as exception:
                 write(str(exception))
                 continue
-            write(f"Saved {path}: {result}; image orientation: raw, unflipped.")
+            write(f"Saved {path}: {result}; capture rotation: {result.image_rotation_deg} deg.")
             return True
         if len(parts) not in (2, 3) or parts[0] not in axes:
             write("Unknown command; use pan/tilt +, -, min, home, max, direction 1|-1.")
@@ -284,6 +285,7 @@ class CalibrationArguments:
     line_input: bool = False
     horizontal_fov_deg: float | None = None
     vertical_fov_deg: float | None = None
+    image_rotation_deg: CameraRotation = 0
     pan_channel: int = 0
     pan_pulse_min_us: float = 1000
     pan_pulse_max_us: float = 2000
@@ -303,6 +305,7 @@ class CalibrationArguments:
             address=self.address,
             horizontal_fov_deg=self.horizontal_fov_deg,
             vertical_fov_deg=self.vertical_fov_deg,
+            image_rotation_deg=self.image_rotation_deg,
         )
 
 
@@ -326,6 +329,13 @@ def cli() -> None:
     parser.add_argument("--output", default="calibration.local.yaml")
     parser.add_argument("--bus", type=int, default=1)
     parser.add_argument("--address", type=lambda value: int(value, 0), default=0x40)
+    parser.add_argument(
+        "--image-rotation-deg",
+        type=int,
+        choices=(0, 180),
+        default=0,
+        help="camera.rotation_deg used when verifying axis directions; no camera is opened",
+    )
     parser.add_argument(
         "--line-input",
         action="store_true",

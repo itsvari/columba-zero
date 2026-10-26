@@ -42,10 +42,19 @@ CAMERA_FIELDS = frozenset(
         "tuning_file",
         "camera_index",
         "name",
+        "rotation_deg",
     }
 )
 CAMERA_ENTRY_FIELDS = frozenset(
-    {"name", "role", "camera_index", "tuning_file", "lens_position", "max_exposure_us"}
+    {
+        "name",
+        "role",
+        "camera_index",
+        "tuning_file",
+        "lens_position",
+        "max_exposure_us",
+        "rotation_deg",
+    }
 )
 PAN_TILT_MODES = ("simulate", "hardware")
 PREVIEW_PORT_MAX = 65535
@@ -55,6 +64,7 @@ PREVIEW_QUALITY_MAX = 100
 PAN_TILT_DEADBAND_MAX = 0.5
 
 ImageSize: TypeAlias = int | tuple[int, int]
+CameraRotation: TypeAlias = Literal[0, 180]
 
 
 class ConfigError(ValueError):
@@ -89,6 +99,12 @@ def non_negative_integer(value: JsonValue, name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise ConfigError(f"{name} must be a non-negative integer")
     return value
+
+
+def rotation_degrees(value: JsonValue, name: str) -> CameraRotation:
+    if not isinstance(value, int) or isinstance(value, bool) or value not in (0, 180):
+        raise ConfigError(f"{name} must be an integer of 0 or 180 degrees")
+    return cast(CameraRotation, value)
 
 
 def bounded_integer(value: JsonValue, name: str, minimum: int, maximum: int) -> int:
@@ -163,6 +179,7 @@ class CameraConfig:
     tuning_file: str | None = None
     camera_index: int = 0
     name: str | None = None
+    rotation_deg: CameraRotation = 0
 
     @property
     def label(self) -> str:
@@ -179,6 +196,7 @@ class CameraEntry:
     tuning_file: str | None = None
     lens_position: float | None = None
     max_exposure_us: int | None = None
+    rotation_deg: CameraRotation | None = None
 
 
 @dataclass(frozen=True)
@@ -290,6 +308,9 @@ def read_camera(section: dict[str, JsonValue], defaults: CameraConfig) -> Camera
             section.get("camera_index", defaults.camera_index), "camera_index"
         ),
         name=None if name is None else non_empty_path(name, "camera.name"),
+        rotation_deg=rotation_degrees(
+            section.get("rotation_deg", defaults.rotation_deg), "camera.rotation_deg"
+        ),
     )
 
 
@@ -308,6 +329,7 @@ def read_camera_entries(value: JsonValue) -> tuple[CameraEntry, ...]:
         tuning_file = entry.get("tuning_file")
         lens_position = entry.get("lens_position")
         max_exposure_us = entry.get("max_exposure_us")
+        rotation_deg = entry.get("rotation_deg")
         entries.append(
             CameraEntry(
                 name=non_empty_path(entry.get("name"), f"cameras[{index}].name"),
@@ -327,6 +349,11 @@ def read_camera_entries(value: JsonValue) -> tuple[CameraEntry, ...]:
                     None
                     if max_exposure_us is None
                     else positive_integer(max_exposure_us, "max_exposure_us")
+                ),
+                rotation_deg=(
+                    None
+                    if rotation_deg is None
+                    else rotation_degrees(rotation_deg, f"cameras[{index}].rotation_deg")
                 ),
             )
         )
@@ -639,6 +666,9 @@ class AppConfig:
                 entry.camera_index if entry.camera_index is not None else camera.camera_index
             ),
             name=entry.name,
+            rotation_deg=(
+                entry.rotation_deg if entry.rotation_deg is not None else camera.rotation_deg
+            ),
         )
 
     def validate(self) -> None:
@@ -663,6 +693,7 @@ class AppConfig:
         choice(self.model.backend, "model.backend", MODEL_BACKENDS)
         positive_integer(self.model.threads, "model.threads")
         choice(self.camera.stream, "camera.stream", CAMERA_STREAMS)
+        rotation_degrees(self.camera.rotation_deg, "camera.rotation_deg")
         if self.camera.main_size is not None:
             main_width, main_height = size_pair(self.camera.main_size, "camera.main_size")
             if main_width < self.camera.width or main_height < self.camera.height:
@@ -748,7 +779,9 @@ class AppConfig:
                 raise ConfigError("cameras must list exactly one day and one night camera")
             if len({entry.name for entry in self.cameras}) != len(self.cameras):
                 raise ConfigError("camera names must be unique")
-            for entry in self.cameras:
+            for index, entry in enumerate(self.cameras):
+                if entry.rotation_deg is not None:
+                    rotation_degrees(entry.rotation_deg, f"cameras[{index}].rotation_deg")
                 if entry.lens_position is not None and entry.lens_position < 0:
                     raise ConfigError("lens_position must be non-negative")
             if follow.enabled:

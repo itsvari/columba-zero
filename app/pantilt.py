@@ -16,7 +16,7 @@ from typing import Protocol, cast
 
 import yaml
 
-from .config import ConfigError, finite_number, read_mapping
+from .config import CameraRotation, ConfigError, finite_number, read_mapping, rotation_degrees
 from .json_data import JsonValue
 
 SERVO_MIN_PULSE_US = 500
@@ -48,7 +48,15 @@ AXIS_FIELDS = frozenset(
     {"channel", "pulse_min_us", "pulse_max_us", "min_angle", "home_angle", "max_angle", "direction"}
 )
 CALIBRATION_FIELDS = frozenset(
-    {"pan", "tilt", "bus", "address", "horizontal_fov_deg", "vertical_fov_deg"}
+    {
+        "pan",
+        "tilt",
+        "bus",
+        "address",
+        "horizontal_fov_deg",
+        "vertical_fov_deg",
+        "image_rotation_deg",
+    }
 )
 
 
@@ -175,6 +183,14 @@ class Calibration:
     address: int = 0x40
     horizontal_fov_deg: float | None = None
     vertical_fov_deg: float | None = None
+    image_rotation_deg: CameraRotation = 0
+
+    def validate_image_rotation(self, rotation_deg: CameraRotation) -> None:
+        if self.image_rotation_deg != rotation_deg:
+            raise ConfigError(
+                "calibration image_rotation_deg does not match camera.rotation_deg; "
+                "verify both axis directions with the configured capture orientation"
+            )
 
     def validate(self) -> None:
         self.pan.validate("pan")
@@ -185,6 +201,7 @@ class Calibration:
             raise ConfigError("I2C bus must be a non-negative integer")
         if type(self.address) is not int or not MIN_I2C_ADDRESS <= self.address <= MAX_I2C_ADDRESS:
             raise ConfigError("I2C address must be a usable 7-bit integer")
+        rotation_degrees(self.image_rotation_deg, "calibration image_rotation_deg")
 
         for name, value in (
             ("horizontal_fov_deg", self.horizontal_fov_deg),
@@ -217,6 +234,9 @@ class Calibration:
                 vertical_fov_deg=optional_field_of_view(
                     fields.get("vertical_fov_deg"), "vertical_fov_deg"
                 ),
+                image_rotation_deg=rotation_degrees(
+                    fields.get("image_rotation_deg", 0), "calibration image_rotation_deg"
+                ),
             )
             result.validate()
             return result
@@ -233,6 +253,7 @@ class Calibration:
             "address": self.address,
             "horizontal_fov_deg": self.horizontal_fov_deg,
             "vertical_fov_deg": self.vertical_fov_deg,
+            "image_rotation_deg": self.image_rotation_deg,
         }
 
     def save(self, path: str | Path) -> None:

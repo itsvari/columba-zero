@@ -65,13 +65,26 @@ class CalibrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "calibration.yaml"
             self.assertTrue(
-                calibrate(Calibration(), Mock(), path, read=lambda _: next(commands), write=output)
+                calibrate(
+                    replace(Calibration(), image_rotation_deg=180),
+                    Mock(),
+                    path,
+                    read=lambda _: next(commands),
+                    write=output,
+                )
             )
             result = Calibration.load(path)
+            self.assertEqual(result.image_rotation_deg, 180)
             self.assertEqual(result.pan.direction, -1)
             self.assertEqual(result.pan.home_angle, 90)
             self.assertAlmostEqual(result.pan.min_angle, 89.1)
         self.assertTrue(any("Record min" in call.args[0] for call in output.call_args_list))
+        saved = next(
+            str(call.args[0])
+            for call in output.call_args_list
+            if str(call.args[0]).startswith("Saved ")
+        )
+        self.assertIn("capture rotation: 180 deg.", saved)
 
     def test_safety_envelope_endpoints_save_in_nominal_degrees(self) -> None:
         commands = iter(

@@ -8,18 +8,24 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, TypedDict, cast
 
 if TYPE_CHECKING:
     import cv2
+    from libcamera import Transform
     from picamera2 import Picamera2
 
+from .config import CameraRotation, rotation_degrees
 from .models import Frame, FramePacket
 
 CAMERA_BUFFER_COUNT = 3
 CAPTURE_SHUTDOWN_TIMEOUT_S = 3.0
 NANOSECONDS_PER_MILLISECOND = 1_000_000
 MAXIMUM_PLAUSIBLE_DELIVERY_MS = 10_000.0
+
+
+class CaptureTransform(TypedDict, total=False):
+    transform: Transform
 
 
 class LiveCapture(Protocol):
@@ -127,6 +133,7 @@ class Picamera2Capture:
         tuning_file: str | None = None,
         camera_index: int = 0,
         name: str | None = None,
+        rotation_deg: CameraRotation = 0,
     ) -> None:
         self.width, self.height, self.fps = width, height, fps
         self.stream = stream
@@ -136,6 +143,7 @@ class Picamera2Capture:
         self.tuning_file = tuning_file
         self.camera_index = camera_index
         self.name = name or f"camera{camera_index}"
+        self.rotation_deg = rotation_degrees(rotation_deg, "camera.rotation_deg")
         self.warnings: list[str] = []
         self.last_metadata = CaptureMetadata()
         self._convert_yuv = False
@@ -200,6 +208,11 @@ class Picamera2Capture:
 
     def _configure(self, camera: Picamera2, requested_controls: dict[str, object]) -> None:
         size = (self.width, self.height)
+        transform_options: CaptureTransform = {}
+        if self.rotation_deg != 0:
+            from libcamera import Transform
+
+            transform_options["transform"] = Transform(hflip=True, vflip=True)
         if self.stream == "main":
             camera.configure(
                 camera.create_video_configuration(
@@ -207,6 +220,7 @@ class Picamera2Capture:
                     controls=requested_controls,
                     buffer_count=CAMERA_BUFFER_COUNT,
                     queue=False,
+                    **transform_options,
                 )
             )
             return
@@ -219,6 +233,7 @@ class Picamera2Capture:
                     controls=requested_controls,
                     buffer_count=CAMERA_BUFFER_COUNT,
                     queue=False,
+                    **transform_options,
                 )
             )
         except Exception as error:
@@ -231,6 +246,7 @@ class Picamera2Capture:
                     controls=requested_controls,
                     buffer_count=CAMERA_BUFFER_COUNT,
                     queue=False,
+                    **transform_options,
                 )
             )
             self._convert_yuv = True
@@ -248,11 +264,21 @@ class Picamera2Capture:
                 else Picamera2(self.camera_index, tuning=tuning)
             )
             self._configure(self._camera, self._controls(self._camera, controls))
+            if self.rotation_deg != 0:
+                from libcamera import Transform
+
+                # Picamera2 reports the transform after libcamera validates the configuration.
+                if self._camera.camera_configuration()["transform"] != Transform(
+                    hflip=True, vflip=True
+                ):
+                    raise CaptureError("camera did not apply requested rotation_deg=180 transform")
             self._camera.start()
-        except Exception as error:
+        except ImportError as error:
             raise CaptureError(
                 f"cannot start CSI camera: {error}; install OS Picamera2 packages"
             ) from error
+        except Exception as error:
+            raise CaptureError(f"cannot start CSI camera: {error}") from error
 
     def read(self) -> Frame:
         try:
