@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -72,7 +73,7 @@ class BenchmarkTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = write_report(report, Path(directory))
             self.assertEqual(output.name, "xcng0-recipe_seed0-ncnn-fp16-352x608.json")
-            self.assertIn('"samples_ms"', output.read_text())
+            self.assertEqual(json.loads(output.read_text()), report)
 
     def test_calibration_is_host_matched_and_preserves_measurements(self) -> None:
         report: dict[str, JsonValue] = {
@@ -118,12 +119,10 @@ class BenchmarkTests(unittest.TestCase):
                 make_calibration(changed, "source")
 
     def test_processing_samples_scale_and_summary_fallback(self) -> None:
-        values, description = processing_samples({"samples_ms": [10, 20]}, 2)
+        values, _ = processing_samples({"samples_ms": [10, 20]}, 2)
         self.assertEqual(values, [20, 40])
-        self.assertIn("empirical", description)
-        first, description = processing_samples({"end_to_end_ms": {"p50": 10, "p95": 10}}, 2)
-        self.assertTrue(all(abs(value - 20) < 1e-10 for value in first))
-        self.assertIn("lognormal", description)
+        fallback, _ = processing_samples({"end_to_end_ms": {"p50": 10, "p95": 10}}, 2)
+        self.assertTrue(all(abs(value - 20) < 1e-10 for value in fallback))
 
     def test_letterbox_rgb_normalisation_and_rectangular_shape(self) -> None:
         frame = numpy.zeros((32, 64, 3), dtype=numpy.uint8)

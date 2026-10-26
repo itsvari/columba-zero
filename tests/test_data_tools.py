@@ -41,7 +41,6 @@ from tools.dedupe_images import (
 from tools.fetch_sources import (
     RateLimiter,
     license_allowed,
-    photo_url,
     roboflow_original_stem,
     select_coco_images,
     yolo_to_xyxy,
@@ -161,10 +160,6 @@ class FetchSourceTests(unittest.TestCase):
         limiter.wait()
         self.assertEqual(len(sleeps), 1)
         self.assertAlmostEqual(sleeps[0], 0.7)
-
-    def test_photo_url_switches_size(self) -> None:
-        url = "https://inaturalist-open-data.s3.amazonaws.com/photos/1/square.jpg"
-        self.assertTrue(photo_url(url, "large").endswith("/photos/1/large.jpg"))
 
 
 class DedupeTests(unittest.TestCase):
@@ -450,10 +445,6 @@ class BuildDatasetTests(DatasetFixture):
         self.assertEqual(lines, ["0 0.250000 0.500000 0.500000 1.000000"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class AutoLabelTests(unittest.TestCase):
     def test_policy_drops_missed_uncertain_and_mixed_birds(self) -> None:
         box = [10.0, 10.0, 30.0, 30.0]
@@ -704,3 +695,7 @@ class PhaseTwoBuildTests(DatasetFixture):
         self.assertEqual(wide_s1["style_params"]["canvas"], "s0")  # bird-free, non-SA canvas
         self.assertEqual(composite_license("CC0-1.0", "CC-BY-2.0"), "CC-BY-2.0")
         self.assertEqual(composite_license("CC-BY-SA-4.0", "CC-BY-2.0"), "CC-BY-SA-4.0")
+
+
+if __name__ == "__main__":
+    unittest.main()

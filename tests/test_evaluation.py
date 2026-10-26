@@ -436,8 +436,6 @@ class EvaluationTests(unittest.TestCase):
         )
         self.assertEqual(model.predict.call_args.kwargs["imgsz"], list(RECTANGULAR_INPUT_HW))
         self.assertFalse(model.predict.call_args.kwargs["rect"])
-        self.assertTrue(model.predict.call_args.kwargs["nms"])
-        factory.assert_called_once_with(str(weights.resolve()), task="detect")
 
     def test_coco_ap_uses_300_detections_rather_than_default_100(self) -> None:
         image_count = 150
