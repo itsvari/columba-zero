@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import math
 import time
 from collections import deque
@@ -38,6 +39,11 @@ FLOW_MINIMUM_POINTS = 6
 FLOW_FORWARD_BACKWARD_ERROR_PX = 1.5
 FLOW_INLIER_DISTANCE_PX = 2.0
 FLOW_MASK_MARGIN_PX = 5
+
+
+def prepare_motion_tracking() -> None:
+    importlib.import_module("cv2")
+    importlib.import_module("scipy.optimize")
 
 
 def _measurement(detection: Detection) -> Coordinates:

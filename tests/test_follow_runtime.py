@@ -200,6 +200,24 @@ class FollowRuntimeTests(unittest.TestCase):
         self.assertEqual(detector_model.confidence, ACQUISITION_CONFIDENCE)
         self.assertNotIn("target", next(record for record in records if record["event"] == "frame"))
 
+    def test_tracker_initialisation_failure_prevents_starting_the_mount(self) -> None:
+        configuration = self.configuration()
+        configuration = replace(
+            configuration, pan_tilt=replace(configuration.pan_tilt, mode="hardware")
+        )
+        source = ScriptedSource([frame_packet(0)])
+        with (
+            patch(
+                "app.pipeline.MotionTracker", side_effect=ImportError("tracking dependency failed")
+            ),
+            patch("app.main.FollowSession.start") as start_mount,
+        ):
+            status, records, _ = self.run_script(configuration, source, {}, replay=False)
+        start_mount.assert_not_called()
+        self.assertEqual(status, 1)
+        self.assertTrue(source.closed)
+        self.assertIn("tracking dependency failed", str(records[-1]["error"]))
+
     def test_cancellation_during_camera_start_prevents_driver_construction(self) -> None:
         configuration = self.configuration()
         configuration = replace(

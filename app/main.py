@@ -20,6 +20,7 @@ from .config import AppConfig, CameraConfig, ConfigError, ImageSize, ModelConfig
 from .demo_recording import FrameRecorder, RecordingStatus, export_recording
 from .detector import DetectorError, FrameDetector, UltralyticsDetector, load_model_info
 from .json_data import JsonValue
+from .motion_tracking import prepare_motion_tracking
 from .output import RunOutput, health_snapshot
 from .pan_tilt_control import FollowSession
 from .pipeline import (
@@ -379,6 +380,8 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             timestamp_semantics="Unix seconds at frame delivery; replay is not source time",
         )
         output.start()
+        if config.follow.enabled:
+            prepare_motion_tracking()
         if options.reaction_test is not None:
             reaction = ReactionTest(
                 options.reaction_test,
@@ -427,8 +430,6 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             if preview.address is not None:
                 host, port = preview.address
                 print(f"Browser preview: http://{host}:{port}", flush=True)
-        if follow_session is not None:
-            follow_session.start()
         processor = FrameProcessor(
             config,
             source,
@@ -447,6 +448,8 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
             trigger_classes=trigger_classes,
             publisher=preview,
         )
+        if follow_session is not None:
+            follow_session.start()
         log_writer = LogWriter(
             output,
             queue,
