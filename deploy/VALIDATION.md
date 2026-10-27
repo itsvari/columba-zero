@@ -174,6 +174,37 @@ directory and found no tests; the corrected invocation executed the detection
 test successfully. Full Pi mypy remains subject to the previously documented
 environment differences.
 
+### Stricter observation freshness, experimental
+
+A further complete tuning sequence used a 190 ms observation timeout instead of
+250 ms, with 2 FPS outputs and passive OpenMP waiting. The controller holds when
+observations are older than that limit. This changes the control policy; it is
+not an inference speed improvement.
+
+The run issued 1,086 sensor-timed tracking moves. Command age was 188.2 ms at p95
+and 191.984 ms maximum, with a maximum tick interval of 55.310 ms. Hot throughput
+after 120 seconds was 11.344 FPS, with median 84.8°C and peak 87.55°C. There were
+no controller faults or log drops. Controls responded after the playlist, and
+both channels read FULL_OFF after shutdown. Export was cancelled during stopping;
+the run correctly reports a recording error and retains all 498 source images.
+Do not report this run as a clean end-to-end recording pass.
+An offline Pi recovery export subsequently succeeded at 248.649 s against
+248.648281 s expected; this recovery does not erase the original run error.
+
+The cost is more stale holds: 1,107 ticks were stale and 2,618 were tracking,
+compared with 174 stale and 3,535 tracking in the 250 ms passive-wait run. These
+counts are diagnostic controller states, not independently labelled visible time.
+Independent centring and response quality must pass before adopting this policy
+or starting the one-hour acceptance campaign.
+
+Direct local photograph-feature matching also located both pigeon photographs
+and the confuser in sampled camera frames without detector or marker inputs.
+This remains exploratory. The source crops cut through bird silhouettes, and
+photograph centres can differ from visible-bird bounding-box centres. Define and
+review the actual visible target centre before constructing acceptance labels;
+do not substitute the photograph rectangle centre. The original full bird's
+unseen extent cannot be recovered from a clipped source crop.
+
 ### Outstanding gates
 
 Validate correction signs, settling, all movement
@@ -187,7 +218,9 @@ one-hour acceptance is claimed yet. The fixed-zone feature remains deferred.
 Local evidence is under `outputs/validation/monitor-20261027/`. Device evidence is
 under `outputs/setup/`, `outputs/monitor-hardware-smoke/`,
 `outputs/monitor-hardware-100us/`, `outputs/monitor-hardware-startup-fixed/`,
-`outputs/monitor-axis-calibration/` and `outputs/monitor-thread-probe/`. Raw media,
+`outputs/monitor-axis-calibration/`, `outputs/monitor-hardware-clean-campaign/`,
+`outputs/monitor-hardware-clean-2fps/`, `outputs/monitor-hardware-clean-passive/`,
+`outputs/monitor-hardware-fresh-190ms/` and `outputs/monitor-thread-probe/`. Raw media,
 room images and calibration remain outside Git.
 
 ## Pi bring-up, 27 October 2026, in progress
