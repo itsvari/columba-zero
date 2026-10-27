@@ -260,6 +260,7 @@ class PreviewConfig:
     record_max_bytes: int = 536870912
     record_min_free_bytes: int = 268435456
     export_timeout_s: float = 900.0
+    record_unannotated: bool = False
 
 
 @dataclass(frozen=True)
@@ -455,6 +456,7 @@ class AppConfig:
                     "height_px",
                     "jpeg_quality",
                     "record",
+                    "record_unannotated",
                     "record_max_duration_s",
                     "record_max_bytes",
                     "record_min_free_bytes",
@@ -616,6 +618,10 @@ class AppConfig:
                     maximum=PREVIEW_QUALITY_MAX,
                 ),
                 record=boolean(preview.get("record", defaults.preview.record), "preview.record"),
+                record_unannotated=boolean(
+                    preview.get("record_unannotated", defaults.preview.record_unannotated),
+                    "preview.record_unannotated",
+                ),
                 record_max_duration_s=finite_positive_number(
                     preview.get("record_max_duration_s", defaults.preview.record_max_duration_s),
                     "preview.record_max_duration_s",
@@ -764,6 +770,7 @@ class AppConfig:
             PREVIEW_QUALITY_MAX,
         )
         boolean(preview.record, "preview.record")
+        boolean(preview.record_unannotated, "preview.record_unannotated")
         finite_positive_number(preview.record_max_duration_s, "preview.record_max_duration_s")
         positive_integer(preview.record_max_bytes, "preview.record_max_bytes")
         non_negative_integer(preview.record_min_free_bytes, "preview.record_min_free_bytes")

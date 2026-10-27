@@ -574,10 +574,14 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
                     flush=True,
                 )
                 export_in_progress = True
+                export_filename = (
+                    "unannotated.mp4" if config.preview.record_unannotated else "annotated.mp4"
+                )
+                export_path = output.directory / export_filename
                 try:
                     export = export_recording(
                         output.directory / "demo",
-                        output.directory / "annotated.mp4",
+                        export_path,
                         timeout_s=config.preview.export_timeout_s,
                         default_frame_duration_s=final_frame_duration_s,
                         max_bytes=config.preview.record_max_bytes,
@@ -602,7 +606,7 @@ def run(arguments: argparse.Namespace | CommandOptions) -> int:
                             "python",
                             "tools/export_demo.py",
                             str(output.directory / "demo"),
-                            str(output.directory / "annotated.mp4"),
+                            str(export_path),
                             "--frame-duration-s",
                             str(final_frame_duration_s),
                             "--timeout-s",

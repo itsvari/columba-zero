@@ -2,7 +2,8 @@
 
 The detection loop only swaps one latest `RenderJob` under a short lock. A daemon
 encoder thread annotates, letterboxes and JPEG-encodes that job at a capped rate,
-then shares the resulting bytes with HTTP clients and the recorder. Neither slow
+then shares the resulting bytes with HTTP clients and the recorder. Unannotated
+evidence recording uses a separate JPEG at the same capped rate. Neither slow
 browsers nor slow storage can reach back into detection or control.
 """
 
@@ -16,7 +17,7 @@ import socket
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, TypeAlias, cast, get_args
@@ -631,8 +632,11 @@ class PreviewService:
         )
         fitted = letterbox(annotated, preview.width_px, preview.height_px)
         jpeg = encode_jpeg(fitted, preview.jpeg_quality)
-        encode_ms = (time.monotonic() - started_at_s) * MILLISECONDS_PER_SECOND
         frame = self._build_frame(job, picked_at_s, jpeg, controller)
+        recording_frame: EncodedFrame | None = frame
+        if preview.record_unannotated and self._recorder_usable:
+            recording_frame = self._unannotated_frame(job, frame)
+        encode_ms = (time.monotonic() - started_at_s) * MILLISECONDS_PER_SECOND
         self._frames.publish(
             frame,
             delivered_at_s=(
@@ -642,7 +646,22 @@ class PreviewService:
         with self._job_condition:
             self._encoded_frames += 1
             self._last_encode_ms = encode_ms
-        self._offer_to_recorder(frame)
+        if recording_frame is not None:
+            self._offer_to_recorder(recording_frame)
+
+    def _unannotated_frame(self, job: RenderJob, frame: EncodedFrame) -> EncodedFrame | None:
+        preview = self._config.preview
+        try:
+            image = letterbox(job.frame, preview.width_px, preview.height_px)
+            return replace(
+                frame,
+                jpeg=encode_jpeg(image, preview.jpeg_quality),
+                metadata=MappingProxyType({**frame.metadata, "annotations_included": False}),
+            )
+        except Exception as error:
+            self._recorder_usable = False
+            self._record_failure(f"unannotated recording encode failed: {error}")
+            return None
 
     def _build_frame(
         self, job: RenderJob, picked_at_s: float, jpeg: bytes, controller: ControllerStatus | None
@@ -654,6 +673,11 @@ class PreviewService:
         else:
             monotonic_s, timebase = picked_at_s, TIMEBASES["processing_monotonic"]
         metadata: dict[str, JsonValue] = {
+            "annotations_included": True,
+            "source_width_px": job.frame.shape[1],
+            "source_height_px": job.frame.shape[0],
+            "recording_width_px": self._config.preview.width_px,
+            "recording_height_px": self._config.preview.height_px,
             "detections": cast(
                 list[JsonValue], [detection.as_dict() for detection in job.detections]
             ),
