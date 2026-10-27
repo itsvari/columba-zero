@@ -49,8 +49,10 @@ class Label:
 class CameraCheck:
     image: str
     asset: str
+    image_sha256: str
     corners: Points
     maximum_error_px: float
+    corner_allowance_px: float
     reviewer: str
 
 
@@ -138,6 +140,15 @@ def load_checks(path: Path | None) -> dict[tuple[str, str], CameraCheck]:
         asset = text_value(item.get("asset_id"), "asset_id")
         reviewer = text_value(item.get("reviewer"), "reviewer")
         limit = number(item.get("maximum_error_px"), "maximum camera check error")
+        image_sha256 = text_value(item.get("image_sha256"), "camera check image_sha256")
+        if len(image_sha256) != 64 or any(
+            character not in "0123456789abcdef" for character in image_sha256
+        ):
+            raise ValueError("camera check image_sha256 must be a lowercase SHA-256 digest")
+        allowance_value = item.get("corner_allowance_px", 0)
+        allowance = number(allowance_value, "camera corner allowance")
+        if allowance < 0:
+            raise ValueError("camera corner allowance must be nonnegative")
         raw = item.get("corners_camera_px")
         if not isinstance(raw, list) or len(raw) != 4 or limit <= 0:
             raise ValueError("camera check requires four corners and a positive limit")
@@ -147,7 +158,7 @@ def load_checks(path: Path | None) -> dict[tuple[str, str], CameraCheck]:
         key = (image, asset)
         if key in checks:
             raise ValueError("duplicate camera check")
-        checks[key] = CameraCheck(image, asset, corners, limit, reviewer)
+        checks[key] = CameraCheck(image, asset, image_sha256, corners, limit, allowance, reviewer)
     return checks
 
 
@@ -299,22 +310,46 @@ def feature_matches(label: Label, image: Image) -> tuple[Points, Points]:
     return source, target.astype(numpy.float32)
 
 
-def apply_camera_check(result: dict[str, JsonValue], check: CameraCheck) -> dict[str, JsonValue]:
+def camera_check_precondition(
+    check: CameraCheck, image_sha256: str, registration_allowance_px: float
+) -> str | None:
+    if check.image_sha256 != image_sha256:
+        return "camera check image SHA-256 mismatch"
+    if check.maximum_error_px > registration_allowance_px:
+        return "camera check threshold exceeds registration allowance"
+    return None
+
+
+def apply_camera_check(
+    result: dict[str, JsonValue],
+    check: CameraCheck,
+    image_sha256: str,
+    registration_allowance_px: float,
+) -> dict[str, JsonValue]:
+    reason = camera_check_precondition(check, image_sha256, registration_allowance_px)
+    if reason is not None:
+        return {**result, "status": "rejected", "reason": reason}
     if result["status"] != "candidate":
         return result
     corners = numpy.asarray(result["photograph_corners_camera_px"], dtype=numpy.float32)
-    error = float(numpy.linalg.norm(corners - check.corners, axis=1).max())
+    difference = numpy.abs(corners - check.corners)
+    error = float(numpy.max(numpy.linalg.norm(difference, axis=1)))
+    worst_case = float(numpy.max(numpy.linalg.norm(difference + check.corner_allowance_px, axis=1)))
     return {
         **result,
-        "status": "camera_checked" if error <= check.maximum_error_px else "rejected",
+        "status": "camera_checked" if worst_case <= check.maximum_error_px else "rejected",
         "camera_check": {
             "reviewer": check.reviewer,
+            "image_sha256": check.image_sha256,
             "maximum_error_px": error,
+            "raw_maximum_error_px": error,
+            "worst_case_maximum_error_px": worst_case,
+            "corner_allowance_px": check.corner_allowance_px,
             "allowed_error_px": check.maximum_error_px,
         },
         **(
             {"reason": "independent camera corner check failed"}
-            if error > check.maximum_error_px
+            if worst_case > check.maximum_error_px
             else {}
         ),
     }
@@ -356,16 +391,27 @@ def main() -> int:
             image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
             if image is None:
                 raise ValueError(f"cannot read {name}")
+            image_sha256 = digest(path)
             for label in labels:
-                source, target = feature_matches(label, cast(Image, image))
-                outcome = evaluate_geometry(source, target, label, image.shape)
                 check = checks.get((name, label.photograph.asset_id))
-                if check is not None:
-                    outcome = apply_camera_check(outcome, check)
+                reason = (
+                    camera_check_precondition(check, image_sha256, label.registration_allowance_px)
+                    if check
+                    else None
+                )
+                if reason is not None:
+                    outcome: dict[str, JsonValue] = {"status": "rejected", "reason": reason}
+                else:
+                    source, target = feature_matches(label, cast(Image, image))
+                    outcome = evaluate_geometry(source, target, label, image.shape)
+                    if check is not None:
+                        outcome = apply_camera_check(
+                            outcome, check, image_sha256, label.registration_allowance_px
+                        )
                 results.append(
                     {
                         "image": name,
-                        "image_sha256": digest(path),
+                        "image_sha256": image_sha256,
                         "asset_id": label.photograph.asset_id,
                         "source_sha256": digest(Path(label.photograph.source)),
                         "source_reviewer": label.reviewer,

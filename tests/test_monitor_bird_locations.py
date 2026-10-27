@@ -51,8 +51,8 @@ def test_held_out_checks_are_not_used_for_fitting() -> None:
     source, target = points()
     original = evaluate_geometry(source, target, label(), (400, 500))
     corners = numpy.asarray(original["photograph_corners_camera_px"], dtype=numpy.float32)
-    check = CameraCheck("frame.jpg", PHOTOGRAPHS[0].asset_id, corners + 10, 1, "test")
-    checked = apply_camera_check(original, check)
+    check = CameraCheck("frame.jpg", PHOTOGRAPHS[0].asset_id, "a" * 64, corners + 10, 1, 0, "test")
+    checked = apply_camera_check(original, check, "a" * 64, 2)
     assert checked["status"] == "rejected"
     assert checked["source_to_camera_homography"] == original["source_to_camera_homography"]
     target[1::2] += 10
@@ -162,3 +162,109 @@ def test_recorded_features_with_test_only_labels(
     fixture = Label(PHOTOGRAPHS[asset_index], bounds, 10, 2, "test fixture; not reviewed")
     source, target = feature_matches(fixture, cast(NDArray[numpy.uint8], image))
     assert evaluate_geometry(source, target, fixture, image.shape)["status"] == "candidate"
+
+
+def test_camera_hash_budget_and_corner_allowance() -> None:
+    source, target = points()
+    original = evaluate_geometry(source, target, label(), (400, 500))
+    corners = numpy.asarray(original["photograph_corners_camera_px"], dtype=numpy.float32)
+    image_sha256 = "a" * 64
+    check = CameraCheck(
+        "frame.jpg", PHOTOGRAPHS[0].asset_id, image_sha256, corners + 1, 2, 1, "independent review"
+    )
+    wrong_hash = apply_camera_check(original, check, "b" * 64, 2)
+    assert wrong_hash["status"] == "rejected"
+    assert wrong_hash["reason"] == "camera check image SHA-256 mismatch"
+    over_budget = apply_camera_check(original, check, image_sha256, 1)
+    assert over_budget["status"] == "rejected"
+    assert over_budget["reason"] == "camera check threshold exceeds registration allowance"
+    result = apply_camera_check(original, check, image_sha256, 2)
+    assert result["status"] == "rejected"
+    evidence = result["camera_check"]
+    assert isinstance(evidence, dict)
+    assert evidence["raw_maximum_error_px"] == pytest.approx(2**0.5)
+    assert evidence["worst_case_maximum_error_px"] == pytest.approx(8**0.5)
+    assert evidence["corner_allowance_px"] == 1
+    passing = CameraCheck(
+        "frame.jpg", PHOTOGRAPHS[0].asset_id, image_sha256, corners + 1, 3, 1, "independent review"
+    )
+    assert apply_camera_check(original, passing, image_sha256, 3)["status"] == "camera_checked"
+
+
+def test_missing_hash_and_bad_annotation_allowance_are_rejected(tmp_path: Path) -> None:
+    from tools.locate_monitor_birds import load_checks
+
+    entry: dict[str, object] = {
+        "image": "frame.jpg",
+        "asset_id": PHOTOGRAPHS[0].asset_id,
+        "corners_camera_px": [[0, 0], [1, 0], [1, 1], [0, 1]],
+        "maximum_error_px": 2,
+        "reviewer": "test",
+    }
+    path = tmp_path / "checks.json"
+    path.write_text(json.dumps({"checks": [entry]}))
+    with pytest.raises(ValueError, match="image_sha256"):
+        load_checks(path)
+    entry.update({"image_sha256": "a" * 64, "corner_allowance_px": -1})
+    path.write_text(json.dumps({"checks": [entry]}))
+    with pytest.raises(ValueError, match="nonnegative"):
+        load_checks(path)
+    del entry["corner_allowance_px"]
+    path.write_text(json.dumps({"checks": [entry]}))
+    assert load_checks(path)[("frame.jpg", PHOTOGRAPHS[0].asset_id)].corner_allowance_px == 0
+
+
+def test_cli_rejects_mismatched_image_before_feature_matching(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    from tools import locate_monitor_birds
+
+    image = tmp_path / "frame.jpg"
+    assert cv2.imwrite(str(image), numpy.full((30, 30), 128, dtype=numpy.uint8))
+    index = tmp_path / "index.jsonl"
+    index.write_text(json.dumps({"filename": image.name}) + "\n")
+    labels = tmp_path / "labels.json"
+    write_label(labels)
+    checks = tmp_path / "checks.json"
+    checks.write_text(
+        json.dumps(
+            {
+                "checks": [
+                    {
+                        "image": image.name,
+                        "image_sha256": "a" * 64,
+                        "asset_id": PHOTOGRAPHS[0].asset_id,
+                        "corners_camera_px": [[0, 0], [1, 0], [1, 1], [0, 1]],
+                        "maximum_error_px": 2,
+                        "reviewer": "test",
+                    }
+                ]
+            }
+        )
+    )
+    output = tmp_path / "result"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "locate_monitor_birds",
+            str(index),
+            "--source-labels",
+            str(labels),
+            "--camera-checks",
+            str(checks),
+            "--output",
+            str(output),
+        ],
+    )
+
+    def fail_if_called(label: Label, image: NDArray[numpy.uint8]) -> None:
+        raise AssertionError("feature matching should not run for mismatched camera check")
+
+    monkeypatch.setattr(locate_monitor_birds, "feature_matches", fail_if_called)
+    assert locate_monitor_birds.main() == 0
+    results = json.loads((output / "locations.json").read_text())["results"]
+    assert results[0]["status"] == "rejected"
+    assert results[0]["reason"] == "camera check image SHA-256 mismatch"
