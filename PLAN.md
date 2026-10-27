@@ -30,8 +30,15 @@ Monitor tooling and its usage are in [docs/monitor-stimulus.md](docs/monitor-sti
 Measurements and outstanding gates are in [deploy/VALIDATION.md](deploy/VALIDATION.md).
 Source revision `6fcf7e4` prepares tracking dependencies before camera and mount
 startup. Its live repeat recorded a maximum controller interval of 52.533 ms,
-158 timed tracking moves, and 193.9 ms sensor command age at p95. Independent
-centring, the broader scene campaign and endurance remain open.
+158 timed tracking moves, and 193.9 ms sensor command age at p95. These short-run
+figures do not represent sustained timing: three full 201-second tuning runs
+recorded 221.3, 221.8 and 221.6 ms p95 command age, failing the 200 ms latency
+goal. Their hot throughput was approximately 11.2 FPS at median 84.8°C with active
+throttling and peaks up to 87.55°C. A 190 ms observation-timeout experiment capped
+move-age statistics while causing frequent stop-start corrections; it is not
+adopted. The user confirmed that 200 ms remains a p95 latency goal and smooth
+control must be preserved. Independent centring, faults, the four output modes
+and endurance remain open.
 
 Use this plan to implement the demonstration on the current application architecture,
 reusing the useful hardware and controller work from

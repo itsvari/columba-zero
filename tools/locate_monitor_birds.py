@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import cast
 
 import cv2
-import numpy as np
+import numpy
 from numpy.typing import NDArray
 
 if __package__ is None:
@@ -22,9 +22,9 @@ if __package__ is None:
 from app.json_data import JsonValue
 from tools.monitor_stimulus import PHOTOGRAPHS, Photograph
 
-Image = NDArray[np.uint8]
-Points = NDArray[np.float32]
-Matrix = NDArray[np.float64]
+Image = NDArray[numpy.uint8]
+Points = NDArray[numpy.float32]
+Matrix = NDArray[numpy.float64]
 MINIMUM_MATCHES = 16
 MINIMUM_INLIERS = 8
 MINIMUM_HELD_OUT = 8
@@ -141,7 +141,9 @@ def load_checks(path: Path | None) -> dict[tuple[str, str], CameraCheck]:
         raw = item.get("corners_camera_px")
         if not isinstance(raw, list) or len(raw) != 4 or limit <= 0:
             raise ValueError("camera check requires four corners and a positive limit")
-        corners = np.array([numbers(point, 2, "camera corner") for point in raw], dtype=np.float32)
+        corners = numpy.array(
+            [numbers(point, 2, "camera corner") for point in raw], dtype=numpy.float32
+        )
         key = (image, asset)
         if key in checks:
             raise ValueError("duplicate camera check")
@@ -162,18 +164,18 @@ def evaluate_geometry(
             "reason": "insufficient unique matches",
             "matches": len(source),
         }
-    fit = np.arange(len(source)) % 2 == 0
+    fit = numpy.arange(len(source)) % 2 == 0
     matrix, mask = cv2.findHomography(source[fit], target[fit], cv2.RANSAC, MAXIMUM_ERROR_PX)
     if matrix is None or mask is None:
         return {"status": "rejected", "reason": "homography fit failed", "matches": len(source)}
     matrix = cast(Matrix, matrix)
     fit_points = source[fit][mask.ravel().astype(bool)]
     inliers = len(fit_points)
-    errors = np.linalg.norm(project(matrix, source[~fit]) - target[~fit], axis=1)
+    errors = numpy.linalg.norm(project(matrix, source[~fit]) - target[~fit], axis=1)
     held_count = len(errors)
-    held_fraction = float(np.mean(errors <= MAXIMUM_ERROR_PX))
-    median_error = float(np.median(errors))
-    if inliers < MINIMUM_INLIERS or not np.isfinite(matrix).all():
+    held_fraction = float(numpy.mean(errors <= MAXIMUM_ERROR_PX))
+    median_error = float(numpy.median(errors))
+    if inliers < MINIMUM_INLIERS or not numpy.isfinite(matrix).all():
         return {
             "status": "rejected",
             "reason": "insufficient fit inliers",
@@ -184,25 +186,25 @@ def evaluate_geometry(
     crop = label.photograph.crop
     hull_fraction = float(cv2.contourArea(hull) / (crop.width_px * crop.height_px))
     left, top, right, bottom = label.bounds
-    centre = np.array([[(left + right) / 2, (top + bottom) / 2]], dtype=np.float32)
+    centre = numpy.array([[(left + right) / 2, (top + bottom) / 2]], dtype=numpy.float32)
     inside_hull = cv2.pointPolygonTest(hull, tuple(float(value) for value in centre[0]), False) >= 0
-    corners = np.array(
+    corners = numpy.array(
         [[0, 0], [crop.width_px, 0], [crop.width_px, crop.height_px], [0, crop.height_px]],
-        dtype=np.float32,
+        dtype=numpy.float32,
     )
     projected = project(matrix, corners)
     height, width = image_shape[:2]
-    sides = np.linalg.norm(projected - np.roll(projected, -1, axis=0), axis=1)
+    sides = numpy.linalg.norm(projected - numpy.roll(projected, -1, axis=0), axis=1)
     valid_rect = (
-        np.isfinite(projected).all()
+        numpy.isfinite(projected).all()
         and cv2.isContourConvex(projected.reshape(-1, 1, 2))
         and cv2.contourArea(projected, oriented=True) > 100
         and min(sides) >= 10
         and max(sides) <= 4 * min(sides)
-        and np.all(projected[:, 0] >= 0)
-        and np.all(projected[:, 0] < width)
-        and np.all(projected[:, 1] >= 0)
-        and np.all(projected[:, 1] < height)
+        and numpy.all(projected[:, 0] >= 0)
+        and numpy.all(projected[:, 0] < width)
+        and numpy.all(projected[:, 1] >= 0)
+        and numpy.all(projected[:, 1] < height)
     )
     metrics: dict[str, JsonValue] = {
         "matches": len(source),
@@ -224,17 +226,17 @@ def evaluate_geometry(
         or not valid_rect
     ):
         return {"status": "rejected", "reason": "geometry or quality check failed", **metrics}
-    shifted = np.array(
+    shifted = numpy.array(
         [
             [centre[0, 0] + x, centre[0, 1] + y]
             for x in (-label.edge_allowance_px, label.edge_allowance_px)
             for y in (-label.edge_allowance_px, label.edge_allowance_px)
         ],
-        dtype=np.float32,
+        dtype=numpy.float32,
     )
     mapped_centre = project(matrix, centre)[0]
     mapped_shifted = project(matrix, shifted)
-    if not np.isfinite(mapped_shifted).all() or not np.isfinite(mapped_centre).all():
+    if not numpy.isfinite(mapped_shifted).all() or not numpy.isfinite(mapped_centre).all():
         return {"status": "rejected", "reason": "non-finite uncertainty projection", **metrics}
     lower = mapped_shifted.min(axis=0) - label.registration_allowance_px
     upper = mapped_shifted.max(axis=0) + label.registration_allowance_px
@@ -273,7 +275,7 @@ def feature_matches(label: Label, image: Image) -> tuple[Points, Points]:
     )
     camera_features, camera_descriptors = detector.detectAndCompute(enlarged, None)
     if source_descriptors is None or camera_descriptors is None or len(camera_descriptors) < 2:
-        return np.empty((0, 2), dtype=np.float32), np.empty((0, 2), dtype=np.float32)
+        return numpy.empty((0, 2), dtype=numpy.float32), numpy.empty((0, 2), dtype=numpy.float32)
     pairs = cv2.BFMatcher().knnMatch(source_descriptors, camera_descriptors, k=2)
     matches = sorted(
         (first for first, second in pairs if first.distance < RATIO_THRESHOLD * second.distance),
@@ -285,23 +287,23 @@ def feature_matches(label: Label, image: Image) -> tuple[Points, Points]:
         if match.trainIdx not in used:
             unique.append(match)
             used.add(match.trainIdx)
-    source = np.array(
-        [source_features[match.queryIdx].pt for match in unique], dtype=np.float32
+    source = numpy.array(
+        [source_features[match.queryIdx].pt for match in unique], dtype=numpy.float32
     ).reshape(-1, 2)
     target = (
-        np.array(
-            [camera_features[match.trainIdx].pt for match in unique], dtype=np.float32
+        numpy.array(
+            [camera_features[match.trainIdx].pt for match in unique], dtype=numpy.float32
         ).reshape(-1, 2)
         / CAMERA_SCALE
     )
-    return source, target.astype(np.float32)
+    return source, target.astype(numpy.float32)
 
 
 def apply_camera_check(result: dict[str, JsonValue], check: CameraCheck) -> dict[str, JsonValue]:
     if result["status"] != "candidate":
         return result
-    corners = np.asarray(result["photograph_corners_camera_px"], dtype=np.float32)
-    error = float(np.linalg.norm(corners - check.corners, axis=1).max())
+    corners = numpy.asarray(result["photograph_corners_camera_px"], dtype=numpy.float32)
+    error = float(numpy.linalg.norm(corners - check.corners, axis=1).max())
     return {
         **result,
         "status": "camera_checked" if error <= check.maximum_error_px else "rejected",

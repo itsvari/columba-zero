@@ -142,8 +142,11 @@ bounded deadline had stopped the service; it provides no control-success evidenc
 
 The optical decoder now searches a declared ±2-camera-pixel translation grid
 without expected-payload repair, retaining contrast, cell-margin and CRC checks
-and rejecting competing payloads. Three of eleven individually reviewed sample
-images from the 5 FPS run passed optical association and held-out curved-screen
+and rejecting competing payloads. An agent visually reviewed the full marker
+crops and positions in two contact sheets for eleven preselected automatic
+centroid sets. The source coordinates were kept unchanged; the user did not
+confirm these markers, and no per-marker click measurements were made. Three of
+those sample images passed optical association and held-out curved-screen
 checks within the predeclared three-pixel residual limit. Five remained unvalidated
 for coverage and three had no unique optical match. These sampled checks do not
 establish campaign-wide truth or centring acceptance. Per-image reports are in
@@ -174,18 +177,22 @@ directory and found no tests; the corrected invocation executed the detection
 test successfully. Full Pi mypy remains subject to the previously documented
 environment differences.
 
-### Stricter observation freshness, experimental
+### Stricter observation freshness, not adopted
 
 A further complete tuning sequence used a 190 ms observation timeout instead of
 250 ms, with 2 FPS outputs and passive OpenMP waiting. The controller holds when
 observations are older than that limit. This changes the control policy; it is
-not an inference speed improvement.
+not an inference speed improvement. Because age is recorded only on move ticks,
+and moves require observations younger than the timeout, this caps the reported
+move-age distribution by design. It does not pass the original latency goal.
 
 The run issued 1,086 sensor-timed tracking moves. Command age was 188.2 ms at p95
 and 191.984 ms maximum, with a maximum tick interval of 55.310 ms. Hot throughput
 after 120 seconds was 11.344 FPS, with median 84.8°C and peak 87.55°C. There were
 no controller faults or log drops. Controls responded after the playlist, and
-both channels read FULL_OFF after shutdown. Export was cancelled during stopping;
+both channels read FULL_OFF after shutdown. The outer 250-second timeout sent
+TERM and export began; the agent then sent another TERM at 11:32:32.197Z. A second
+signal during export cancels it by design. Consequently,
 the run correctly reports a recording error and retains all 498 source images.
 Do not report this run as a clean end-to-end recording pass.
 An offline Pi recovery export subsequently succeeded at 248.649 s against
@@ -194,8 +201,14 @@ An offline Pi recovery export subsequently succeeded at 248.649 s against
 The cost is more stale holds: 1,107 ticks were stale and 2,618 were tracking,
 compared with 174 stale and 3,535 tracking in the 250 ms passive-wait run. These
 counts are diagnostic controller states, not independently labelled visible time.
-Independent centring and response quality must pass before adopting this policy
-or starting the one-hour acceptance campaign.
+Across tracking and stale ticks, real observation-age p95 was 243.0 ms at the
+250 ms baseline and 233.9 ms at 190 ms. There were 889 tracking-to-stale transitions
+at 190 ms versus eight at 250 ms; 829 stale spells lasted one tick. Stale ticks
+reset commanded speed to zero. Detector-based diagnostics also showed worse
+centring and lower commanded speed, without establishing independent truth.
+The 190 ms policy is rejected. The user confirmed that 200 ms is a p95 latency
+goal and smooth control must be preserved. Reduce actual delay and establish
+independent centring before starting the one-hour acceptance campaign.
 
 Direct local photograph-feature matching also located both pigeon photographs
 and the confuser in sampled camera frames without detector or marker inputs.

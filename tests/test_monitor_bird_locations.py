@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import cast
 
 import cv2
-import numpy as np
+import numpy
 import pytest
 from numpy.typing import NDArray
 
@@ -25,11 +25,14 @@ def label(bounds: tuple[float, float, float, float] = (50, 50, 150, 150), edge: 
     return Label(PHOTOGRAPHS[0], bounds, edge, 2, "synthetic test")
 
 
-def points() -> tuple[NDArray[np.float32], NDArray[np.float32]]:
-    coords = np.array(
-        [(x, y) for y in (20, 60, 100, 140, 180) for x in (20, 60, 100, 140, 180)], dtype=np.float32
+def points() -> tuple[NDArray[numpy.float32], NDArray[numpy.float32]]:
+    coords = numpy.array(
+        [(x, y) for y in (20, 60, 100, 140, 180) for x in (20, 60, 100, 140, 180)],
+        dtype=numpy.float32,
     )
-    return coords, (coords * 0.5 + np.array([100, 80], dtype=np.float32)).astype(np.float32)
+    return coords, (coords * 0.5 + numpy.array([100, 80], dtype=numpy.float32)).astype(
+        numpy.float32
+    )
 
 
 def test_geometry_bbox_and_uncertainty_scale() -> None:
@@ -47,7 +50,7 @@ def test_geometry_bbox_and_uncertainty_scale() -> None:
 def test_held_out_checks_are_not_used_for_fitting() -> None:
     source, target = points()
     original = evaluate_geometry(source, target, label(), (400, 500))
-    corners = np.asarray(original["photograph_corners_camera_px"], dtype=np.float32)
+    corners = numpy.asarray(original["photograph_corners_camera_px"], dtype=numpy.float32)
     check = CameraCheck("frame.jpg", PHOTOGRAPHS[0].asset_id, corners + 10, 1, "test")
     checked = apply_camera_check(original, check)
     assert checked["status"] == "rejected"
@@ -99,14 +102,14 @@ def test_label_binding_and_review_are_required(tmp_path: Path, changes: dict[str
 
 
 def test_low_texture_and_wrong_photo_are_rejected() -> None:
-    empty = np.full((450, 800), 120, dtype=np.uint8)
+    empty = numpy.full((450, 800), 120, dtype=numpy.uint8)
     source, target = feature_matches(label(), empty)
     assert evaluate_geometry(source, target, label(), empty.shape)["status"] == "rejected"
     photo = PHOTOGRAPHS[-1]
     image = cv2.imread(photo.source, cv2.IMREAD_GRAYSCALE)
     assert image is not None
     crop = photo.crop
-    canvas = np.full((450, 800), 220, dtype=np.uint8)
+    canvas = numpy.full((450, 800), 220, dtype=numpy.uint8)
     canvas[100 : 100 + crop.height_px, 200 : 200 + crop.width_px] = image[
         crop.top_px : crop.top_px + crop.height_px, crop.left_px : crop.left_px + crop.width_px
     ]
@@ -123,7 +126,7 @@ def test_repeated_occluded_or_partial_image_rejected(damage: str) -> None:
     original = source_image[
         crop.top_px : crop.top_px + crop.height_px, crop.left_px : crop.left_px + crop.width_px
     ]
-    canvas = np.full((450, 800), 230, dtype=np.uint8)
+    canvas = numpy.full((450, 800), 230, dtype=numpy.uint8)
     if damage == "partial":
         canvas[100:304, :100] = original[:, 100:200]
     else:
@@ -132,7 +135,7 @@ def test_repeated_occluded_or_partial_image_rejected(damage: str) -> None:
             canvas[100:304, 500:700] = original
         else:
             canvas[100:304, 290:400] = 230
-    source, target = feature_matches(label(), cast(NDArray[np.uint8], canvas))
+    source, target = feature_matches(label(), cast(NDArray[numpy.uint8], canvas))
     assert evaluate_geometry(source, target, label(), canvas.shape)["status"] == "rejected"
 
 
@@ -157,5 +160,5 @@ def test_recorded_features_with_test_only_labels(
     image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     assert image is not None
     fixture = Label(PHOTOGRAPHS[asset_index], bounds, 10, 2, "test fixture; not reviewed")
-    source, target = feature_matches(fixture, cast(NDArray[np.uint8], image))
+    source, target = feature_matches(fixture, cast(NDArray[numpy.uint8], image))
     assert evaluate_geometry(source, target, fixture, image.shape)["status"] == "candidate"
