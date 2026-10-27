@@ -192,7 +192,12 @@ class FollowRuntimeTests(unittest.TestCase):
         configuration = replace(
             configuration, pan_tilt=replace(configuration.pan_tilt, mode="hardware")
         )
-        with patch("app.main.FollowSession", side_effect=AssertionError("session constructed")):
+        with (
+            patch("app.main.FollowSession", side_effect=AssertionError("session constructed")),
+            patch(
+                "app.main.prepare_motion_tracking", side_effect=AssertionError("tracking loaded")
+            ),
+        ):
             status, records, detector_model = self.run_script(
                 configuration, ScriptedSource([frame_packet(0)]), {0: (pigeon(),)}
             )
@@ -217,6 +222,34 @@ class FollowRuntimeTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertTrue(source.closed)
         self.assertIn("tracking dependency failed", str(records[-1]["error"]))
+
+    def test_tracking_dependencies_load_before_capture_and_mount_start(self) -> None:
+        prepared: list[bool] = []
+        source = ScriptedSource(
+            [frame_packet(0)], on_start=lambda: self.assertEqual(prepared, [True])
+        )
+        with (
+            patch("app.main.prepare_motion_tracking", side_effect=lambda: prepared.append(True)),
+            patch("app.main.FollowSession.start") as start_mount,
+        ):
+            status, _, _ = self.run_script(self.configuration(), source, {})
+        self.assertEqual(status, 0)
+        start_mount.assert_called_once()
+        self.assertEqual(prepared, [True])
+
+    def test_tracking_dependency_failure_prevents_camera_and_mount_start(self) -> None:
+        with (
+            patch(
+                "app.main.prepare_motion_tracking", side_effect=ImportError("vision unavailable")
+            ),
+            patch("app.main.FollowSession.start") as start_mount,
+            patch.object(ScriptedSource, "start") as start_camera,
+        ):
+            status, records, _ = self.run_script(self.configuration(), ScriptedSource([]), {})
+        start_mount.assert_not_called()
+        start_camera.assert_not_called()
+        self.assertEqual(status, 1)
+        self.assertIn("vision unavailable", str(records[-1]["error"]))
 
     def test_cancellation_during_camera_start_prevents_driver_construction(self) -> None:
         configuration = self.configuration()
