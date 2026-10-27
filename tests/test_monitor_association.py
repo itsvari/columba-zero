@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from typing import cast
@@ -13,6 +14,8 @@ from app.json_data import JsonValue
 from tools.associate_monitor_frames import camera_matrix, crc64, decode_code, identity_bytes, main
 from tools.monitor_stimulus import build_manifest, manifest_json, render_html
 from tools.register_monitor_frames import MARKER_IDS, project
+
+NODE_AVAILABLE = shutil.which("node") is not None
 
 
 def generated_code(presentation: str, session: str, run: int, render: int) -> bytes:
@@ -97,8 +100,7 @@ def synthetic_capture(
     session = cast(str, selected["optical_session"]) if selected else "0123456789abcdef"
     run = cast(int, selected["run_number"]) if selected else 2
     render = cast(int, selected["render_number"]) if selected else 317
-    code = generated_code(presentation, session, run, render)
-    assert code == identity_bytes(presentation, session, run, render)
+    code = identity_bytes(presentation, session, run, render)
     design = numpy.full((900, 1600, 3), 18, dtype=numpy.uint8)
     cv2.rectangle(design, (160, 180), (1440, 720), (184, 184, 184), -1)
     points: list[JsonValue] = []
@@ -240,7 +242,7 @@ def run_capture(directory: Path, **options: bool) -> tuple[int, dict[str, JsonVa
     return status, cast(dict[str, JsonValue], cast(list[JsonValue], report["frames"])[0])
 
 
-def test_generated_code_perspective_blur_noise_and_cli_round_trip(tmp_path: Path) -> None:
+def test_perspective_blur_noise_and_cli_round_trip(tmp_path: Path) -> None:
     status, frame = run_capture(tmp_path, blur=True)
     assert status == 0, frame
     assert frame["status"] == "validated"
@@ -319,6 +321,16 @@ def test_crc64_ecma_check_value() -> None:
     assert crc64(b"123456789") == 0x6C40DF5F0B497347
 
 
+@pytest.mark.skipif(not NODE_AVAILABLE, reason="Node is needed for JavaScript parity")
+def test_javascript_code_matches_the_offline_protocol() -> None:
+    presentation = build_manifest("tuning", optical_code=True).presentation_id
+    session = "0123456789abcdef"
+    assert generated_code(presentation, session, 2, 317) == identity_bytes(
+        presentation, session, 2, 317
+    )
+
+
+@pytest.mark.skipif(not NODE_AVAILABLE, reason="Node is needed for the generated runtime")
 def test_cli_accepts_frame_exported_by_generated_runtime(tmp_path: Path) -> None:
     index, browser, annotation = synthetic_capture(tmp_path, generated_record=True, blur=True)
     output = tmp_path / "actual-runtime"
