@@ -6,17 +6,18 @@ from pathlib import Path
 from typing import cast
 
 import cv2
-import numpy as np
+import numpy
 import pytest
 
-from tools.register_monitor_frames import Json, main, process_frame, project
+from app.json_data import JsonValue
+from tools.register_monitor_frames import main, process_frame, project
 
 
 @pytest.fixture
-def example(tmp_path: Path) -> tuple[dict[str, Json], Path]:
+def example(tmp_path: Path) -> tuple[dict[str, JsonValue], Path]:
     image_path = tmp_path / "camera.jpg"
-    assert cv2.imwrite(str(image_path), np.full((600, 800, 3), 100, dtype=np.uint8))
-    rectangles: list[Json] = []
+    assert cv2.imwrite(str(image_path), numpy.full((600, 800, 3), 100, dtype=numpy.uint8))
+    rectangles: list[JsonValue] = []
     for marker_id, left, top in (
         ("top-left", 24, 24),
         ("top-right", 1512, 24),
@@ -34,7 +35,7 @@ def example(tmp_path: Path) -> tuple[dict[str, Json], Path]:
                 },
             }
         )
-    frame: dict[str, Json] = {
+    frame: dict[str, JsonValue] = {
         "schema_version": 2,
         "kind": "frame",
         "presentation_id": "test",
@@ -49,15 +50,15 @@ def example(tmp_path: Path) -> tuple[dict[str, Json], Path]:
             "height_px": 540,
         },
     }
-    matrix = np.array(((0.36, 0.02, 40), (0.01, 0.4, 30), (0.00012, 0.00006, 1.0)))
+    matrix = numpy.array(((0.36, 0.02, 40), (0.01, 0.4, 30), (0.00012, 0.00006, 1.0)))
     marker_centres = ((56, 56), (1544, 56), (1544, 844), (56, 844))
     marker_ids = ("top-left", "top-right", "bottom-right", "bottom-left")
-    camera_markers: dict[str, Json] = {
+    camera_markers: dict[str, JsonValue] = {
         marker_id: list(project(matrix, position))
         for marker_id, position in zip(marker_ids, marker_centres, strict=True)
     }
     screen_checks = ((240, 220), (1360, 220), (1360, 680), (240, 680), (800, 450))
-    checks: list[Json] = [
+    checks: list[JsonValue] = [
         {
             "name": str(index),
             "screen_css_px": list(position),
@@ -65,7 +66,7 @@ def example(tmp_path: Path) -> tuple[dict[str, Json], Path]:
         }
         for index, position in enumerate(screen_checks)
     ]
-    data: dict[str, Json] = {
+    data: dict[str, JsonValue] = {
         "image": image_path.name,
         "image_sequence": 42,
         "stimulus_frame": frame,
@@ -80,7 +81,7 @@ def example(tmp_path: Path) -> tuple[dict[str, Json], Path]:
 
 
 def test_perspective_independent_validation_and_transform(
-    example: tuple[dict[str, Json], Path],
+    example: tuple[dict[str, JsonValue], Path],
 ) -> None:
     data, directory = example
     result = process_frame(data, directory, directory, 0.1)
@@ -88,17 +89,19 @@ def test_perspective_independent_validation_and_transform(
     assert result["image"] == "camera.jpg"
     assert result["image_sequence"] == 42
     assert cast(float, result["max_validation_error_px"]) < 0.1
-    transformed = cast(list[dict[str, Json]], result["transformed_points"])
-    check = cast(list[dict[str, Json]], data["validation_points"])[4]
+    transformed = cast(list[dict[str, JsonValue]], result["transformed_points"])
+    check = cast(list[dict[str, JsonValue]], data["validation_points"])[4]
     assert cast(list[float], transformed[0]["camera_px"]) == pytest.approx(
         check["camera_px"], abs=0.1
     )
     assert Path(cast(str, result["overlay"])).is_file()
 
 
-def test_four_marker_fit_does_not_validate_curvature(example: tuple[dict[str, Json], Path]) -> None:
+def test_four_marker_fit_does_not_validate_curvature(
+    example: tuple[dict[str, JsonValue], Path],
+) -> None:
     data, directory = example
-    checks = cast(list[dict[str, Json]], data["validation_points"])
+    checks = cast(list[dict[str, JsonValue]], data["validation_points"])
     centre = cast(list[float], checks[4]["camera_px"])
     centre[1] += 20
     result = process_frame(data, directory, directory, 2)
@@ -108,7 +111,9 @@ def test_four_marker_fit_does_not_validate_curvature(example: tuple[dict[str, Js
     assert result["transformed_points"] == []
 
 
-def test_missing_checks_and_outside_hull_fail_closed(example: tuple[dict[str, Json], Path]) -> None:
+def test_missing_checks_and_outside_hull_fail_closed(
+    example: tuple[dict[str, JsonValue], Path],
+) -> None:
     data, directory = example
     data["validation_points"] = []
     missing = process_frame(data, directory, directory, 2)
@@ -123,10 +128,12 @@ def test_missing_checks_and_outside_hull_fail_closed(example: tuple[dict[str, Js
     assert "outside the validation hull" in str(outside["failures"])
 
 
-def example_with_checks(example: tuple[dict[str, Json], Path]) -> tuple[dict[str, Json], Path]:
+def example_with_checks(
+    example: tuple[dict[str, JsonValue], Path],
+) -> tuple[dict[str, JsonValue], Path]:
     data, directory = example
     checks = ((240, 220), (1360, 220), (1360, 680), (240, 680), (800, 450))
-    matrix = np.array(((0.36, 0.02, 40), (0.01, 0.4, 30), (0.00012, 0.00006, 1.0)))
+    matrix = numpy.array(((0.36, 0.02, 40), (0.01, 0.4, 30), (0.00012, 0.00006, 1.0)))
     data["validation_points"] = [
         {
             "name": str(index),
@@ -140,11 +147,11 @@ def example_with_checks(example: tuple[dict[str, Json], Path]) -> tuple[dict[str
 
 @pytest.mark.parametrize("failure", ["partial", "crossed", "unconfirmed", "schema", "geometry"])
 def test_invalid_marker_evidence_is_rejected(
-    example: tuple[dict[str, Json], Path], failure: str
+    example: tuple[dict[str, JsonValue], Path], failure: str
 ) -> None:
     data, directory = example
-    markers = cast(dict[str, Json], data["marker_centres_camera_px"])
-    frame = cast(dict[str, Json], data["stimulus_frame"])
+    markers = cast(dict[str, JsonValue], data["marker_centres_camera_px"])
+    frame = cast(dict[str, JsonValue], data["stimulus_frame"])
     if failure == "partial":
         del markers["top-left"]
     elif failure == "crossed":
@@ -154,7 +161,7 @@ def test_invalid_marker_evidence_is_rejected(
     elif failure == "schema":
         frame["schema_version"] = 1
     else:
-        region = cast(dict[str, Json], frame["target_region_screen_css_px"])
+        region = cast(dict[str, JsonValue], frame["target_region_screen_css_px"])
         region["width_px"] = 200
     result = process_frame(data, directory, directory, 2)
     assert result["status"] == "failed"
@@ -163,9 +170,9 @@ def test_invalid_marker_evidence_is_rejected(
     assert Path(cast(str, result["overlay"])).is_file()
 
 
-def test_insufficient_spatial_coverage_fails(example: tuple[dict[str, Json], Path]) -> None:
+def test_insufficient_spatial_coverage_fails(example: tuple[dict[str, JsonValue], Path]) -> None:
     data, directory = example
-    checks = cast(list[dict[str, Json]], data["validation_points"])
+    checks = cast(list[dict[str, JsonValue]], data["validation_points"])
     checks.pop(0)
     checks.append(copy.deepcopy(checks[0]))
     checks[-1]["name"] = "duplicate-position"
@@ -175,7 +182,7 @@ def test_insufficient_spatial_coverage_fails(example: tuple[dict[str, Json], Pat
 
 
 def test_cli_keeps_each_frame_and_returns_failure_for_partial_evidence(
-    example: tuple[dict[str, Json], Path],
+    example: tuple[dict[str, JsonValue], Path],
 ) -> None:
     data, directory = example
     partial = copy.deepcopy(data)
@@ -195,7 +202,7 @@ def test_cli_keeps_each_frame_and_returns_failure_for_partial_evidence(
 
 
 def test_independent_observation_requires_confirmation(
-    example: tuple[dict[str, Json], Path],
+    example: tuple[dict[str, JsonValue], Path],
 ) -> None:
     data, directory = example
     data["validation_points_independently_observed"] = False
@@ -205,9 +212,11 @@ def test_independent_observation_requires_confirmation(
     assert "independent camera observation" in str(result["failures"])
 
 
-def test_degenerate_or_nonfinite_camera_points_fail(example: tuple[dict[str, Json], Path]) -> None:
+def test_degenerate_or_nonfinite_camera_points_fail(
+    example: tuple[dict[str, JsonValue], Path],
+) -> None:
     data, directory = example
-    markers = cast(dict[str, Json], data["marker_centres_camera_px"])
+    markers = cast(dict[str, JsonValue], data["marker_centres_camera_px"])
     markers["top-left"] = markers["top-right"]
     assert process_frame(data, directory, directory, 1)["status"] == "failed"
     markers["top-left"] = [float("nan"), 1]
@@ -215,18 +224,18 @@ def test_degenerate_or_nonfinite_camera_points_fail(example: tuple[dict[str, Jso
 
 
 def test_partial_validation_is_reported_without_transform(
-    example: tuple[dict[str, Json], Path],
+    example: tuple[dict[str, JsonValue], Path],
 ) -> None:
     data, directory = example
-    checks = cast(list[dict[str, Json]], data["validation_points"])
+    checks = cast(list[dict[str, JsonValue]], data["validation_points"])
     checks.pop()
     result = process_frame(data, directory, directory, 1)
     assert result["status"] == "unvalidated"
-    assert len(cast(list[Json], result["validation_residuals"])) == 4
+    assert len(cast(list[JsonValue], result["validation_residuals"])) == 4
     assert result["transformed_points"] == []
 
 
-def test_invalid_error_limit_fails_closed(example: tuple[dict[str, Json], Path]) -> None:
+def test_invalid_error_limit_fails_closed(example: tuple[dict[str, JsonValue], Path]) -> None:
     data, directory = example
     for limit_px in (0.0, -1.0, float("nan"), float("inf")):
         result = process_frame(data, directory, directory, limit_px)

@@ -4,20 +4,26 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeAlias, cast
 
 import cv2
-import numpy as np
+import numpy
 from numpy.typing import NDArray
 
-Json: TypeAlias = None | bool | int | float | str | list["Json"] | dict[str, "Json"]
+if __package__ is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.json_data import JsonValue
+
 Point: TypeAlias = tuple[float, float]
-Matrix: TypeAlias = NDArray[np.float64]
+Matrix: TypeAlias = NDArray[numpy.float64]
 MARKER_IDS = ("top-left", "top-right", "bottom-right", "bottom-left")
 MARKER_CENTRES_DESIGN_PX: tuple[Point, ...] = ((56, 56), (1544, 56), (1544, 844), (56, 844))
 MARKER_SIZE_DESIGN_PX = 64.0
@@ -49,25 +55,25 @@ class Check:
     camera: Point
 
 
-def mapping(value: Json, name: str) -> dict[str, Json]:
+def mapping(value: JsonValue, name: str) -> dict[str, JsonValue]:
     if not isinstance(value, dict):
         raise ValueError(f"{name} must be an object")
     return value
 
 
-def number(value: Json, name: str) -> float:
+def number(value: JsonValue, name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValueError(f"{name} must be a finite number")
     return float(value)
 
 
-def point(value: Json, name: str) -> Point:
+def point(value: JsonValue, name: str) -> Point:
     if not isinstance(value, list) or len(value) != 2:
         raise ValueError(f"{name} must be [x, y]")
     return number(value[0], name), number(value[1], name)
 
 
-def rectangle(value: Json, name: str) -> tuple[float, float, float, float]:
+def rectangle(value: JsonValue, name: str) -> tuple[float, float, float, float]:
     data = mapping(value, name)
     left = number(data.get("left_px"), name)
     top = number(data.get("top_px"), name)
@@ -78,7 +84,7 @@ def rectangle(value: Json, name: str) -> tuple[float, float, float, float]:
     return left, top, width, height
 
 
-def marker_screen_points(frame: dict[str, Json]) -> tuple[Point, ...]:
+def marker_screen_points(frame: dict[str, JsonValue]) -> tuple[Point, ...]:
     markers = frame.get("registration_markers")
     if not isinstance(markers, list) or len(markers) != len(MARKER_IDS):
         raise ValueError("frame record must contain all four marker rectangles")
@@ -118,8 +124,8 @@ def marker_screen_points(frame: dict[str, Json]) -> tuple[Point, ...]:
     return centres
 
 
-def polygon(points: tuple[Point, ...], name: str) -> NDArray[np.float32]:
-    contour = np.asarray(points, dtype=np.float32)
+def polygon(points: tuple[Point, ...], name: str) -> NDArray[numpy.float32]:
+    contour = numpy.asarray(points, dtype=numpy.float32)
     if (
         not cv2.isContourConvex(contour)
         or abs(cv2.contourArea(contour)) < MINIMUM_QUADRILATERAL_AREA_PX2
@@ -129,7 +135,7 @@ def polygon(points: tuple[Point, ...], name: str) -> NDArray[np.float32]:
 
 
 def project(matrix: Matrix, position: Point) -> Point:
-    coordinates = matrix @ np.asarray((position[0], position[1], 1.0))
+    coordinates = matrix @ numpy.asarray((position[0], position[1], 1.0))
     denominator = float(coordinates[2])
     if abs(denominator) < DENOMINATOR_TOLERANCE:
         raise ValueError("mapping has a projective singularity")
@@ -139,7 +145,7 @@ def project(matrix: Matrix, position: Point) -> Point:
     return projected
 
 
-def checks_from(value: Json) -> tuple[Check, ...]:
+def checks_from(value: JsonValue) -> tuple[Check, ...]:
     if not isinstance(value, list):
         raise ValueError("validation_points must be a list")
     checks: list[Check] = []
@@ -185,11 +191,11 @@ def camera_point_in_image(position: Point, width_px: int, height_px: int) -> boo
 
 
 def process_frame(
-    data: dict[str, Json], annotations_directory: Path, output: Path, maximum_error_px: float
-) -> dict[str, Json]:
+    data: dict[str, JsonValue], annotations_directory: Path, output: Path, maximum_error_px: float
+) -> dict[str, JsonValue]:
     filename = data.get("image")
     sequence = data.get("image_sequence")
-    result: dict[str, Json] = {
+    result: dict[str, JsonValue] = {
         "image": filename,
         "image_sequence": sequence,
         "model": "planar homography",
@@ -197,7 +203,7 @@ def process_frame(
         "failures": [],
         "transformed_points": [],
     }
-    failures: list[Json] = []
+    failures: list[JsonValue] = []
     result["failures"] = failures
     image = None
     try:
@@ -212,11 +218,15 @@ def process_frame(
         ):
             raise ValueError("image and non-negative image_sequence are required")
         image_path = annotations_directory / filename
+        result["image_sha256"] = hashlib.sha256(image_path.read_bytes()).hexdigest()
         image = cv2.imread(str(image_path))
         if image is None:
             raise ValueError(f"cannot read image: {image_path}")
         height_px, width_px = image.shape[:2]
         frame = mapping(data.get("stimulus_frame"), "stimulus_frame")
+        result["stimulus_frame_sha256"] = hashlib.sha256(
+            json.dumps(frame, sort_keys=True, allow_nan=False).encode()
+        ).hexdigest()
         result["stimulus_reference"] = {
             key: frame.get(key)
             for key in (
@@ -245,23 +255,23 @@ def process_frame(
             raise ValueError("marker centres must lie inside the image")
         screen_polygon = polygon(screen, "screen marker quadrilateral")
         camera_polygon = polygon(camera, "camera marker quadrilateral")
-        if np.sign(cv2.contourArea(screen_polygon, oriented=True)) != np.sign(
+        if numpy.sign(cv2.contourArea(screen_polygon, oriented=True)) != numpy.sign(
             cv2.contourArea(camera_polygon, oriented=True)
         ):
             raise ValueError("marker order is mirrored or inconsistent")
         matrix = cast(Matrix, cv2.getPerspectiveTransform(screen_polygon, camera_polygon))
         if (
-            not np.isfinite(matrix).all()
-            or abs(float(np.linalg.det(matrix))) < DENOMINATOR_TOLERANCE
+            not numpy.isfinite(matrix).all()
+            or abs(float(numpy.linalg.det(matrix))) < DENOMINATOR_TOLERANCE
         ):
             raise ValueError("homography is singular")
-        denominators = tuple(float(matrix[2] @ np.asarray((x, y, 1.0))) for x, y in screen)
+        denominators = tuple(float(matrix[2] @ numpy.asarray((x, y, 1.0))) for x, y in screen)
         if (
             min(abs(value) for value in denominators) < DENOMINATOR_TOLERANCE
             or min(denominators) * max(denominators) <= 0
         ):
             raise ValueError("homography has a singularity within the marker quadrilateral")
-        result["matrix"] = cast(Json, matrix.tolist())
+        result["matrix"] = cast(JsonValue, matrix.tolist())
         result["fit_residuals_px"] = [
             math.dist(project(matrix, source), target)
             for source, target in zip(screen, camera, strict=True)
@@ -291,7 +301,7 @@ def process_frame(
                 raise ValueError(
                     "validation points must lie strictly inside the marker quadrilateral"
                 )
-            residuals: list[Json] = []
+            residuals: list[JsonValue] = []
             errors_px: list[float] = []
             for check in checks:
                 predicted = project(matrix, check.screen)
@@ -342,12 +352,14 @@ def process_frame(
                 )
             if max(errors_px) > maximum_error_px:
                 raise ValueError("independent validation error exceeds the supplied threshold")
-            hull = cv2.convexHull(np.asarray([check.screen for check in checks], dtype=np.float32))
-            result["validated_hull_screen_css_px"] = cast(Json, hull.reshape(-1, 2).tolist())
+            hull = cv2.convexHull(
+                numpy.asarray([check.screen for check in checks], dtype=numpy.float32)
+            )
+            result["validated_hull_screen_css_px"] = cast(JsonValue, hull.reshape(-1, 2).tolist())
             requests = data.get("screen_points", [])
             if not isinstance(requests, list):
                 raise ValueError("screen_points must be a list")
-            transformed: list[Json] = []
+            transformed: list[JsonValue] = []
             for index, request in enumerate(requests):
                 requested = point(request, f"screen_points[{index}]")
                 if cv2.pointPolygonTest(hull, requested, False) < 0:
@@ -360,7 +372,7 @@ def process_frame(
             result["status"] = "validated_within_sampled_hull"
         except ValueError as error:
             failures.append(str(error))
-    except (ValueError, cv2.error) as error:
+    except (OSError, ValueError, cv2.error) as error:
         failures.append(str(error))
     if image is not None and isinstance(sequence, int) and isinstance(filename, str):
         overlay = output / f"{sequence:09d}-{Path(filename).stem}-registration.png"
@@ -397,7 +409,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
         parser.error("--max-error-px must be finite and positive")
     try:
         document = mapping(
-            cast(Json, json.loads(options.annotations.read_text(encoding="utf-8"))), "annotations"
+            cast(JsonValue, json.loads(options.annotations.read_text(encoding="utf-8"))),
+            "annotations",
         )
         frames = document.get("frames")
         if not isinstance(frames, list) or not frames:
@@ -415,11 +428,11 @@ def main(arguments: Sequence[str] | None = None) -> int:
             )
             for frame in frames
         ]
-        report: dict[str, Json] = {
+        report: dict[str, JsonValue] = {
             "model": "planar homography",
             "max_allowed_validation_error_px": options.max_error_px,
             "association": "operator supplied; not optically verified by this tool",
-            "frames": cast(Json, results),
+            "frames": cast(JsonValue, results),
         }
         (options.output / "registration.json").write_text(
             json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8"
