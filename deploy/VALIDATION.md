@@ -46,6 +46,10 @@ in the campaign's `desktop-pre-endurance-final-*` and
 `pi-pre-endurance-final-gate.txt` evidence files. The centre guard only
 qualifies fully visible source crops; all four regenerated centring reports match
 the final tool hashes and retain exactly the same numerical bounds.
+The desktop Ruff commands were `python -m ruff check app tests tools cluster
+training native` and `python -m ruff format --check app tests tools cluster
+training native`, using `.venv/bin/python`. Generated files under `runs/` and
+historical notebooks were outside that gate's scope.
 
 ### Display and short physical runs
 
@@ -286,16 +290,27 @@ interval. Missing context, visibility, registration and reach remain unknown;
 unknown time is pessimistically off-centre in the acceptance lower bound.
 
 For the retained passive run, the original asset qualification yields a
-**79.727%** conservative lower bound and remains inconclusive. A separately
-hash-bound qualification adds the four directly checked profile-pigeon centres
+**79.727%** conservative lower bound and remains inconclusive. Qualification was
+developed after initial scoring on the same recording had begun: the first score
+was 70.844% at 13:28Z, the profile policy file was created at 13:42Z, and the
+preserved 79.727% report was written at 13:45Z. A separately hash-bound
+qualification added the four directly checked profile-pigeon centres
 described above, retaining two matcher rejections. This converts only 0.967274
 seconds of registration-unknown time into qualified centring time. The resulting
 lower bound is **80.957%**, above the fixed 80% goal, with 12.955325 seconds still
 unknown and no reach exclusions. Its upper bound is 98.686%. The point estimate
 on scored time is separate from this conservative statistic. This is a narrow
-scoped pass for the recording and declared empirical uncertainty; the mapping
-allowance is not a statistical guarantee, and overall hardware acceptance remains
-inconclusive. Independent review is pending.
+exploratory scoped pass for the recording and declared empirical uncertainty;
+the mapping allowance is not a statistical guarantee, and overall hardware
+acceptance remains inconclusive. Opus reproduced the annotations and score
+byte-for-byte. The pass has only 0.753 seconds of definitely-centred margin;
+scaling centre uncertainty by 1.5 gives a 79.6% lower bound. Qualification and
+analysis choices evolved on this recording, so confirmatory acceptance requires
+a fresh recording under frozen tools and policy. The six-second settling window
+predates scoring; 123.9 seconds are settling exclusions, and 24.5% of the recording
+is scored. This passive recording used nominal 2 FPS retained JPEGs, unlike the
+later 5 FPS output-mode matrix. Sample-and-hold geometry does not prove
+continuous-time occupancy.
 
 Selection analysis across all 22 scenes includes the first six seconds rather
 than hiding transition behaviour in settling exclusions. The 1.08× similar-size
@@ -309,11 +324,16 @@ transitions, and 25.580 seconds remained unresolved. The 66.611-second paused
 tail is confuser/no-expected content, not extra centred-positive footage.
 
 The 0.3-second full occlusion retained ID 18. The 0.6-second partial occlusion
-reset ID 17 to 18: its sensor-observation gap was 699.722 ms, but processing
-finished when the old observation was 836.218 ms old, exceeding the 750 ms
-retention policy. The tracker prunes by processing age before association. This
-is an observed identity-retention limit for review, not a blanket partial-
-occlusion retention pass. Longer full occlusion lost and reacquired the target;
+reset ID 17 to 18. The earlier attribution to processing-age expiry is incorrect:
+ID 18 was assigned at frame 5040, before its confirmed selection at frame 5042.
+At assignment the sensor gap was about 633 ms and processing age about 743 ms,
+both within retention. An offline tracker replay reproduced the association
+failure: a low-confidence partial box drove a shrinking Kalman size prediction,
+which reached one pixel wide and failed the IoU match. Changing the pruning clock
+alone would not preserve ID 17. The 699.722 ms gap and 836.218 ms processing age
+describe the later frame 5042, not initial ID creation. Partial-occlusion identity
+retention remains a functional limitation; no behaviour change was made during
+wrap-up. Longer full occlusion lost and reacquired the target;
 departure returned to commanded home with no subsequent acquisition during empty
 or confuser content. Physical home arrival is not measured by these logs.
 Source hashes, all scene intervals, timing brackets and unresolved evidence are in
@@ -341,10 +361,14 @@ These are sequential single runs; thermal carryover prevents a causal ranking.
 | Recording only | 230.8 ms | 249.4 ms | 10.720 |
 | Preview and recording | 234.0 ms | 246.1 ms | 10.669 |
 
-Command age covers sensor-timed move commands and is affected by the 250 ms
-freshness eligibility rule. The separate observation-age distribution includes
-tracking and stale ticks. Both distributions meet the revised 300 ms p95 goal
-in these runs. Hot command-age p95 was 216.1–239.9 ms. Hot processing throughput
+Command age covers sensor-timed move commands and is bounded by the 250 ms
+freshness eligibility rule. A 300 ms move-age check therefore cannot independently
+establish the latency goal. The separate observation-age distribution includes
+tracking and stale ticks; its hot p95 reached 259.9 ms, within the revised goal.
+Opus also estimated first-use age at 181–193 ms p95 using a drop-in-age heuristic;
+this is a diagnostic rather than an existing formal per-observation metric.
+Report all three measures and define the uncensored/first-use gates before a
+future run. Hot command-age p95 was 216.1–239.9 ms. Hot processing throughput
 uses inference-frame timestamps after the first captured frame plus 120 seconds,
 with `(frame_count - 1) / (last_timestamp - first_timestamp)`.
 
@@ -418,8 +442,26 @@ clean at `d55db25`. The task's SSH master and its local tunnels were then closed
 Re-establish the connection in a future session before resuming hardware work.
 The receipt is `outputs/validation/monitor-20261027/wrap-up-safety.json`.
 
-Review the scoped centring and selection results, including the processing-age
-retention limit and the declared uncertainty/reach assumptions. A clean
+Independent Opus review found no software shipping blockers. Before the deferred
+endurance actor is executed, fix its end-of-playlist race (E1), export all initial
+browser records (E2), and replace the outer inhibitor launcher process rather
+than orphaning cleanup on Ctrl-C (E3). The review recommends E4–E6 for telemetry
+transport recovery, early child-death detection and uncensored latency reporting.
+Pin endurance pass/fail gates before launch. Every matrix sample already has the
+historical under-voltage latch set, so establish a fresh baseline when hardware
+work resumes; no reboot was performed during wrap-up. These are future tasks,
+not completed fixes or accepted new gates.
+
+The report is `outputs/validation/monitor-20261027/opus-pre-endurance-review.md`;
+its scratch scripts and re-run evidence are preserved in `opus-review-diagnostics/`
+under the same directory. The corrected selection analysis preserves its earlier
+version in `selection-loss-reacquisition/pre-review/`. The full-visibility guard
+changed zero emitted centres or visibility flags in all four report pairs; the
+earlier user-facing explanation that settling masked affected frames is
+superseded by `truth-preparation/visibility-guard-audit.json`.
+
+Confirm the exploratory centring result on fresh frozen-policy data and resolve
+the partial-occlusion retention decision in a later session. A clean
 15-second preview-and-recording restart after the injected
 capture failure exited 0, exported successfully, and read FULL_OFF on both
 channels. Revisit the hour-long campaign in a later session after the short cases

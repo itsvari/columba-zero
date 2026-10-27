@@ -56,13 +56,26 @@ are single sequential runs, not a performance ranking or endurance result.
 Pause/home/resume, an unread preview client, recording-write failure and an
 injected camera stall/read failure have hardware evidence. Independent centring,
 selection and endurance remain open for overall acceptance. The offline scorer
-now gives a narrow 80.957% conservative centring lower bound for the retained
+now gives an exploratory 80.957% conservative centring lower bound for the retained
 passive recording, with empirical uncertainty and unknown time included. The
 similar-size and brief-challenger scenes did not switch; a sustained larger
-challenger caused the sole switch. Partial occlusion exposed processing-age
-identity expiry despite a sub-750 ms sensor-observation gap. These scoped results
-await independent review. The prepared hour-long test is deferred at the user's
-request.
+challenger caused the sole switch. Independent Opus review reproduced the scoped
+score but found that the partial-occlusion ID reset was an association failure:
+the Kalman box prediction collapsed to one pixel wide before retention expired.
+The earlier processing-age explanation is superseded. There are no software
+shipping blockers. Centring remains exploratory because the profile qualification
+was added after scoring, and the narrow pass needs a fresh confirmatory recording.
+The prepared hour-long test is deferred at the user's request.
+
+Before a future endurance run, fix the prepared actor's completion race, initial
+browser-record export and inhibitor-wrapper process handling (review E1–E3), then
+pin the pass/fail gates. Recommended E4–E6 improve evidence recovery and latency
+reporting. Decide whether to fix partial-occlusion identity retention before that
+run, and establish a clean throttle-latch baseline when hardware work resumes.
+The current 300 ms move-age check is bounded by the 250 ms freshness cutoff;
+report uncensored ages and an explicitly defined first-use latency measure too.
+The full review and preserved diagnostics are under
+`outputs/validation/monitor-20261027/`.
 
 Use this plan to implement the demonstration on the current application architecture,
 reusing the useful hardware and controller work from
