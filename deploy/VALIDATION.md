@@ -262,6 +262,36 @@ physical acceptance or speedups; the two-thread comparison has sequential therma
 carryover. Retain four threads, 30 FPS, passive waiting and the original control
 policy. Evidence is in `outputs/validation/monitor-20261027/latency-diagnosis/`.
 
+The identity-only optical associator decoded 482/538 passive-run images and
+423/498 images from the rejected 190 ms experiment. It uses verified references
+only to propose code sampling positions, with independent agreement of both CRC
+bands and one exported render match. It makes no geometric registration claim.
+The truth preparer combines those identities with local photograph fits and the
+user-confirmed visible-bird boxes. It fills a missing code only between nearby
+optical anchors when every intervening browser frame has identical target
+content and selection rules. Such labels retain an explicit equivalent-render
+interval. Missing context, visibility, registration and reach remain unknown;
+unknown time is pessimistically off-centre in the acceptance lower bound.
+
+For the retained passive run, the original asset qualification yields a
+**79.727%** conservative lower bound and remains inconclusive. A separately
+hash-bound qualification adds the four directly checked profile-pigeon centres
+described above, retaining two matcher rejections. This converts only 0.967274
+seconds of registration-unknown time into qualified centring time. The resulting
+lower bound is **80.957%**, above the fixed 80% goal, with 12.955325 seconds still
+unknown and no reach exclusions. Its upper bound is 98.686%. The point estimate
+on scored time is separate from this conservative statistic. This is a narrow
+scoped pass for the recording and declared empirical uncertainty; the mapping
+allowance is not a statistical guarantee, and overall hardware acceptance remains
+inconclusive. Independent review is pending.
+
+The 190 ms experimental recording remains inconclusive, with a 75.610% lower
+bound and its original unsuccessful-run-end integrity issue. Neither the
+threshold nor that integrity failure has been relaxed. Preparation, annotation,
+score and qualification snapshots are in
+`outputs/validation/monitor-20261027/truth-preparation/`; earlier failed and
+inconclusive reports remain alongside them.
+
 ### Four output modes and hot operation
 
 At deployed revision `7e0076e`, each output mode completed one 201-second tuning
@@ -331,6 +361,15 @@ and both servo outputs read FULL_OFF. The child exited without any supervisor
 TERM or forced kill. This is software fault injection with a real CSI camera,
 not a physical cable-disconnection test. Trace and provenance are in
 `outputs/validation/monitor-20261027/capture-fault-fixture/`.
+
+Offline trace inspection found ten stale ticks, all holding unchanged commanded
+positions. Return-home movement began on the first tick after the 750 ms retention
+allowance, at an observation age of 769.421 ms. Fresh tracking resumed 192.080 ms
+after the injected stall ended. The return did not reach home before reacquisition.
+The target was already held inside the deadband before the stall, so this trial
+does not demonstrate braking from active following. The partial MP4 also passed
+an independent complete FFmpeg decode. A later register receipt after the clean
+restart records no capture owner and both outputs disabled.
 
 ### Outstanding gates
 
