@@ -22,7 +22,10 @@ MINIMUM_FRAME_RATE_HZ = 10
 MAXIMUM_FRAME_RATE_HZ = 60
 MAXIMUM_REPEAT_COUNT = 1000
 MAXIMUM_LOG_RECORDS = 150_000
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+MINIMUM_DISPLAY_SCALE = 0.4
+MAXIMUM_DISPLAY_SCALE = 1.0
+CENTRED_ALIGNMENT_FRACTION = 0.5
 DESIGN_WIDTH_PX = 1600
 DESIGN_HEIGHT_PX = 900
 CENTRE_X_PX = DESIGN_WIDTH_PX / 2
@@ -180,6 +183,9 @@ class Manifest:
     seed: int
     frame_rate_hz: int
     repeat_count: int
+    display_scale: float
+    horizontal_position_fraction: float
+    vertical_position_fraction: float
     design_width_px: int
     design_height_px: int
     target_region: Rectangle
@@ -411,6 +417,9 @@ def build_manifest(
     seed: int = DEFAULT_SEED,
     frame_rate_hz: int = DEFAULT_FRAME_RATE_HZ,
     repeat_count: int = 1,
+    display_scale: float = MAXIMUM_DISPLAY_SCALE,
+    horizontal_position_fraction: float = CENTRED_ALIGNMENT_FRACTION,
+    vertical_position_fraction: float = CENTRED_ALIGNMENT_FRACTION,
 ) -> Manifest:
     if playlist not in PLAYLISTS:
         raise ValueError("playlist must be tuning or evaluation")
@@ -418,6 +427,11 @@ def build_manifest(
         raise ValueError(f"frame rate must be {MINIMUM_FRAME_RATE_HZ}–{MAXIMUM_FRAME_RATE_HZ} Hz")
     if not 1 <= repeat_count <= MAXIMUM_REPEAT_COUNT:
         raise ValueError(f"repeat count must be 1–{MAXIMUM_REPEAT_COUNT}")
+    if not math.isfinite(display_scale) or not MINIMUM_DISPLAY_SCALE <= display_scale <= 1:
+        raise ValueError("display scale must be finite and between 0.4 and 1")
+    for position in (horizontal_position_fraction, vertical_position_fraction):
+        if not math.isfinite(position) or not 0 <= position <= 1:
+            raise ValueError("display positions must be finite fractions between 0 and 1")
     scenes = build_scenes(playlist, seed, frame_rate_hz)
     used_assets = {target.asset_id for scene in scenes for target in scene.targets}
     assets: list[EmbeddedPhotograph] = []
@@ -450,6 +464,9 @@ def build_manifest(
         seed,
         frame_rate_hz,
         repeat_count,
+        display_scale,
+        horizontal_position_fraction,
+        vertical_position_fraction,
         DESIGN_WIDTH_PX,
         DESIGN_HEIGHT_PX,
         TARGET_REGION,
@@ -485,6 +502,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--frame-rate-hz", type=int, default=DEFAULT_FRAME_RATE_HZ)
     parser.add_argument("--repeat-count", type=int, default=1)
+    parser.add_argument("--display-scale", type=float, default=MAXIMUM_DISPLAY_SCALE)
+    parser.add_argument("--horizontal-position", type=float, default=CENTRED_ALIGNMENT_FRACTION)
+    parser.add_argument("--vertical-position", type=float, default=CENTRED_ALIGNMENT_FRACTION)
     options = parser.parse_args(arguments)
     playlist: Playlist = "tuning" if options.playlist == "tuning" else "evaluation"
     output = Path(options.output)
@@ -492,7 +512,13 @@ def main(arguments: Sequence[str] | None = None) -> int:
         parser.error("--output must end in .html")
     try:
         manifest = build_manifest(
-            playlist, options.seed, options.frame_rate_hz, options.repeat_count
+            playlist,
+            options.seed,
+            options.frame_rate_hz,
+            options.repeat_count,
+            options.display_scale,
+            options.horizontal_position,
+            options.vertical_position,
         )
         html = render_html(manifest)
         output.parent.mkdir(parents=True, exist_ok=True)

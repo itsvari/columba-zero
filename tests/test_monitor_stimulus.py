@@ -37,6 +37,19 @@ def scene_named(manifest: Manifest, name: str) -> Scene:
 
 
 class MonitorStimulusTests(unittest.TestCase):
+    def test_display_scale_is_bounded_and_changes_the_presentation_identity(self) -> None:
+        original = build_manifest("tuning")
+        reduced = build_manifest("tuning", display_scale=0.65)
+        self.assertNotEqual(original.presentation_id, reduced.presentation_id)
+        self.assertEqual(reduced.display_scale, 0.65)
+        self.assertEqual(original.scenes, reduced.scenes)
+        for value in (0, 0.39, 1.01, float("nan"), float("inf")):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "display scale"):
+                build_manifest("tuning", display_scale=value)
+        for position in (-0.1, 1.1, float("nan")):
+            with self.subTest(position=position), self.assertRaisesRegex(ValueError, "positions"):
+                build_manifest("tuning", horizontal_position_fraction=position)
+
     def test_identical_inputs_produce_identical_html_and_manifest(self) -> None:
         first = build_manifest("tuning", seed=42)
         second = build_manifest("tuning", seed=42)
@@ -219,10 +232,25 @@ class MonitorStimulusTests(unittest.TestCase):
     def test_generated_html_behaviour_in_a_real_browser(self) -> None:
         driver = (REPOSITORY / "tests/monitor_stimulus_browser.js").read_text(encoding="utf-8")
         browser = os.environ["COLUMBA_TEST_BROWSER"]
-        for playlist in PLAYLIST_NAMES:
-            with self.subTest(playlist=playlist), tempfile.TemporaryDirectory() as directory:
+        cases: tuple[tuple[Playlist, float], ...] = (
+            ("tuning", 1.0),
+            ("evaluation", 1.0),
+            ("tuning", 0.6),
+            ("evaluation", 0.6),
+        )
+        for playlist, display_scale in cases:
+            with (
+                self.subTest(playlist=playlist, display_scale=display_scale),
+                tempfile.TemporaryDirectory() as directory,
+            ):
                 output = Path(directory) / "monitor.html"
-                manifest = build_manifest(playlist, repeat_count=2)
+                manifest = build_manifest(
+                    playlist,
+                    repeat_count=2,
+                    display_scale=display_scale,
+                    horizontal_position_fraction=0.8,
+                    vertical_position_fraction=0.1,
+                )
                 html = render_html(manifest).replace("</html>", f"<script>{driver}</script></html>")
                 output.write_text(html, encoding="utf-8")
                 process = subprocess.run(

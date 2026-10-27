@@ -7,6 +7,7 @@ import hashlib
 import itertools
 import json
 import math
+import os
 import subprocess
 import sys
 import time
@@ -27,6 +28,7 @@ DEFAULT_FRAME_COUNT = 180
 DEFAULT_REPETITIONS = 5
 DEFAULT_THREAD_COUNT = 4
 DEFAULT_TIMEOUT_S = 120.0
+DEFAULT_WARMUP_FRAME_COUNT = 300
 SAMPLE_INTERVAL_S = 1.0
 SHUTDOWN_TIMEOUT_S = 10.0
 CPU_FREQUENCY_PATH = Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
@@ -163,6 +165,9 @@ def main() -> int:
     )
     parser.add_argument("--frames", type=positive_integer, default=DEFAULT_FRAME_COUNT)
     parser.add_argument("--repetitions", type=positive_integer, default=DEFAULT_REPETITIONS)
+    parser.add_argument(
+        "--warmup-frames", type=positive_integer, default=DEFAULT_WARMUP_FRAME_COUNT
+    )
     parser.add_argument("--timeout-s", type=float, default=DEFAULT_TIMEOUT_S)
     options = parser.parse_args()
     if not math.isfinite(options.timeout_s) or options.timeout_s <= 0:
@@ -173,10 +178,28 @@ def main() -> int:
     options.output.mkdir(parents=True, exist_ok=False)
     source_revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     configuration_sha256 = hashlib.sha256(Path(options.config).read_bytes()).hexdigest()
+    source_dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], text=True))
+    probe_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    model_hashes: dict[str, JsonValue] = {
+        name: hashlib.sha256((Path(configuration.model.path) / name).read_bytes()).hexdigest()
+        for name in ("metadata.yaml", "model.ncnn.param", "model.ncnn.bin")
+    }
     results: list[dict[str, JsonValue]] = []
     cases = tuple(itertools.product(options.threads, options.opencv_threads))
-    for repetition in range(options.repetitions):
-        for threads, opencv_threads in cases:
+    warmup_threads, warmup_opencv_threads = cases[0]
+    warmup = run_probe(
+        configuration,
+        options.output / "warmup",
+        warmup_threads,
+        warmup_opencv_threads,
+        options.warmup_frames,
+        options.timeout_s,
+    )
+    if not warmup["valid"]:
+        return 1
+    orders = itertools.cycle((cases, tuple(reversed(cases))))
+    for repetition, ordered_cases in zip(range(options.repetitions), orders, strict=False):
+        for threads, opencv_threads in ordered_cases:
             name = f"repeat-{repetition + 1}-ncnn-{threads}-opencv-{opencv_threads}"
             directory = options.output / name
             print(str(directory), flush=True)
@@ -186,9 +209,14 @@ def main() -> int:
             results.append(result)
             report: dict[str, JsonValue] = {
                 "scope": "live camera; simulated mount; outputs off; no acceptance score",
-                "method": "interleaved cases; fixed external scene required; retain device samples",
+                "method": "warm-up then alternating case order; fixed external scene required",
                 "source_revision": source_revision,
+                "source_dirty": source_dirty,
+                "probe_sha256": probe_sha256,
                 "configuration_sha256": configuration_sha256,
+                "model_sha256": model_hashes,
+                "openmp_wait_policy": os.environ.get("OMP_WAIT_POLICY"),
+                "warmup": warmup,
                 "frames_per_case": options.frames,
                 "results": cast(list[JsonValue], results),
             }

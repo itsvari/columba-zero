@@ -98,12 +98,14 @@ function endScene(reason) {
 
 function geometry() {
   const bounds = canvas.getBoundingClientRect();
-  const scale = Math.min(bounds.width / manifest.design_width_px,
+  const scale = manifest.display_scale * Math.min(bounds.width / manifest.design_width_px,
     bounds.height / manifest.design_height_px);
   return {
     scale,
-    offsetX: (bounds.width - manifest.design_width_px * scale) / 2,
-    offsetY: (bounds.height - manifest.design_height_px * scale) / 2,
+    offsetX: (bounds.width - manifest.design_width_px * scale) *
+      manifest.horizontal_position_fraction,
+    offsetY: (bounds.height - manifest.design_height_px * scale) *
+      manifest.vertical_position_fraction,
     bounds,
     devicePixelRatio: window.devicePixelRatio || 1
   };
@@ -283,6 +285,9 @@ function render(force = false, animationFrameBrowserMs = null) {
     viewport_width_css_px: window.innerWidth,
     viewport_height_css_px: window.innerHeight,
     device_pixel_ratio: layout.devicePixelRatio,
+    display_scale: manifest.display_scale,
+    horizontal_position_fraction: manifest.horizontal_position_fraction,
+    vertical_position_fraction: manifest.vertical_position_fraction,
     fullscreen: document.fullscreenElement !== null,
     page_visible: !document.hidden,
     target_region_screen_css_px: screenRectangle(region, layout),

@@ -18,6 +18,22 @@ directly in a current desktop browser. It embeds the photographs, styles, code,
 and manifest, so it needs no server or network connection. You can move the HTML
 to another computer without copying the repository.
 
+If the camera cannot see all four markers, reduce the presentation inside the
+full-screen page with `--display-scale 0.65`. The accepted range is 0.4 to 1.
+The scale is included in the manifest, presentation ID and each frame record.
+Target and marker coordinates include this reduction. Verify detection again
+after changing it, and freeze the scale before comparing runs.
+Use `--horizontal-position` and `--vertical-position` to place the reduced area
+within the available padding. Each accepts 0 to 1, from left to right or top to
+bottom. Both default to 0.5. This can align the stimulus with the camera's existing
+aim without changing servo joints. These fractions also appear in the manifest
+and frame records.
+
+A curved monitor does not satisfy the flat-surface assumption of a single
+homography. Check mapping error across the target region using independent camera
+annotations, or use a validated mapping that accounts for the curve. Four visible
+corner markers alone do not establish accurate registration between them.
+
 Use tuning results to choose settings. Freeze those settings before running the
 evaluation playlist. Preserve the HTML, manifest, browser JSONL, application
 configuration, Pi logs, and camera recording for each run. Reuse the same HTML
