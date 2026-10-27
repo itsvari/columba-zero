@@ -412,6 +412,12 @@ of the current wrap-up. No further hardware tests are authorised for this
 wrap-up. The prepared endurance actor has not been executed; the endurance gate
 remains pending rather than waived.
 
+The read-only wrap-up receipt found no capture, controller or telemetry process,
+and PCA9685 registers 9 and 13 both read 16 (FULL_OFF). The Pi checkout remained
+clean at `d55db25`. The task's SSH master and its local tunnels were then closed.
+Re-establish the connection in a future session before resuming hardware work.
+The receipt is `outputs/validation/monitor-20261027/wrap-up-safety.json`.
+
 Review the scoped centring and selection results, including the processing-age
 retention limit and the declared uncertainty/reach assumptions. A clean
 15-second preview-and-recording restart after the injected
