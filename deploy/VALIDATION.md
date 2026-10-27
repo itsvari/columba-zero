@@ -22,6 +22,8 @@ The development gate after the startup and stimulus changes passes 585 tests and
 362 subtests with six native skips, Ruff lint and formatting, and strict mypy
 across 112 files. Real Chromium checks cover both playlists at full and reduced
 display sizes. The full Pi typing gate has not been reclassified as passing.
+The updated Pi at `3f72dbb` passes 589 tests and 368 subtests with two optional
+skips, Ruff lint and formatting, and `git fsck`.
 
 ### Display and short physical runs
 
@@ -57,7 +59,17 @@ A new-process diagnostic measured OpenCV import at 834.954 ms and SciPy optimise
 import at 225.548 ms. These explain the first-use tracking stalls. Revision
 `6fcf7e4` loads them before camera capture and starts the mount only after tracker
 construction succeeds. Its regression fails against the previous startup order
-and passes after the fix. Live cadence revalidation remains pending.
+and passes after the fix.
+
+A live repeat at `3f72dbb` retained the same ±100 µs profile, reduced speed and
+horizontal scenes. It processed 376 frames in 28.838 s. Its 572 hardware tick
+samples have a 50.268 ms mean interval, 50.9 ms p95 and 52.533 ms maximum. It
+recorded 158 timed hardware tracking moves, with sensor command age 193.9 ms at
+p95 and 206.850 ms maximum. Home-and-pause and shutdown completed, with FULL_OFF
+on both channels. The recording retained 144 frames without drops and exported
+28.634 s against 28.632597 s expected. This short repeat supports the import-stall
+fix; it does not establish centring or sustained acceptance. The earlier MP4 was
+also independently decoded with FFmpeg without errors.
 
 The 20-case thread sweep is diagnostic only. Camera position changed during it,
 and its original fixed case order confounded case with thermal drift. No setting
@@ -67,7 +79,7 @@ model, configuration, temperature, frequency and throttling evidence.
 
 ### Outstanding gates
 
-Validate the startup fix on hardware, correction signs, settling, all movement
+Validate correction signs, settling, all movement
 envelopes actually used, selection and loss, pause/resume, faults and restart.
 Then compare the four output modes with fixed stimuli and a real preview client,
 and run the hour-long campaign after the short cases pass. Centring needs

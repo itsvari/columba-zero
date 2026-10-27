@@ -26,7 +26,9 @@ establish framing at powered home before interpreting following results.
 Monitor tooling and its usage are in [docs/monitor-stimulus.md](docs/monitor-stimulus.md).
 Measurements and outstanding gates are in [deploy/VALIDATION.md](deploy/VALIDATION.md).
 Source revision `6fcf7e4` prepares tracking dependencies before camera and mount
-startup to remove first-use import stalls; live revalidation is pending.
+startup. Its live repeat recorded a maximum controller interval of 52.533 ms,
+158 timed tracking moves, and 193.9 ms sensor command age at p95. Independent
+centring, the broader scene campaign and endurance remain open.
 
 Use this plan to implement the demonstration on the current application architecture,
 reusing the useful hardware and controller work from
