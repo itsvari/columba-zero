@@ -4,6 +4,12 @@
 
 ### Monitor campaign update, 27 October 2026
 
+The user has deferred the one-hour run until another time and requested a wrap-up
+of the current work. Do not start further hardware tests during this wrap-up.
+The endurance actor is prepared only; endurance acceptance remains pending.
+Finish the independent review already underway and record its findings for the
+next session. Both servo outputs were disabled at the end of the completed runs.
+
 The user withdrew the 15 FPS goal and subsequently accepted the earlier hot
 10–12 FPS range near 83–85°C for the steady-state demonstration, provided control
 timing and stability pass. Record and report the actual hot throughput, temperature
@@ -55,7 +61,8 @@ passive recording, with empirical uncertainty and unknown time included. The
 similar-size and brief-challenger scenes did not switch; a sustained larger
 challenger caused the sole switch. Partial occlusion exposed processing-age
 identity expiry despite a sub-750 ms sensor-observation gap. These scoped results
-and the prepared hour-long test await independent review.
+await independent review. The prepared hour-long test is deferred at the user's
+request.
 
 Use this plan to implement the demonstration on the current application architecture,
 reusing the useful hardware and controller work from

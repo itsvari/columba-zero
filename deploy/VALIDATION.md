@@ -407,11 +407,17 @@ restart records no capture owner and both outputs disabled.
 
 ### Outstanding gates
 
+The user deferred the one-hour run until another time and requested completion
+of the current wrap-up. No further hardware tests are authorised for this
+wrap-up. The prepared endurance actor has not been executed; the endurance gate
+remains pending rather than waived.
+
 Review the scoped centring and selection results, including the processing-age
 retention limit and the declared uncertainty/reach assumptions. A clean
 15-second preview-and-recording restart after the injected
 capture failure exited 0, exported successfully, and read FULL_OFF on both
-channels. Then run the hour-long campaign after the short cases pass. Centring needs
+channels. Revisit the hour-long campaign in a later session after the short cases
+pass and the user resumes that work. Centring needs
 independent camera truth with time-weighted exclusions. Four corner markers alone
 do not establish a valid homography on the curved monitor. No centring or
 one-hour acceptance is claimed yet. The fixed-zone feature remains deferred.
