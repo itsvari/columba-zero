@@ -40,6 +40,11 @@ their paths and relative area ratios. This is useful when reducing the whole
 presentation to keep its markers below the camera overlay. The accepted range is
 0.5 to 2. Check scripted clipping and actual detection again after changing it.
 
+Add `--optical-code` to display matching machine-readable identity bands above
+and below the target region. This changes the presentation ID and abbreviates
+the lower human caption to run, render and state. See the [offline association
+guide](monitor-association.md) for marker checks and optical limitations.
+
 A curved monitor does not satisfy the flat-surface assumption of a single
 homography. Check mapping error across the target region using independent camera
 annotations, or use a validated mapping that accounts for the curve. Four visible
@@ -176,10 +181,12 @@ with the same scene frame. The camera-visible render number distinguishes them.
 Browser timestamps describe code execution around canvas drawing. They do not
 measure display scan-out, Pi exposure, camera delivery, or servo completion.
 Do not subtract them from Pi clocks without independently establishing clock
-alignment. Use the displayed scene/frame text and render number to associate
-captured content. Use the four distinct marker patterns, their logged rectangles,
-and a validated mapping for each camera frame to transform screen coordinates.
-The tooling does not perform registration or calculate acceptance scores.
+alignment. Use the displayed scene/frame text and render number as human-readable
+context. The opt-in bands can provide association evidence as described in the
+[offline association guide](monitor-association.md). Inspect each complete marker
+and its position; the marker patterns are not rotation-unique. A mapping must be
+independently checked for each camera frame. These tools do not calculate
+acceptance scores.
 
 The source crops are small, compressed photographs with some original background.
 Enlarging them cannot restore detail. The size challenge uses photograph area as

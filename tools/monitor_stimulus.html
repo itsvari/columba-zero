@@ -40,6 +40,10 @@ const referenceOutlineWidthPx = 7;
 const referenceLineWidthPx = 3;
 const photographs = new Map();
 const records = [];
+const opticalSession = manifest.optical_code ? Array.from(crypto.getRandomValues(new Uint8Array(8)),
+  byte => byte.toString(16).padStart(2, "0")).join("") : null;
+const opticalBounds = {left_px: 1056, top_px: 740, width_px: 384, height_px: 72};
+const opticalCheckBounds = {left_px: 1056, top_px: 96, width_px: 384, height_px: 72};
 let ready = false;
 let playing = false;
 let logFull = false;
@@ -201,6 +205,36 @@ function drawMarker(marker) {
   });
 }
 
+function opticalBytes() {
+  if (runNumber > 65535 || renderNumber > 4294967295) throw new Error("Optical identity exhausted");
+  const hexadecimal = manifest.presentation_id.slice(0, 4) + opticalSession +
+    runNumber.toString(16).padStart(4, "0") + renderNumber.toString(16).padStart(8, "0");
+  const bytes = hexadecimal.match(/../g).map(value => parseInt(value, 16));
+  let checksum = 0n;
+  for (const byte of bytes) {
+    checksum ^= BigInt(byte) << 56n;
+    for (let bit = 0; bit < 8; bit++) {
+      checksum = ((checksum << 1n) ^ ((checksum & (1n << 63n)) ? 0x42f0e1eba9ea3693n : 0n)) &
+        0xffffffffffffffffn;
+    }
+  }
+  const checkBytes = checksum.toString(16).padStart(16, "0").match(/../g)
+    .map(value => parseInt(value, 16));
+  return [...bytes, ...checkBytes];
+}
+
+function drawOpticalCode() {
+  const bytes = opticalBytes();
+  for (const bounds of [opticalBounds, opticalCheckBounds]) {
+    for (let index = 0; index < 192; index++) {
+      const bit = (bytes[Math.floor(index / 8)] >>> (7 - index % 8)) & 1;
+      context.fillStyle = bit ? "black" : "white";
+      context.fillRect(bounds.left_px + (index % 32) * 12,
+        bounds.top_px + Math.floor(index / 32) * 12, 12, 12);
+    }
+  }
+}
+
 function drawReferencePoints() {
   for (const point of manifest.registration_points) {
     context.beginPath();
@@ -299,8 +333,11 @@ function render(force = false, animationFrameBrowserMs = null) {
   context.fillStyle = "white";
   context.font = "26px monospace";
   context.fillText(identifier, 160, 110);
-  context.fillText(`run ${runNumber} / repeat ${current.repeatIndex + 1} / render ${renderNumber}` +
+  context.fillText(manifest.optical_code ?
+    `run ${runNumber} / render ${renderNumber} / ${playing ? "PLAYING" : "PAUSED"}` :
+    `run ${runNumber} / repeat ${current.repeatIndex + 1} / render ${renderNumber}` +
     ` / seed ${manifest.seed} / ${playing ? "PLAYING" : "PAUSED"}`, 160, 780);
+  if (manifest.optical_code) drawOpticalCode();
   status.textContent = `${manifest.playlist} · ${playing ? "Playing" : "Paused"} · ` +
     `${current.scene.name} · ${sequenceFrame + 1}/${totalFrames}`;
   for (const target of targets) {
@@ -313,6 +350,9 @@ function render(force = false, animationFrameBrowserMs = null) {
   }
   record("frame", {
     render_number: renderNumber,
+    ...(manifest.optical_code ? {optical_session: opticalSession,
+      optical_code_screen_css_px: screenRectangle(opticalBounds, layout),
+      optical_check_screen_css_px: screenRectangle(opticalCheckBounds, layout)} : {}),
     identifier,
     playing,
     animation_frame_browser_ms: animationFrameBrowserMs,
@@ -439,6 +479,7 @@ document.addEventListener("fullscreenchange", () => {
 });
 
 record("session", {
+  ...(manifest.optical_code ? {optical_session: opticalSession} : {}),
   browser_time_origin_unix_ms: performance.timeOrigin,
   clock_domain: manifest.clock_domain,
   coordinate_system: manifest.coordinate_system,

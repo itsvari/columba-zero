@@ -37,6 +37,14 @@ def scene_named(manifest: Manifest, name: str) -> Scene:
 
 
 class MonitorStimulusTests(unittest.TestCase):
+    def test_optical_code_is_opt_in_and_changes_presentation_identity(self) -> None:
+        original = build_manifest("tuning")
+        coded = build_manifest("tuning", optical_code=True)
+        self.assertFalse(original.optical_code)
+        self.assertTrue(coded.optical_code)
+        self.assertNotEqual(original.presentation_id, coded.presentation_id)
+        self.assertEqual(original.scenes, coded.scenes)
+
     def test_registration_grid_has_known_interior_points_and_is_opt_in(self) -> None:
         original = build_manifest("tuning")
         calibrated = build_manifest("tuning", registration_grid=True)

@@ -202,6 +202,7 @@ class Manifest:
     target_region: Rectangle
     registration_markers: tuple[RegistrationMarker, ...]
     registration_points: tuple[RegistrationPoint, ...]
+    optical_code: bool
     maximum_log_records: int
     clock_domain: str
     coordinate_system: str
@@ -434,6 +435,7 @@ def build_manifest(
     vertical_position_fraction: float = CENTRED_ALIGNMENT_FRACTION,
     registration_grid: bool = False,
     target_scale: float = 1.0,
+    optical_code: bool = False,
 ) -> Manifest:
     if playlist not in PLAYLISTS:
         raise ValueError("playlist must be tuning or evaluation")
@@ -525,6 +527,7 @@ def build_manifest(
         TARGET_REGION,
         markers,
         reference_points,
+        optical_code,
         MAXIMUM_LOG_RECORDS,
         "browser performance.now() milliseconds; never Pi exposure timestamps",
         "screen content in browser viewport CSS pixels; origin at viewport top-left",
@@ -560,6 +563,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument("--horizontal-position", type=float, default=CENTRED_ALIGNMENT_FRACTION)
     parser.add_argument("--vertical-position", type=float, default=CENTRED_ALIGNMENT_FRACTION)
     parser.add_argument("--registration-grid", action="store_true")
+    parser.add_argument("--optical-code", action="store_true")
     parser.add_argument("--target-scale", type=float, default=1.0)
     options = parser.parse_args(arguments)
     playlist: Playlist = "tuning" if options.playlist == "tuning" else "evaluation"
@@ -577,6 +581,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             options.vertical_position,
             options.registration_grid,
             options.target_scale,
+            options.optical_code,
         )
         html = render_html(manifest)
         output.parent.mkdir(parents=True, exist_ok=True)

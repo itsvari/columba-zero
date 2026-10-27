@@ -1,5 +1,9 @@
 # Offline monitor registration
 
+For an opt-in optical identity and automated cross observations, see
+[offline optical association](monitor-association.md). This manual workflow
+remains useful for older captures without the new code.
+
 `tools/register_monitor_frames.py` fits one planar screen-to-camera homography per
 annotated camera image. It consumes existing schema 2 browser frame records and
 manual camera annotations. It does not operate the browser, camera or mount,
