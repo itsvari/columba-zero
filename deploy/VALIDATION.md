@@ -149,6 +149,31 @@ for coverage and three had no unique optical match. These sampled checks do not
 establish campaign-wide truth or centring acceptance. Per-image reports are in
 `outputs/validation/monitor-20261027/clean-reviewed-association/association.json`.
 
+The passive OpenMP-wait repeat also failed the timing goal at 221.6 ms p95 over
+864 sensor-timed tracking moves. Its hot window ran at 11.170 FPS, with median
+84.8°C and active throttle flags. Tick interval maximum was 55.033 ms. There were
+no controller faults or log drops, and both channels read disabled after shutdown.
+No throughput improvement or setting advantage is established by these single runs.
+
+The MP4 duration failure reproduced on desktop FFmpeg 9.0.2. All source frame
+presentation times were correct; B-frame reordering caused the MP4 duration to
+reflect a different decode-time extent. Revision `d7db6c8` disables B-frames for
+this variable-rate export while preserving source times, final dwell and the
+10 ms tolerance. The retained 2 FPS run now exports at 216.934 s against
+216.933198 s expected on both desktop FFmpeg and Pi FFmpeg 7.1.5. All 435 decoded
+presentation timestamps are unchanged in the desktop comparison. A real-FFmpeg
+regression failed before the fix and passes after it.
+
+The desktop gate at `d7db6c8` passes 673 tests and 369 subtests with six native
+skips, Ruff lint and formatting, and strict mypy across 122 files. The Pi passes
+all 41 focused recording tests and re-exports the original failed capture.
+The full Pi gate passes 674 tests and 375 subtests with five optional skips,
+Ruff lint and formatting, native CTest in `native/build/pi5`, both model-package
+checks and `git fsck`. The first CTest invocation pointed at the parent build
+directory and found no tests; the corrected invocation executed the detection
+test successfully. Full Pi mypy remains subject to the previously documented
+environment differences.
+
 ### Outstanding gates
 
 Validate correction signs, settling, all movement
