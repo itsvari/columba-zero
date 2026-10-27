@@ -2,9 +2,12 @@
 
 ## Monitor campaign, 27 October 2026, in progress
 
-The user accepts approximately 12.5 processed FPS and has withdrawn the 15 FPS
-goal. Other acceptance goals remain. Wider movement is authorised while the user
-observes; each envelope still needs measured checks. Following remains opt-in.
+The user withdrew the 15 FPS goal and accepted the earlier hot 10–12 FPS range
+near 83–85°C for the steady-state demonstration, provided control timing and
+stability pass. Report actual hot throughput, temperature and throttling state.
+The short approximately 12.5 FPS result was measured during warm-up. Other
+acceptance goals remain. Wider movement is authorised; each envelope still needs
+measured checks. Following remains opt-in.
 
 ### Deployment and software
 
@@ -52,7 +55,8 @@ offset scenes, then accepted a home-and-pause request. Results:
   degrees. These are commanded coordinates, not measured physical angles. The
   whole ±100 µs envelope was not exercised.
 - 145 recorded frames, zero recording drops, and a playable exported MP4 reported
-  at 29.586 s against 29.584668 s expected. Raw JPEGs and metadata remain.
+  at 29.586 s against 29.584668 s expected. Annotated JPEGs and metadata remain;
+  these images cannot supply independent annotations blinded to detector output.
 - Clean shutdown and FULL_OFF readback on both channels.
 
 A new-process diagnostic measured OpenCV import at 834.954 ms and SciPy optimiser
@@ -77,6 +81,74 @@ was adopted from it. The reusable probe now warms up first, reverses case order
 on alternate repetitions, forces simulation with outputs off, and retains source,
 model, configuration, temperature, frequency and throttling evidence.
 
+### Independent evidence and expanded-axis sweep
+
+The preview can now retain unannotated JPEGs while serving the annotated browser
+view. Recording metadata identifies whether annotations are included; the offline
+centring scorer requires explicit unannotated provenance. A separate read-only
+process records Pi temperature, frequency, throttling flags and process resources.
+It includes export time, so analyse capture and control intervals separately.
+
+A camera-only run at `044d49e` retained 1,123 unannotated images and exported
+225.453 s against 225.452605 s expected. FFmpeg independently decoded that MP4
+and the earlier startup-fixed MP4 without errors. The camera-only run has following
+disabled and does not establish hardware-following throughput or timing.
+
+During that recording, a separate sole hardware owner swept each axis from home
+to both ends of the ±100 µs envelope and returned home between excursions. Each
+ramp lasted six seconds with a two-second hold, with peak nominal speed 2.25°/s.
+The user reported that both axes moved smoothly and cables stayed clear. Both
+outputs read FULL_OFF after shutdown.
+
+Independent image-feature registration measured pan excursions of approximately
++95 and −117 camera pixels, and tilt excursions of −116 and +113 pixels against
+their respective preceding views. After positive tilt, the home hold remained
+approximately 34 pixels above its starting view. The final home returned within
+approximately two vertical pixels of the initial tilt-home view. This is evidence
+of lag or hysteresis, without isolating mechanical backlash, load, quantisation
+or capture timing. Pixel shifts do not measure physical shaft angles. Keep this
+envelope while checking closed-loop settling; wider travel is not needed yet.
+
+The analysis retained 326 registered frames with a median 160 homography inliers.
+The median inlier residual was 0.15 pixels; that is a feature-fit residual, not
+absolute pose accuracy on the curved display. Detailed results and input hashes
+are in `outputs/validation/monitor-20261027/axis-analysis-terra/report.json`.
+
+### Full mixed-scene timing checks
+
+The complete 201-second tuning playlist ran with physical following, unannotated
+recording, a real browser decoding the preview, and separate thermal telemetry.
+The source was `044d49e`, with the same model, threshold, 3 nominal °/s limit,
+±100 µs profile and 250 ms observation timeout. The two runs below differ only
+in configured output rate; they are single runs, not a controlled speed comparison.
+
+| Output rate | Processed FPS over run | Hot FPS after 120 s | Sensor command age p95 | Tick interval maximum |
+|---|---:|---:|---:|---:|
+| 5 FPS | 11.507 | 11.186 | 221.3 ms | 55.503 ms |
+| 2 FPS | 11.389 | 11.149 | 221.8 ms | 54.374 ms |
+
+Both runs failed the 200 ms timing goal. The hot windows had median temperature
+84.8°C, peaks 87.0°C and 87.55°C respectively, and nonzero active throttle flags.
+Their hot-window command-age p95 values were 222.3 and 234.25 ms. There were zero
+log drops or controller faults, and both channels read FULL_OFF after shutdown.
+These short windows do not establish an hour of thermal or memory stability.
+
+The 5 FPS recording exported successfully at 258.424 s. The 2 FPS export failed
+its duration check, reporting 216.906 s against 216.933198 s expected. All 434
+unannotated source images remain. Browser pause, resume and home-and-pause worked
+in that run after the playlist ended, producing paused, home and paused states.
+The earlier attempt to click these controls in the 5 FPS run occurred after its
+bounded deadline had stopped the service; it provides no control-success evidence.
+
+The optical decoder now searches a declared ±2-camera-pixel translation grid
+without expected-payload repair, retaining contrast, cell-margin and CRC checks
+and rejecting competing payloads. Three of eleven individually reviewed sample
+images from the 5 FPS run passed optical association and held-out curved-screen
+checks within the predeclared three-pixel residual limit. Five remained unvalidated
+for coverage and three had no unique optical match. These sampled checks do not
+establish campaign-wide truth or centring acceptance. Per-image reports are in
+`outputs/validation/monitor-20261027/clean-reviewed-association/association.json`.
+
 ### Outstanding gates
 
 Validate correction signs, settling, all movement
@@ -89,7 +161,8 @@ one-hour acceptance is claimed yet. The fixed-zone feature remains deferred.
 
 Local evidence is under `outputs/validation/monitor-20261027/`. Device evidence is
 under `outputs/setup/`, `outputs/monitor-hardware-smoke/`,
-`outputs/monitor-hardware-100us/` and `outputs/monitor-thread-probe/`. Raw media,
+`outputs/monitor-hardware-100us/`, `outputs/monitor-hardware-startup-fixed/`,
+`outputs/monitor-axis-calibration/` and `outputs/monitor-thread-probe/`. Raw media,
 room images and calibration remain outside Git.
 
 ## Pi bring-up, 27 October 2026, in progress

@@ -4,12 +4,15 @@
 
 ### Monitor campaign update, 27 October 2026
 
-The user accepted the observed approximately 12.5 FPS throughput and withdrew the
-15 FPS goal. Continue measuring sustained throughput, command age, centring,
-recovery and stability. The historical handover below retains its original
-measurements and targets; the acceptance section now reflects this decision.
+The user withdrew the 15 FPS goal and subsequently accepted the earlier hot
+10–12 FPS range near 83–85°C for the steady-state demonstration, provided control
+timing and stability pass. Record and report the actual hot throughput, temperature
+and throttling state. Continue measuring command age, centring, recovery and
+stability. The historical handover below retains its original measurements and
+targets; the acceptance section now reflects this decision.
 
-The user is observing the hardware and has authorised wider movement. The first
+The user authorised wider movement and reported smooth movement with cable
+clearance during the completed slow sweep through both ends of both axes. The first
 expanded profile permits home ±100 µs at the existing reduced speed. A 30-second
 run issued 160 timed hardware tracking moves, with 198.0 ms sensor-to-driver-return
 age at p95, then returned home and disabled both channels. This is one short run,
@@ -594,9 +597,11 @@ establish field accuracy.
 
 Initial acceptance targets:
 
-- Record sustained processing throughput against the accepted approximately
-  **12.5 FPS** baseline, with control running at 20 Hz. The user withdrew the
-  earlier 15 FPS requirement on 27 October 2026.
+- Record sustained hot processing throughput, temperature and throttling state,
+  with control running at 20 Hz. The user accepted the earlier **10–12 FPS** hot
+  range near **83–85°C**, conditional on control timing and stability, and withdrew
+  the earlier 15 FPS requirement on 27 October 2026. The short approximately
+  12.5 FPS result was measured while the device was warming up.
 - Frame-to-command age below **200 ms at p95** during normal operation.
 - After settling, the target centre stays within the central **20% of image width and height for at least 80%** of visible tracking time, within mechanical reach.
 - No repeated switching between similarly sized stationary displayed pigeons.
