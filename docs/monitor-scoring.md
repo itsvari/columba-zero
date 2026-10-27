@@ -39,8 +39,8 @@ supplies **no** scene associations, target coordinates or positive judgements.
 Review all intended targets in the captured content, including missed targets,
 challengers, occluded targets, empty scenes and confusers. Replace each reviewed
 frame's null label with the schema below. An omitted entry or a null label stays
-unknown; neither counts as invisible, unreachable or successful. The final
-frame needs a label even though it contributes no extrapolated duration.
+unknown; neither counts as invisible, unreachable or successful. Label the final
+frame for complete coverage, even though it contributes no extrapolated duration.
 
 Obtain target centres directly from camera pixels, independently of detector
 boxes, controller errors and servo commands. Do not copy the selected box centre
@@ -54,10 +54,17 @@ across the target region for each changing view. Registration evidence must
 identify its method, independent validation and residual error. A failed or
 unvalidated mapping must have `registration_valid: false`.
 
+`validated_local_photograph` records a reviewed local mapping from a source
+photograph into the camera image. Its evidence must identify the source, local
+region, independent checks and per-axis error allowances. Mapping diagnostics or
+detector confidence alone do not establish independent truth. The scorer reads
+the reviewed labels; it does not run a matcher or read matcher output files.
+
 ## Annotation schema, version 1
 
-All listed fields are required; extra fields and duplicate JSON keys are
-rejected. JSON numbers must be finite; booleans do not count as numbers. Strings
+All listed fields are required except the legacy uncertainty allowance described
+below; extra fields and duplicate JSON keys are rejected. JSON numbers must be
+finite; booleans do not count as numbers. Strings
 must be non-blank. The scorer validates structure and provenance; the operator
 remains responsible for the independence and accuracy of the evidence.
 
@@ -94,7 +101,7 @@ must match the referenced JPEG. A non-null `label` has exactly these fields:
 | `selection` | `null` if identity mapping is unresolved or no track is selected; otherwise exactly `{"identity": "reviewed stimulus identity", "evidence": "independent association reference"}`. |
 | `evidence` | Reviewer and evidence references establishing scene/render association, the full inventory and the expected-selection rule, including any transition allowance. |
 
-Each target has exactly these fields:
+Each target has these fields, with `centre_uncertainty_px` optional for legacy methods:
 
 | Target field | Value |
 | --- | --- |
@@ -102,9 +109,17 @@ Each target has exactly these fields:
 | `visible` | Boolean established from the recording and stimulus evidence, independently of whether a detector found it. |
 | `reachable` | Boolean established from independently checked movement bounds and scene geometry, not inferred from a clamped command alone. |
 | `registration_valid` | Boolean confirming valid camera-coordinate truth. Set true for reviewed manual pixels without requiring a homography; for mapped truth, require independent registration validation. False excludes the sample as unknown geometry. |
-| `centre_method` | Exactly `"manual_pixels"` or `"validated_registration"`. |
+| `centre_method` | Exactly `"manual_pixels"`, `"validated_registration"` or `"validated_local_photograph"`. |
 | `centre_px` | `null`, or exactly `{"x_px": number, "y_px": number}` in the stored JPEG's orientation and pixel coordinates. Required when visible, reachable and registration-valid; x and y must lie inside the image. |
-| `evidence` | Reviewer and explicit references supporting centre, visibility, reach, and coordinate validity. Reference validation residuals for mapped truth. |
+| `centre_uncertainty_px` | Exactly `{"x_px": number, "y_px": number}`, giving finite non-negative absolute error allowances around the centre on each axis. Required for `"validated_local_photograph"`, even when registration fails or the centre is null. Optional for the two legacy methods, where omission means zero on both axes. |
+| `evidence` | Reviewer and explicit references supporting centre, visibility, reach, coordinate validity and any uncertainty allowances. Reference validation residuals for mapped truth, and independently checked local mapping for `"validated_local_photograph"`. |
+
+The uncertainty rectangle extends from `centre_px - centre_uncertainty_px` to
+`centre_px + centre_uncertainty_px` on each axis. Allowances may differ between
+axes and may extend beyond the image. They are explicit review assumptions,
+not statistical confidence intervals. Version 1 labels without allowances remain
+readable for `manual_pixels` and `validated_registration`; zero is a compatibility
+default, not evidence that a measurement has no error.
 
 Unresolved visibility or reach is not false: leave the frame label null. Invisible
 or unreachable targets may have null centres. A visibly clipped target whose
@@ -152,9 +167,10 @@ presentation/run/repeat/scene occurrence and is split exactly at the declared
 elapsed-time boundary. Selecting another tracker ID does not restart it. An
 occurrence cannot disappear behind another scene and then reappear; use correct
 repeat/run identifiers. Render numbers cannot decrease within an occurrence.
-Unlabelled scene boundaries make coverage incomplete. This first-observed-scene
-convention is conservative about the settling start; it does not establish the
-browser's exact transition time.
+Unlabelled scene boundaries make coverage incomplete. Missing early labels can
+shift the settling exclusion later and change eligible time. This unchanged
+first-observed-scene convention does not establish the browser's exact transition
+time; review that bias separately.
 
 `coverage.excluded_duration_s_by_reason` gives disjoint elapsed seconds for
 settling, sampling gaps, missing annotations, no expected target, invisibility,
@@ -167,20 +183,48 @@ registration. Overlapping reasons therefore do not inflate the sum. The
 Scored duration plus all exclusion durations equals the fixed recording span.
 
 Missing labels, sampling gaps and failed registration contribute to
-`unknown_duration_s`. They cannot create passing coverage. The report includes
+`unknown_duration_s`. The report includes
 labelled and scored fractions of the full recording, frame counts, and a
-conservative occupancy bound that treats unknown time as off-centre while
-retaining independently justified exclusions. These fields expose a high score
+conservative occupancy bound that retains all unknown time in its denominator,
+alongside independently justified exclusions. These fields expose a high score
 computed from a small subset. Check the evidence for every exclusion and inspect
 the full inventory; software cannot detect dishonest human labels.
 
-`centring.goal_met_on_scored_time` is only a numeric comparison with 0.8. Its
-`verdict` is inconclusive if any frame lacks a label, any unknown duration
-remains, telemetry is incomplete, or no eligible time remains. Independently
-reviewed invisible, unreachable, empty and settling periods are explicit policy
-exclusions rather than unknown coverage. A complete result can pass or fail the
-scoped centring goal in either live hardware or simulation mode; the report
-always identifies which mode was used.
+`centring` reports three elapsed durations and their fractions of eligible time:
+
+| Duration | Fraction | Criterion on both axes |
+| --- | --- | --- |
+| `centred_duration_s` | `occupancy_fraction_on_scored_time` | The nominal centre lies inside the central band, including its boundary. |
+| `definitely_centred_duration_s` | `definite_occupancy_fraction_on_scored_time` | The entire uncertainty interval lies inside the central band. |
+| `possibly_centred_duration_s` | `possible_occupancy_fraction_on_scored_time` | The uncertainty interval intersects the central band, including its boundary. |
+
+`goal_met_on_scored_time` retains its point-estimate comparison with 0.8 for
+compatibility. The scoped `verdict` instead uses these worst-case bounds:
+
+```text
+denominator = eligible_duration_s + unknown_duration_s
+occupancy_lower_bound_including_unknown_time = definitely_centred_duration_s / denominator
+occupancy_upper_bound_including_unknown_time = (possibly_centred_duration_s + unknown_duration_s) / denominator
+```
+
+Unknown time counts as off-centre in the lower bound and centred in the upper
+bound. A lower bound of at least 0.8 passes the scoped centring goal. An upper
+bound strictly below 0.8 fails it. Otherwise the result is inconclusive. Missing
+labels can therefore coexist with a scoped pass: 90% definitely centred time and
+10% unknown time gives a lower bound of 0.9, while 70% and 30% gives 0.7 and stays
+inconclusive. `coverage.complete` remains false whenever any frame lacks a label
+or unknown duration remains. An unlabelled final zero-duration image changes
+coverage completeness without changing either bound.
+
+Recording integrity issues always make the scoped verdict inconclusive, even
+when either numeric bound would decide the goal. Invalid annotations and source
+hash mismatches are rejected. A zero denominator produces null bounds and an
+inconclusive verdict. Independently reviewed invisible, unreachable, empty and
+settling periods remain explicit policy exclusions. Missed detections, stale
+selections and switches do not remove independently visible, reachable truth
+from eligible time. Detector confidence does not filter occupancy. Either live
+hardware or simulation mode can receive a scoped result; the report identifies
+the mode.
 
 Selection reports contain per-frame expected identity, actual selected track,
 independently observed selected identity, controller selection-state observation,
@@ -237,4 +281,5 @@ python -m mypy --strict tools/score_monitor_run.py tests/test_monitor_scoring.py
 
 Tests use explicitly synthetic camera truth and logs, including absent selection,
 irregular timing, gaps, loss expectations, registration failure and invalid
-provenance. They do not generate annotations for real recordings.
+provenance, plus uncertainty rectangles, exact band and goal boundaries, and
+worst-case unknown-time bounds. They do not generate annotations for real recordings.

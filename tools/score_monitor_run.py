@@ -86,6 +86,14 @@ class TargetTruth:
     reachable: bool
     registration_valid: bool
     centre_px: tuple[float, float] | None
+    centre_uncertainty_px: tuple[float, float]
+
+
+@dataclass(frozen=True, slots=True)
+class CentringBounds:
+    point: bool
+    definite: bool
+    possible: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -379,14 +387,33 @@ def make_review_template(
 
 
 def _target_truth(value: JsonValue, frame: RecordedFrame) -> TargetTruth:
+    target = _mapping(value, "target truth")
+    uncertainty_field = " centre_uncertainty_px" if "centre_uncertainty_px" in target else ""
     target = _fields(
         value,
         "target truth",
-        "identity visible reachable registration_valid centre_method centre_px evidence",
+        "identity visible reachable registration_valid centre_method centre_px evidence"
+        + uncertainty_field,
     )
-    if target["centre_method"] not in ("manual_pixels", "validated_registration"):
-        raise ValueError("centre_method must be manual_pixels or validated_registration")
+    if target["centre_method"] not in (
+        "manual_pixels",
+        "validated_registration",
+        "validated_local_photograph",
+    ):
+        raise ValueError(
+            "centre_method must be manual_pixels, validated_registration "
+            "or validated_local_photograph"
+        )
+    if target["centre_method"] == "validated_local_photograph" and not uncertainty_field:
+        raise ValueError("validated_local_photograph requires centre_uncertainty_px")
     _text(target["evidence"], "target.evidence")
+    centre_uncertainty_px = (0.0, 0.0)
+    if uncertainty_field:
+        uncertainty = _fields(target["centre_uncertainty_px"], "centre_uncertainty_px", "x_px y_px")
+        centre_uncertainty_px = (
+            _number(uncertainty["x_px"], "centre_uncertainty_px.x_px"),
+            _number(uncertainty["y_px"], "centre_uncertainty_px.y_px"),
+        )
     centre_px: tuple[float, float] | None = None
     if target["centre_px"] is not None:
         centre = _fields(target["centre_px"], "centre_px", "x_px y_px")
@@ -399,6 +426,7 @@ def _target_truth(value: JsonValue, frame: RecordedFrame) -> TargetTruth:
         _boolean(target["reachable"], "reachable"),
         _boolean(target["registration_valid"], "registration_valid"),
         centre_px,
+        centre_uncertainty_px,
     )
     if truth.visible and truth.reachable and truth.registration_valid and centre_px is None:
         raise ValueError("visible reachable targets with valid registration require centre_px")
@@ -525,17 +553,32 @@ def _exclusion(annotation: Annotation | None) -> str | None:
     return None
 
 
-def _centred(annotation: Annotation, frame: RecordedFrame) -> bool:
+def _centring_bounds(annotation: Annotation, frame: RecordedFrame) -> CentringBounds:
     target = next(
         target for target in annotation.targets if target.identity == annotation.expected_identity
     )
     assert target.centre_px is not None
-    half_band_fraction = CENTRAL_IMAGE_FRACTION / 2
-    return all(
-        abs(coordinate_px / dimension_px - IMAGE_MIDPOINT_FRACTION) <= half_band_fraction
+    distances_px = tuple(
+        abs(coordinate_px - dimension_px * IMAGE_MIDPOINT_FRACTION)
         for coordinate_px, dimension_px in zip(
             target.centre_px, (frame.width_px, frame.height_px), strict=True
         )
+    )
+    half_bands_px = (
+        frame.width_px * CENTRAL_IMAGE_FRACTION / 2,
+        frame.height_px * CENTRAL_IMAGE_FRACTION / 2,
+    )
+    axes = tuple(zip(distances_px, half_bands_px, target.centre_uncertainty_px, strict=True))
+    return CentringBounds(
+        point=all(distance_px <= half_band_px for distance_px, half_band_px, _ in axes),
+        definite=all(
+            distance_px + uncertainty_px <= half_band_px
+            for distance_px, half_band_px, uncertainty_px in axes
+        ),
+        possible=all(
+            distance_px <= half_band_px + uncertainty_px
+            for distance_px, half_band_px, uncertainty_px in axes
+        ),
     )
 
 
@@ -558,6 +601,8 @@ def score_recording(recording: Recording, value: JsonValue) -> dict[str, JsonVal
     selection_durations = dict.fromkeys(("correct", "incorrect", "unresolved"), 0.0)
     eligible_duration_s = 0.0
     centred_duration_s = 0.0
+    definitely_centred_duration_s = 0.0
+    possibly_centred_duration_s = 0.0
     labelled_duration_s = 0.0
     sampling_gap_duration_s = 0.0
     observations: list[JsonValue] = []
@@ -585,8 +630,13 @@ def score_recording(recording: Recording, value: JsonValue) -> dict[str, JsonVal
         else:
             assert annotation is not None
             eligible_duration_s += remaining_duration_s
-            if _centred(annotation, frame):
+            bounds = _centring_bounds(annotation, frame)
+            if bounds.point:
                 centred_duration_s += remaining_duration_s
+            if bounds.definite:
+                definitely_centred_duration_s += remaining_duration_s
+            if bounds.possible:
+                possibly_centred_duration_s += remaining_duration_s
         selection_result = _selection_result(annotation, frame)
         duration_result = "unresolved" if long_gap else selection_result
         selection_durations[duration_result] += remaining_duration_s
@@ -612,10 +662,23 @@ def score_recording(recording: Recording, value: JsonValue) -> dict[str, JsonVal
     occupancy = centred_duration_s / eligible_duration_s if eligible_duration_s else None
     complete = not incomplete_labels and unknown_duration_s == 0 and not recording.issues
     goal_met = occupancy >= OCCUPANCY_GOAL_FRACTION if occupancy is not None else None
-    centring_verdict = (
-        "inconclusive" if not complete or goal_met is None else ("pass" if goal_met else "fail")
-    )
     conservative_denominator_s = eligible_duration_s + unknown_duration_s
+    lower_bound = (
+        definitely_centred_duration_s / conservative_denominator_s
+        if conservative_denominator_s
+        else None
+    )
+    upper_bound = (
+        (possibly_centred_duration_s + unknown_duration_s) / conservative_denominator_s
+        if conservative_denominator_s
+        else None
+    )
+    centring_verdict = "inconclusive"
+    if not recording.issues and lower_bound is not None and upper_bound is not None:
+        if lower_bound >= OCCUPANCY_GOAL_FRACTION:
+            centring_verdict = "pass"
+        elif upper_bound < OCCUPANCY_GOAL_FRACTION:
+            centring_verdict = "fail"
     return {
         "schema_version": SCHEMA_VERSION,
         "recording_directory": str(recording.directory),
@@ -645,13 +708,18 @@ def score_recording(recording: Recording, value: JsonValue) -> dict[str, JsonVal
             "goal_fraction": OCCUPANCY_GOAL_FRACTION,
             "eligible_duration_s": eligible_duration_s,
             "centred_duration_s": centred_duration_s,
+            "definitely_centred_duration_s": definitely_centred_duration_s,
+            "possibly_centred_duration_s": possibly_centred_duration_s,
             "occupancy_fraction_on_scored_time": occupancy,
-            "goal_met_on_scored_time": goal_met,
-            "occupancy_lower_bound_including_unknown_time": (
-                centred_duration_s / conservative_denominator_s
-                if conservative_denominator_s
-                else None
+            "definite_occupancy_fraction_on_scored_time": (
+                definitely_centred_duration_s / eligible_duration_s if eligible_duration_s else None
             ),
+            "possible_occupancy_fraction_on_scored_time": (
+                possibly_centred_duration_s / eligible_duration_s if eligible_duration_s else None
+            ),
+            "goal_met_on_scored_time": goal_met,
+            "occupancy_lower_bound_including_unknown_time": lower_bound,
+            "occupancy_upper_bound_including_unknown_time": upper_bound,
             "verdict": centring_verdict,
         },
         "selection": {

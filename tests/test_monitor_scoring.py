@@ -218,8 +218,9 @@ def test_missing_selection_does_not_remove_visible_truth_from_denominator(tmp_pa
 
 
 @pytest.mark.parametrize("annotations_included", (True, None))
+@pytest.mark.parametrize("centre_x_px", (100, 400))
 def test_annotated_or_unknown_camera_evidence_cannot_pass_centring(
-    tmp_path: Path, annotations_included: bool | None
+    tmp_path: Path, annotations_included: bool | None, centre_x_px: float
 ) -> None:
     write_recording(tmp_path)
     index_path = tmp_path / "demo" / "index.jsonl"
@@ -228,7 +229,7 @@ def test_annotated_or_unknown_camera_evidence_cannot_pass_centring(
     metadata["annotations_included"] = annotations_included
     write_records(index_path, records)
     recording = load_recording(tmp_path)
-    report = score_recording(recording, labelled_document(recording, (label(),) * 3))
+    report = score_recording(recording, labelled_document(recording, (label(centre_x_px),) * 3))
     assert mapping(report["centring"])["verdict"] == "inconclusive"
     assert "unannotated image provenance" in str(recording.issues)
 
@@ -259,17 +260,20 @@ def test_selection_and_loss_observations_need_independent_identity_labels(tmp_pa
     assert mapping(observations[3])["selection_state"] == "lost"
 
 
-def test_blank_partial_and_final_only_missing_labels_remain_inconclusive(tmp_path: Path) -> None:
+def test_blank_partial_and_final_only_missing_labels_keep_explicit_coverage(tmp_path: Path) -> None:
     recording = write_recording(tmp_path)
     blank = make_review_template(recording, 0, 2, POLICY_EVIDENCE)
     blank_report = score_recording(recording, blank)
     assert mapping(blank_report["centring"])["goal_met_on_scored_time"] is None
     blank_coverage = mapping(blank_report["coverage"])
     assert mapping(blank_coverage["excluded_duration_s_by_reason"])["missing_annotations"] == 2
-    for labels in ((label(), None, label()), (label(), label(), None)):
+    for labels, verdict in (
+        ((label(), None, label()), "inconclusive"),
+        ((label(), label(), None), "pass"),
+    ):
         report = score_recording(recording, labelled_document(recording, labels))
         assert mapping(report["centring"])["goal_met_on_scored_time"] is True
-        assert mapping(report["centring"])["verdict"] == "inconclusive"
+        assert mapping(report["centring"])["verdict"] == verdict
         assert mapping(report["coverage"])["complete"] is False
     blank["frames"] = []
     assert mapping(score_recording(recording, blank)["centring"])["verdict"] == "inconclusive"
@@ -492,6 +496,202 @@ def test_exact_eighty_percent_meets_numeric_goal(tmp_path: Path) -> None:
     )
     assert mapping(report["centring"])["occupancy_fraction_on_scored_time"] == 0.8
     assert mapping(report["centring"])["verdict"] == "pass"
+
+
+@pytest.mark.parametrize("method", ("manual_pixels", "validated_registration"))
+def test_legacy_labels_without_uncertainty_retain_zero_allowance(
+    tmp_path: Path, method: str
+) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = label()
+    first_target(reviewed)["centre_method"] = method
+    report = score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+    centring = mapping(report["centring"])
+    assert centring["centred_duration_s"] == 2.0
+    assert centring["definitely_centred_duration_s"] == 2.0
+    assert centring["possibly_centred_duration_s"] == 2.0
+    assert centring["occupancy_lower_bound_including_unknown_time"] == 1.0
+    assert centring["occupancy_upper_bound_including_unknown_time"] == 1.0
+    assert centring["verdict"] == "pass"
+
+
+@pytest.mark.parametrize("method", ("manual_pixels", "validated_registration"))
+def test_legacy_methods_honour_explicit_uncertainty(tmp_path: Path, method: str) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = label(320)
+    target = first_target(reviewed)
+    target["centre_method"] = method
+    target["centre_uncertainty_px"] = {"x_px": 1, "y_px": 0}
+    report = score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+    centring = mapping(report["centring"])
+    assert centring["occupancy_fraction_on_scored_time"] == 1.0
+    assert centring["occupancy_lower_bound_including_unknown_time"] == 0.0
+    assert centring["occupancy_upper_bound_including_unknown_time"] == 1.0
+    assert centring["verdict"] == "inconclusive"
+
+
+@pytest.mark.parametrize(
+    "centre_px, uncertainty_px, point, definite, possible, verdict",
+    [
+        ((400, 225), (80, 45), True, True, True, "pass"),
+        ((400, 225), (81, 45), True, False, True, "inconclusive"),
+        ((400, 225), (80, 46), True, False, True, "inconclusive"),
+        ((320, 180), (0, 0), True, True, True, "pass"),
+        ((480, 270), (0, 0), True, True, True, "pass"),
+        ((320, 180), (1, 0), True, False, True, "inconclusive"),
+        ((480, 270), (0, 1), True, False, True, "inconclusive"),
+        ((310, 225), (10, 0), False, False, True, "inconclusive"),
+        ((490, 225), (10, 0), False, False, True, "inconclusive"),
+        ((400, 170), (0, 10), False, False, True, "inconclusive"),
+        ((400, 280), (0, 10), False, False, True, "inconclusive"),
+        ((310, 225), (9, 100), False, False, False, "fail"),
+        ((400, 280), (100, 9), False, False, False, "fail"),
+    ],
+)
+def test_uncertainty_rectangles_use_both_axes_and_include_band_edges(
+    tmp_path: Path,
+    centre_px: tuple[float, float],
+    uncertainty_px: tuple[float, float],
+    point: bool,
+    definite: bool,
+    possible: bool,
+    verdict: str,
+) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = label()
+    target = first_target(reviewed)
+    target["centre_method"] = "validated_local_photograph"
+    target["centre_px"] = {"x_px": centre_px[0], "y_px": centre_px[1]}
+    target["centre_uncertainty_px"] = {"x_px": uncertainty_px[0], "y_px": uncertainty_px[1]}
+    target["evidence"] = "synthetic independently checked local mapping and axis error allowances"
+    report = score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+    centring = mapping(report["centring"])
+    assert centring["centred_duration_s"] == 2.0 * point
+    assert centring["definitely_centred_duration_s"] == 2.0 * definite
+    assert centring["possibly_centred_duration_s"] == 2.0 * possible
+    assert centring["occupancy_fraction_on_scored_time"] == float(point)
+    assert centring["definite_occupancy_fraction_on_scored_time"] == float(definite)
+    assert centring["possible_occupancy_fraction_on_scored_time"] == float(possible)
+    assert centring["occupancy_lower_bound_including_unknown_time"] == float(definite)
+    assert centring["occupancy_upper_bound_including_unknown_time"] == float(possible)
+    assert centring["verdict"] == verdict
+    assert report["global_verdict"] == "inconclusive"
+
+
+@pytest.mark.parametrize("axis", ("x_px", "y_px"))
+@pytest.mark.parametrize("invalid", (-1, float("nan"), float("inf"), True))
+def test_uncertainty_rejects_negative_nonfinite_and_boolean_allowances(
+    tmp_path: Path, axis: str, invalid: JsonValue
+) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = label()
+    target = first_target(reviewed)
+    target["centre_method"] = "validated_local_photograph"
+    target["centre_uncertainty_px"] = {"x_px": 0, "y_px": 0, axis: invalid}
+    with pytest.raises(ValueError, match="finite non-negative number"):
+        score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+
+
+@pytest.mark.parametrize("uncertainty", (None, {"x_px": 1}, {"x_px": 1, "y_px": 1, "extra": 1}))
+def test_uncertainty_has_strict_axis_fields(tmp_path: Path, uncertainty: JsonValue) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = label()
+    first_target(reviewed)["centre_uncertainty_px"] = uncertainty
+    with pytest.raises(ValueError, match="centre_uncertainty_px"):
+        score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+
+
+def test_local_photograph_method_requires_explicit_uncertainty(tmp_path: Path) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = label()
+    first_target(reviewed)["centre_method"] = "validated_local_photograph"
+    with pytest.raises(ValueError, match="requires centre_uncertainty_px"):
+        score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+
+
+def test_local_photograph_method_requires_nonblank_review_evidence(tmp_path: Path) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = label()
+    target = first_target(reviewed)
+    target["centre_method"] = "validated_local_photograph"
+    target["centre_uncertainty_px"] = {"x_px": 0, "y_px": 0}
+    target["evidence"] = " "
+    with pytest.raises(ValueError, match="target.evidence"):
+        score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+
+
+@pytest.mark.parametrize("definite_duration_s, verdict", ((8.0, "pass"), (7.0, "inconclusive")))
+def test_definite_time_controls_threshold_even_when_nominal_occupancy_is_perfect(
+    tmp_path: Path, definite_duration_s: float, verdict: str
+) -> None:
+    recording = write_recording(tmp_path, (0.0, definite_duration_s, 10.0), (1, 1, 1))
+    uncertain = label(320)
+    first_target(uncertain)["centre_uncertainty_px"] = {"x_px": 1, "y_px": 0}
+    report = score_recording(
+        recording,
+        labelled_document(recording, (label(), uncertain, label()), maximum_sample_gap_s=10.0),
+    )
+    centring = mapping(report["centring"])
+    assert centring["occupancy_fraction_on_scored_time"] == 1.0
+    assert centring["definitely_centred_duration_s"] == definite_duration_s
+    assert centring["occupancy_lower_bound_including_unknown_time"] == definite_duration_s / 10.0
+    assert centring["occupancy_upper_bound_including_unknown_time"] == 1.0
+    assert centring["verdict"] == verdict
+
+
+@pytest.mark.parametrize(
+    "known_duration_s, verdict", ((9.0, "pass"), (8.0, "pass"), (7.0, "inconclusive"))
+)
+def test_unknown_time_stays_in_denominator_and_can_still_prove_scoped_goal(
+    tmp_path: Path, known_duration_s: float, verdict: str
+) -> None:
+    recording = write_recording(tmp_path, (0.0, known_duration_s, 10.0), (None, 2, 1))
+    report = score_recording(
+        recording,
+        labelled_document(
+            recording,
+            (label(selected_identity=None), None, label()),
+            maximum_sample_gap_s=10.0,
+        ),
+    )
+    centring = mapping(report["centring"])
+    assert centring["eligible_duration_s"] == known_duration_s
+    assert centring["definitely_centred_duration_s"] == known_duration_s
+    assert centring["occupancy_fraction_on_scored_time"] == 1.0
+    assert centring["occupancy_lower_bound_including_unknown_time"] == known_duration_s / 10.0
+    assert centring["occupancy_upper_bound_including_unknown_time"] == 1.0
+    assert centring["verdict"] == verdict
+    assert mapping(report["coverage"])["unknown_duration_s"] == 10.0 - known_duration_s
+    assert mapping(report["coverage"])["complete"] is False
+    assert report["global_verdict"] == "inconclusive"
+
+
+@pytest.mark.parametrize("unknown_duration_s, verdict", ((2.0, "fail"), (8.0, "inconclusive")))
+def test_unknown_time_is_centred_in_upper_bound_for_failure_decision(
+    tmp_path: Path, unknown_duration_s: float, verdict: str
+) -> None:
+    recording = write_recording(tmp_path, (0.0, unknown_duration_s, 10.0), (1, 1, 1))
+    report = score_recording(
+        recording,
+        labelled_document(recording, (None, label(100), label()), maximum_sample_gap_s=10.0),
+    )
+    centring = mapping(report["centring"])
+    assert centring["occupancy_lower_bound_including_unknown_time"] == 0.0
+    assert centring["occupancy_upper_bound_including_unknown_time"] == unknown_duration_s / 10.0
+    assert centring["verdict"] == verdict
+
+
+def test_no_eligible_or_unknown_duration_is_inconclusive(tmp_path: Path) -> None:
+    recording = write_recording(tmp_path)
+    report = score_recording(
+        recording, labelled_document(recording, (label(expected_identity=None),) * 3)
+    )
+    centring = mapping(report["centring"])
+    assert centring["occupancy_lower_bound_including_unknown_time"] is None
+    assert centring["occupancy_upper_bound_including_unknown_time"] is None
+    assert centring["definite_occupancy_fraction_on_scored_time"] is None
+    assert centring["possible_occupancy_fraction_on_scored_time"] is None
+    assert centring["verdict"] == "inconclusive"
 
 
 def test_real_cli_blank_template_and_report_never_overwrite_evidence(tmp_path: Path) -> None:
