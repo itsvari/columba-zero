@@ -63,6 +63,11 @@ the evaluation sequence for just over an hour, generate 28 repeats:
 python tools/monitor_stimulus.py --playlist evaluation --seed 20261027 --repeat-count 28 --output outputs/monitor/evaluation-hour.html
 ```
 
+Use `--static-duration-s 12` for the reduced-speed hardware profile. This extends
+the nine stationary scenes to 12 seconds each, retaining the movement paths and
+other durations. The resulting cycle is 201 seconds. Declare the settling window
+before scoring; a four-second scene does not demonstrate settling for this profile.
+
 `--frame-rate-hz` accepts integers from 10 to 60. It sets the logical stimulus
 rate, not the display refresh rate or camera frame rate. `--repeat-count` accepts
 1 to 1000. The presentation pauses at its log capacity even if repeats remain.

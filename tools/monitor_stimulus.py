@@ -18,6 +18,8 @@ TEMPLATE_PATH = Path(__file__).with_suffix(".html")
 MANIFEST_PLACEHOLDER = "__STIMULUS_MANIFEST__"
 DEFAULT_SEED = 20261027
 DEFAULT_FRAME_RATE_HZ = 30
+DEFAULT_STATIC_DURATION_S = 4.0
+MAXIMUM_STATIC_DURATION_S = 60.0
 MINIMUM_FRAME_RATE_HZ = 10
 MAXIMUM_FRAME_RATE_HZ = 60
 MAXIMUM_REPEAT_COUNT = 1000
@@ -237,7 +239,12 @@ def pose_at(
     )
 
 
-def build_scenes(playlist: Playlist, seed: int, frame_rate_hz: int) -> tuple[Scene, ...]:
+def build_scenes(
+    playlist: Playlist,
+    seed: int,
+    frame_rate_hz: int,
+    static_duration_s: float = DEFAULT_STATIC_DURATION_S,
+) -> tuple[Scene, ...]:
     primary, challenger = (
         ("tuning-standing-pigeon", "tuning-profile-pigeon")
         if playlist == "tuning"
@@ -284,7 +291,12 @@ def build_scenes(playlist: Playlist, seed: int, frame_rate_hz: int) -> tuple[Sce
         target = Target(
             "incumbent", primary, (pose_at(0, frame_rate_hz, primary, centre_x_px, centre_y_px),)
         )
-        add_scene(f"static-{name}", 4, (target,), label(4, "incumbent", "acquire and settle"))
+        add_scene(
+            f"static-{name}",
+            static_duration_s,
+            (target,),
+            label(static_duration_s, "incumbent", "acquire and settle"),
+        )
 
     scene_random = random.Random(f"{playlist}:{seed}:paths")
     vertical_offset_px = scene_random.uniform(-35, 35)
@@ -436,6 +448,7 @@ def build_manifest(
     registration_grid: bool = False,
     target_scale: float = 1.0,
     optical_code: bool = False,
+    static_duration_s: float = DEFAULT_STATIC_DURATION_S,
 ) -> Manifest:
     if playlist not in PLAYLISTS:
         raise ValueError("playlist must be tuning or evaluation")
@@ -453,7 +466,12 @@ def build_manifest(
         or not MINIMUM_TARGET_SCALE <= target_scale <= MAXIMUM_TARGET_SCALE
     ):
         raise ValueError("target scale must be finite and between 0.5 and 2")
-    scenes = build_scenes(playlist, seed, frame_rate_hz)
+    if (
+        not math.isfinite(static_duration_s)
+        or not 1 <= static_duration_s <= MAXIMUM_STATIC_DURATION_S
+    ):
+        raise ValueError("static duration must be finite and between 1 and 60 seconds")
+    scenes = build_scenes(playlist, seed, frame_rate_hz, static_duration_s)
     scenes = tuple(
         replace(
             scene,
@@ -564,6 +582,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument("--vertical-position", type=float, default=CENTRED_ALIGNMENT_FRACTION)
     parser.add_argument("--registration-grid", action="store_true")
     parser.add_argument("--optical-code", action="store_true")
+    parser.add_argument("--static-duration-s", type=float, default=DEFAULT_STATIC_DURATION_S)
     parser.add_argument("--target-scale", type=float, default=1.0)
     options = parser.parse_args(arguments)
     playlist: Playlist = "tuning" if options.playlist == "tuning" else "evaluation"
@@ -582,6 +601,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             options.registration_grid,
             options.target_scale,
             options.optical_code,
+            options.static_duration_s,
         )
         html = render_html(manifest)
         output.parent.mkdir(parents=True, exist_ok=True)

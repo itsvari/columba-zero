@@ -37,6 +37,19 @@ def scene_named(manifest: Manifest, name: str) -> Scene:
 
 
 class MonitorStimulusTests(unittest.TestCase):
+    def test_long_static_scenes_preserve_paths_and_allow_a_declared_settling_window(self) -> None:
+        original = build_manifest("tuning")
+        longer = build_manifest("tuning", static_duration_s=12)
+        for before, after in zip(original.scenes, longer.scenes, strict=True):
+            self.assertEqual(before.targets, after.targets)
+            expected_s = 12 if after.name.startswith("static-") else before.duration_frames / 30
+            self.assertEqual(after.duration_frames, expected_s * 30)
+            self.assertEqual(after.annotations[-1].end_frame, after.duration_frames)
+        self.assertNotEqual(original.presentation_id, longer.presentation_id)
+        for value in (0, 61, float("nan")):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "static duration"):
+                build_manifest("tuning", static_duration_s=value)
+
     def test_optical_code_is_opt_in_and_changes_presentation_identity(self) -> None:
         original = build_manifest("tuning")
         coded = build_manifest("tuning", optical_code=True)
