@@ -25,7 +25,10 @@ MAXIMUM_LOG_RECORDS = 150_000
 SCHEMA_VERSION = 2
 MINIMUM_DISPLAY_SCALE = 0.4
 MAXIMUM_DISPLAY_SCALE = 1.0
+MINIMUM_TARGET_SCALE = 0.5
+MAXIMUM_TARGET_SCALE = 2.0
 CENTRED_ALIGNMENT_FRACTION = 0.5
+REFERENCE_POINT_FRACTIONS = (0.1, 0.34, 0.5, 0.66, 0.9)
 DESIGN_WIDTH_PX = 1600
 DESIGN_HEIGHT_PX = 900
 CENTRE_X_PX = DESIGN_WIDTH_PX / 2
@@ -176,6 +179,13 @@ class RegistrationMarker:
 
 
 @dataclass(frozen=True, slots=True)
+class RegistrationPoint:
+    point_id: str
+    centre_x_px: float
+    centre_y_px: float
+
+
+@dataclass(frozen=True, slots=True)
 class Manifest:
     schema_version: int
     presentation_id: str
@@ -184,12 +194,14 @@ class Manifest:
     frame_rate_hz: int
     repeat_count: int
     display_scale: float
+    target_scale: float
     horizontal_position_fraction: float
     vertical_position_fraction: float
     design_width_px: int
     design_height_px: int
     target_region: Rectangle
     registration_markers: tuple[RegistrationMarker, ...]
+    registration_points: tuple[RegistrationPoint, ...]
     maximum_log_records: int
     clock_domain: str
     coordinate_system: str
@@ -420,6 +432,8 @@ def build_manifest(
     display_scale: float = MAXIMUM_DISPLAY_SCALE,
     horizontal_position_fraction: float = CENTRED_ALIGNMENT_FRACTION,
     vertical_position_fraction: float = CENTRED_ALIGNMENT_FRACTION,
+    registration_grid: bool = False,
+    target_scale: float = 1.0,
 ) -> Manifest:
     if playlist not in PLAYLISTS:
         raise ValueError("playlist must be tuning or evaluation")
@@ -432,7 +446,32 @@ def build_manifest(
     for position in (horizontal_position_fraction, vertical_position_fraction):
         if not math.isfinite(position) or not 0 <= position <= 1:
             raise ValueError("display positions must be finite fractions between 0 and 1")
+    if (
+        not math.isfinite(target_scale)
+        or not MINIMUM_TARGET_SCALE <= target_scale <= MAXIMUM_TARGET_SCALE
+    ):
+        raise ValueError("target scale must be finite and between 0.5 and 2")
     scenes = build_scenes(playlist, seed, frame_rate_hz)
+    scenes = tuple(
+        replace(
+            scene,
+            targets=tuple(
+                replace(
+                    target,
+                    keyframes=tuple(
+                        replace(
+                            pose,
+                            width_px=pose.width_px * target_scale,
+                            height_px=pose.height_px * target_scale,
+                        )
+                        for pose in target.keyframes
+                    ),
+                )
+                for target in scene.targets
+            ),
+        )
+        for scene in scenes
+    )
     used_assets = {target.asset_id for scene in scenes for target in scene.targets}
     assets: list[EmbeddedPhotograph] = []
     for photograph in PHOTOGRAPHS:
@@ -457,6 +496,19 @@ def build_manifest(
             ("bottom-right", 1512, 812, ("11111", "10001", "10001", "10101", "11111")),
         )
     )
+    reference_points = (
+        tuple(
+            RegistrationPoint(
+                f"row-{row + 1}-column-{column + 1}",
+                TARGET_REGION.left_px + horizontal_fraction * TARGET_REGION.width_px,
+                TARGET_REGION.top_px + vertical_fraction * TARGET_REGION.height_px,
+            )
+            for row, vertical_fraction in enumerate(REFERENCE_POINT_FRACTIONS)
+            for column, horizontal_fraction in enumerate(REFERENCE_POINT_FRACTIONS)
+        )
+        if registration_grid
+        else ()
+    )
     manifest = Manifest(
         SCHEMA_VERSION,
         "",
@@ -465,12 +517,14 @@ def build_manifest(
         frame_rate_hz,
         repeat_count,
         display_scale,
+        target_scale,
         horizontal_position_fraction,
         vertical_position_fraction,
         DESIGN_WIDTH_PX,
         DESIGN_HEIGHT_PX,
         TARGET_REGION,
         markers,
+        reference_points,
         MAXIMUM_LOG_RECORDS,
         "browser performance.now() milliseconds; never Pi exposure timestamps",
         "screen content in browser viewport CSS pixels; origin at viewport top-left",
@@ -505,6 +559,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument("--display-scale", type=float, default=MAXIMUM_DISPLAY_SCALE)
     parser.add_argument("--horizontal-position", type=float, default=CENTRED_ALIGNMENT_FRACTION)
     parser.add_argument("--vertical-position", type=float, default=CENTRED_ALIGNMENT_FRACTION)
+    parser.add_argument("--registration-grid", action="store_true")
+    parser.add_argument("--target-scale", type=float, default=1.0)
     options = parser.parse_args(arguments)
     playlist: Playlist = "tuning" if options.playlist == "tuning" else "evaluation"
     output = Path(options.output)
@@ -519,6 +575,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
             options.display_scale,
             options.horizontal_position,
             options.vertical_position,
+            options.registration_grid,
+            options.target_scale,
         )
         html = render_html(manifest)
         output.parent.mkdir(parents=True, exist_ok=True)

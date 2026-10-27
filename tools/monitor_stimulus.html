@@ -35,6 +35,9 @@ const totalFrames = cycleFrames * manifest.repeat_count;
 const durationMs = totalFrames * frameDurationMs;
 const logReserveRecords = 10;
 const visibilityToleranceFraction = 1e-9;
+const referenceRadiusPx = 14;
+const referenceOutlineWidthPx = 7;
+const referenceLineWidthPx = 3;
 const photographs = new Map();
 const records = [];
 let ready = false;
@@ -198,6 +201,37 @@ function drawMarker(marker) {
   });
 }
 
+function drawReferencePoints() {
+  for (const point of manifest.registration_points) {
+    context.beginPath();
+    context.moveTo(point.centre_x_px - referenceRadiusPx, point.centre_y_px);
+    context.lineTo(point.centre_x_px + referenceRadiusPx, point.centre_y_px);
+    context.moveTo(point.centre_x_px, point.centre_y_px - referenceRadiusPx);
+    context.lineTo(point.centre_x_px, point.centre_y_px + referenceRadiusPx);
+    context.strokeStyle = "white";
+    context.lineWidth = referenceOutlineWidthPx;
+    context.stroke();
+    context.strokeStyle = "black";
+    context.lineWidth = referenceLineWidthPx;
+    context.stroke();
+  }
+}
+
+function referencePointRecords(layout, targets) {
+  const radiusPx = referenceRadiusPx + referenceOutlineWidthPx / 2;
+  return manifest.registration_points.map(point => {
+    const bounds = screenRectangle({left_px: point.centre_x_px - radiusPx,
+      top_px: point.centre_y_px - radiusPx, width_px: radiusPx * 2,
+      height_px: radiusPx * 2}, layout);
+    return {
+      point_id: point.point_id,
+      screen_css_px: [bounds.left_px + bounds.width_px / 2, bounds.top_px + bounds.height_px / 2],
+      visible: targets.every(target => !target.present ||
+        intersectionArea(bounds, target.box_screen_css_px) === 0)
+    };
+  });
+}
+
 function drawBackground(scene) {
   const region = manifest.target_region;
   context.fillStyle = "#b8b8b8";
@@ -256,6 +290,7 @@ function render(force = false, animationFrameBrowserMs = null) {
   context.rect(region.left_px, region.top_px, region.width_px, region.height_px);
   context.clip();
   drawBackground(current.scene);
+  drawReferencePoints();
   const targets = current.scene.targets.map(target => drawTarget(target, current.sceneFrame, layout));
   context.restore();
   manifest.registration_markers.forEach(drawMarker);
@@ -294,6 +329,7 @@ function render(force = false, animationFrameBrowserMs = null) {
     registration_markers: manifest.registration_markers.map(marker => ({
       marker_id: marker.marker_id, box_screen_css_px: screenRectangle(marker.bounds, layout)
     })),
+    registration_points: referencePointRecords(layout, targets),
     targets
   });
   lastSequenceFrame = sequenceFrame;

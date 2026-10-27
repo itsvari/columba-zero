@@ -37,6 +37,30 @@ def scene_named(manifest: Manifest, name: str) -> Scene:
 
 
 class MonitorStimulusTests(unittest.TestCase):
+    def test_registration_grid_has_known_interior_points_and_is_opt_in(self) -> None:
+        original = build_manifest("tuning")
+        calibrated = build_manifest("tuning", registration_grid=True)
+        self.assertEqual(original.registration_points, ())
+        self.assertEqual(len(calibrated.registration_points), 25)
+        self.assertEqual(len({point.point_id for point in calibrated.registration_points}), 25)
+        self.assertNotEqual(original.presentation_id, calibrated.presentation_id)
+        self.assertEqual(original.scenes, calibrated.scenes)
+
+    def test_target_scale_preserves_paths_and_area_advantage(self) -> None:
+        original = build_manifest("tuning")
+        enlarged = build_manifest("tuning", target_scale=1.25)
+        for scene, scaled in zip(original.scenes, enlarged.scenes, strict=True):
+            for target, larger in zip(scene.targets, scaled.targets, strict=True):
+                for pose, resized in zip(target.keyframes, larger.keyframes, strict=True):
+                    self.assertEqual(pose.centre_x_px, resized.centre_x_px)
+                    self.assertEqual(pose.centre_y_px, resized.centre_y_px)
+                    self.assertEqual(pose.frame, resized.frame)
+                    self.assertAlmostEqual(pose.width_px * 1.25, resized.width_px)
+                    self.assertAlmostEqual(pose.height_px * 1.25, resized.height_px)
+        for value in (0, 0.49, 2.01, float("nan")):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "target scale"):
+                build_manifest("tuning", target_scale=value)
+
     def test_display_scale_is_bounded_and_changes_the_presentation_identity(self) -> None:
         original = build_manifest("tuning")
         reduced = build_manifest("tuning", display_scale=0.65)
@@ -250,6 +274,7 @@ class MonitorStimulusTests(unittest.TestCase):
                     display_scale=display_scale,
                     horizontal_position_fraction=0.8,
                     vertical_position_fraction=0.1,
+                    registration_grid=display_scale < 1,
                 )
                 html = render_html(manifest).replace("</html>", f"<script>{driver}</script></html>")
                 output.write_text(html, encoding="utf-8")

@@ -29,6 +29,17 @@ bottom. Both default to 0.5. This can align the stimulus with the camera's exist
 aim without changing servo joints. These fractions also appear in the manifest
 and frame records.
 
+Add `--registration-grid` to draw 25 fixed crosses behind the targets. Their
+screen positions and scripted visibility are included in each browser frame
+record. The photograph rectangles cover any crosses behind them. This grid gives
+independent interior features for camera registration. Its visibility field only
+describes scripted coverage; inspect actual camera visibility and association
+before using a point. Keep this background choice fixed across compared runs.
+Use `--target-scale 1.25` to enlarge all photograph rectangles while retaining
+their paths and relative area ratios. This is useful when reducing the whole
+presentation to keep its markers below the camera overlay. The accepted range is
+0.5 to 2. Check scripted clipping and actual detection again after changing it.
+
 A curved monitor does not satisfy the flat-surface assumption of a single
 homography. Check mapping error across the target region using independent camera
 annotations, or use a validated mapping that accounts for the curve. Four visible
