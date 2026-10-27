@@ -35,6 +35,18 @@ display sizes. The full Pi typing gate has not been reclassified as passing.
 The updated Pi at `3f72dbb` passes 589 tests and 368 subtests with two optional
 skips, Ruff lint and formatting, and `git fsck`.
 
+The later pre-endurance gate at `d55db25` passes **834 desktop tests and 369
+subtests**, with six optional skips, and **832 Pi tests and 375 subtests**, with
+eight optional skips. Real Chromium checks were enabled on the desktop. Ruff
+lint and formatting pass on both machines, strict desktop mypy passes across
+130 source files, and Pi native CTest, both model-package checks and `git fsck`
+pass. The desktop test log retains eight deprecation warnings. The full Pi mypy
+gate is still not claimed. Revision, deployment bundle checksums and outputs are
+in the campaign's `desktop-pre-endurance-final-*` and
+`pi-pre-endurance-final-gate.txt` evidence files. The centre guard only
+qualifies fully visible source crops; all four regenerated centring reports match
+the final tool hashes and retain exactly the same numerical bounds.
+
 ### Display and short physical runs
 
 The physical display is a 34-inch ultrawide with a 1500R curve. The user increased
@@ -285,6 +297,28 @@ scoped pass for the recording and declared empirical uncertainty; the mapping
 allowance is not a statistical guarantee, and overall hardware acceptance remains
 inconclusive. Independent review is pending.
 
+Selection analysis across all 22 scenes includes the first six seconds rather
+than hiding transition behaviour in settling exclusions. The 1.08× similar-size
+challenge and the brief 1.6× challenger produced no switch. The sustained 1.6×
+challenger produced the sole switch, approximately 524 ms after confirmation;
+exact area ties were not physically tested. Internal smoothed-area reconstruction
+is reported separately from independent image identity and is not bird-size truth.
+Across the recording, 241.635 seconds were independently correct, 0.963 seconds
+disagreed with an immediate expected-identity rule during hold/departure
+transitions, and 25.580 seconds remained unresolved. The 66.611-second paused
+tail is confuser/no-expected content, not extra centred-positive footage.
+
+The 0.3-second full occlusion retained ID 18. The 0.6-second partial occlusion
+reset ID 17 to 18: its sensor-observation gap was 699.722 ms, but processing
+finished when the old observation was 836.218 ms old, exceeding the 750 ms
+retention policy. The tracker prunes by processing age before association. This
+is an observed identity-retention limit for review, not a blanket partial-
+occlusion retention pass. Longer full occlusion lost and reacquired the target;
+departure returned to commanded home with no subsequent acquisition during empty
+or confuser content. Physical home arrival is not measured by these logs.
+Source hashes, all scene intervals, timing brackets and unresolved evidence are in
+`outputs/validation/monitor-20261027/selection-loss-reacquisition/analysis.json`.
+
 The 190 ms experimental recording remains inconclusive, with a 75.610% lower
 bound and its original unsuccessful-run-end integrity issue. Neither the
 threshold nor that integrity failure has been relaxed. Preparation, annotation,
@@ -373,9 +407,9 @@ restart records no capture owner and both outputs disabled.
 
 ### Outstanding gates
 
-Finish independent settling, centring, selection and loss checks within the
-measured movement envelope, and inspect the camera-stall recovery trace and clean
-restart. A clean 15-second preview-and-recording restart after the injected
+Review the scoped centring and selection results, including the processing-age
+retention limit and the declared uncertainty/reach assumptions. A clean
+15-second preview-and-recording restart after the injected
 capture failure exited 0, exported successfully, and read FULL_OFF on both
 channels. Then run the hour-long campaign after the short cases pass. Centring needs
 independent camera truth with time-weighted exclusions. Four corner markers alone

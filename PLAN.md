@@ -49,7 +49,13 @@ throttling occurred and capture-period CPU temperature peaked at 88.1°C. These
 are single sequential runs, not a performance ranking or endurance result.
 Pause/home/resume, an unread preview client, recording-write failure and an
 injected camera stall/read failure have hardware evidence. Independent centring,
-selection and endurance remain open.
+selection and endurance remain open for overall acceptance. The offline scorer
+now gives a narrow 80.957% conservative centring lower bound for the retained
+passive recording, with empirical uncertainty and unknown time included. The
+similar-size and brief-challenger scenes did not switch; a sustained larger
+challenger caused the sole switch. Partial occlusion exposed processing-age
+identity expiry despite a sub-750 ms sensor-observation gap. These scoped results
+and the prepared hour-long test await independent review.
 
 Use this plan to implement the demonstration on the current application architecture,
 reusing the useful hardware and controller work from
