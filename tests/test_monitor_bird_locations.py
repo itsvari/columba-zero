@@ -13,10 +13,12 @@ from tools.locate_monitor_birds import (
     CameraCheck,
     Label,
     apply_camera_check,
+    camera_features,
     digest,
     evaluate_geometry,
-    feature_matches,
     load_labels,
+    match_features,
+    source_features,
 )
 from tools.monitor_stimulus import PHOTOGRAPHS
 
@@ -103,7 +105,7 @@ def test_label_binding_and_review_are_required(tmp_path: Path, changes: dict[str
 
 def test_low_texture_and_wrong_photo_are_rejected() -> None:
     empty = numpy.full((450, 800), 120, dtype=numpy.uint8)
-    source, target = feature_matches(label(), empty)
+    source, target = match_features(source_features(label()), camera_features(empty))
     assert evaluate_geometry(source, target, label(), empty.shape)["status"] == "rejected"
     photo = PHOTOGRAPHS[-1]
     image = cv2.imread(photo.source, cv2.IMREAD_GRAYSCALE)
@@ -113,7 +115,7 @@ def test_low_texture_and_wrong_photo_are_rejected() -> None:
     canvas[100 : 100 + crop.height_px, 200 : 200 + crop.width_px] = image[
         crop.top_px : crop.top_px + crop.height_px, crop.left_px : crop.left_px + crop.width_px
     ]
-    source, target = feature_matches(label(), canvas)
+    source, target = match_features(source_features(label()), camera_features(canvas))
     assert evaluate_geometry(source, target, label(), canvas.shape)["status"] == "rejected"
 
 
@@ -135,7 +137,9 @@ def test_repeated_occluded_or_partial_image_rejected(damage: str) -> None:
             canvas[100:304, 500:700] = original
         else:
             canvas[100:304, 290:400] = 230
-    source, target = feature_matches(label(), cast(NDArray[numpy.uint8], canvas))
+    source, target = match_features(
+        source_features(label()), camera_features(cast(NDArray[numpy.uint8], canvas))
+    )
     assert evaluate_geometry(source, target, label(), canvas.shape)["status"] == "rejected"
 
 
@@ -160,7 +164,9 @@ def test_recorded_features_with_test_only_labels(
     image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     assert image is not None
     fixture = Label(PHOTOGRAPHS[asset_index], bounds, 10, 2, "test fixture; not reviewed")
-    source, target = feature_matches(fixture, cast(NDArray[numpy.uint8], image))
+    source, target = match_features(
+        source_features(fixture), camera_features(cast(NDArray[numpy.uint8], image))
+    )
     assert evaluate_geometry(source, target, fixture, image.shape)["status"] == "candidate"
 
 
@@ -260,11 +266,76 @@ def test_cli_rejects_mismatched_image_before_feature_matching(
         ],
     )
 
-    def fail_if_called(label: Label, image: NDArray[numpy.uint8]) -> None:
+    def fail_if_called(image: NDArray[numpy.uint8]) -> None:
         raise AssertionError("feature matching should not run for mismatched camera check")
 
-    monkeypatch.setattr(locate_monitor_birds, "feature_matches", fail_if_called)
+    monkeypatch.setattr(locate_monitor_birds, "camera_features", fail_if_called)
     assert locate_monitor_birds.main() == 0
     results = json.loads((output / "locations.json").read_text())["results"]
     assert results[0]["status"] == "rejected"
     assert results[0]["reason"] == "camera check image SHA-256 mismatch"
+
+
+def test_cli_extracts_each_source_once_and_each_image_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    from tools import locate_monitor_birds
+
+    images = ["first.jpg", "second.jpg"]
+    for name in images:
+        assert cv2.imwrite(str(tmp_path / name), numpy.full((30, 30), 128, dtype=numpy.uint8))
+    index = tmp_path / "index.jsonl"
+    index.write_text("".join(json.dumps({"filename": name}) + "\n" for name in images))
+    labels = tmp_path / "labels.json"
+    write_label(labels)
+    entries = json.loads(labels.read_text())["labels"]
+    photo = PHOTOGRAPHS[1]
+    entries.append(
+        {
+            "asset_id": photo.asset_id,
+            "source_sha256": digest(Path(photo.source)),
+            "crop_xywh_px": [168, 620, 121, 125],
+            "visible_bbox_xyxy_px": [0, 0, 121, 125],
+            "edge_allowance_source_px": 5,
+            "registration_allowance_camera_px": 2,
+            "confirmed": True,
+            "reviewer": "synthetic test",
+        }
+    )
+    labels.write_text(json.dumps({"labels": entries}))
+    source_calls: list[str] = []
+    camera_calls: list[int] = []
+    original_source = locate_monitor_birds.source_features
+    original_camera = locate_monitor_birds.camera_features
+
+    def count_source(label: Label) -> locate_monitor_birds.Features:
+        source_calls.append(label.photograph.asset_id)
+        return original_source(label)
+
+    def count_camera(image: NDArray[numpy.uint8]) -> locate_monitor_birds.Features:
+        camera_calls.append(1)
+        return original_camera(image)
+
+    monkeypatch.setattr(locate_monitor_birds, "source_features", count_source)
+    monkeypatch.setattr(locate_monitor_birds, "camera_features", count_camera)
+    output = tmp_path / "result"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "locate_monitor_birds",
+            str(index),
+            "--source-labels",
+            str(labels),
+            "--output",
+            str(output),
+        ],
+    )
+    assert locate_monitor_birds.main() == 0
+    results = json.loads((output / "locations.json").read_text())["results"]
+    assert len(results) == 4
+    assert all(result["status"] == "rejected" for result in results)
+    assert source_calls == [PHOTOGRAPHS[0].asset_id, PHOTOGRAPHS[1].asset_id]
+    assert len(camera_calls) == len(images)

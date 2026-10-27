@@ -46,6 +46,12 @@ class Label:
 
 
 @dataclass(frozen=True, slots=True)
+class Features:
+    coordinates: Points
+    descriptors: NDArray[numpy.float32] | None
+
+
+@dataclass(frozen=True, slots=True)
 class CameraCheck:
     image: str
     asset: str
@@ -268,7 +274,21 @@ def evaluate_geometry(
     }
 
 
-def feature_matches(label: Label, image: Image) -> tuple[Points, Points]:
+def extract_features(image: Image) -> Features:
+    detector = cv2.SIFT_create(  # type: ignore[attr-defined]
+        nfeatures=4000, contrastThreshold=0.008, edgeThreshold=12
+    )
+    keypoints, descriptors = detector.detectAndCompute(image, None)
+    coordinates = numpy.array([keypoint.pt for keypoint in keypoints], dtype=numpy.float32).reshape(
+        -1, 2
+    )
+    coordinates.setflags(write=False)
+    if descriptors is not None:
+        descriptors.setflags(write=False)
+    return Features(coordinates, descriptors)
+
+
+def source_features(label: Label) -> Features:
     photograph = label.photograph
     source_image = cv2.imread(photograph.source, cv2.IMREAD_GRAYSCALE)
     if source_image is None:
@@ -277,14 +297,19 @@ def feature_matches(label: Label, image: Image) -> tuple[Points, Points]:
     source_image = source_image[
         crop.top_px : crop.top_px + crop.height_px, crop.left_px : crop.left_px + crop.width_px
     ]
-    detector = cv2.SIFT_create(  # type: ignore[attr-defined]
-        nfeatures=4000, contrastThreshold=0.008, edgeThreshold=12
-    )
-    source_features, source_descriptors = detector.detectAndCompute(source_image, None)
+    return extract_features(cast(Image, source_image))
+
+
+def camera_features(image: Image) -> Features:
     enlarged = cv2.resize(
         image, None, fx=CAMERA_SCALE, fy=CAMERA_SCALE, interpolation=cv2.INTER_CUBIC
     )
-    camera_features, camera_descriptors = detector.detectAndCompute(enlarged, None)
+    return extract_features(cast(Image, enlarged))
+
+
+def match_features(source_features: Features, camera_features: Features) -> tuple[Points, Points]:
+    source_descriptors = source_features.descriptors
+    camera_descriptors = camera_features.descriptors
     if source_descriptors is None or camera_descriptors is None or len(camera_descriptors) < 2:
         return numpy.empty((0, 2), dtype=numpy.float32), numpy.empty((0, 2), dtype=numpy.float32)
     pairs = cv2.BFMatcher().knnMatch(source_descriptors, camera_descriptors, k=2)
@@ -299,11 +324,11 @@ def feature_matches(label: Label, image: Image) -> tuple[Points, Points]:
             unique.append(match)
             used.add(match.trainIdx)
     source = numpy.array(
-        [source_features[match.queryIdx].pt for match in unique], dtype=numpy.float32
+        [source_features.coordinates[match.queryIdx] for match in unique], dtype=numpy.float32
     ).reshape(-1, 2)
     target = (
         numpy.array(
-            [camera_features[match.trainIdx].pt for match in unique], dtype=numpy.float32
+            [camera_features.coordinates[match.trainIdx] for match in unique], dtype=numpy.float32
         ).reshape(-1, 2)
         / CAMERA_SCALE
     )
@@ -364,6 +389,10 @@ def main() -> int:
     parser.add_argument("--image", action="append", default=[])
     options = parser.parse_args()
     try:
+        code_sha256 = digest(Path(__file__))
+        index_sha256 = digest(options.index)
+        labels_sha256 = digest(options.source_labels)
+        checks_sha256 = digest(options.camera_checks) if options.camera_checks else None
         labels = load_labels(options.source_labels)
         checks = load_checks(options.camera_checks)
         entries = [
@@ -385,13 +414,18 @@ def main() -> int:
             for image, asset in checks
         ):
             raise ValueError("camera check references unselected image or asset")
+        source_hashes = {
+            label.photograph.asset_id: digest(Path(label.photograph.source)) for label in labels
+        }
+        observations = {label.photograph.asset_id: source_features(label) for label in labels}
         results: list[JsonValue] = []
         for name in selected:
             path = options.index.parent / name
+            image_sha256 = digest(path)
             image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
             if image is None:
                 raise ValueError(f"cannot read {name}")
-            image_sha256 = digest(path)
+            camera_observations: Features | None = None
             for label in labels:
                 check = checks.get((name, label.photograph.asset_id))
                 reason = (
@@ -402,7 +436,11 @@ def main() -> int:
                 if reason is not None:
                     outcome: dict[str, JsonValue] = {"status": "rejected", "reason": reason}
                 else:
-                    source, target = feature_matches(label, cast(Image, image))
+                    if camera_observations is None:
+                        camera_observations = camera_features(cast(Image, image))
+                    source, target = match_features(
+                        observations[label.photograph.asset_id], camera_observations
+                    )
                     outcome = evaluate_geometry(source, target, label, image.shape)
                     if check is not None:
                         outcome = apply_camera_check(
@@ -413,18 +451,32 @@ def main() -> int:
                         "image": name,
                         "image_sha256": image_sha256,
                         "asset_id": label.photograph.asset_id,
-                        "source_sha256": digest(Path(label.photograph.source)),
+                        "source_sha256": source_hashes[label.photograph.asset_id],
                         "source_reviewer": label.reviewer,
                         **outcome,
                     }
                 )
+            if digest(path) != image_sha256:
+                raise ValueError(f"camera image changed during processing: {name}")
+        if any(
+            digest(Path(label.photograph.source)) != source_hashes[label.photograph.asset_id]
+            for label in labels
+        ):
+            raise ValueError("source photograph changed during processing")
+        if digest(options.index) != index_sha256:
+            raise ValueError("camera index changed during processing")
+        if options.camera_checks and digest(options.camera_checks) != checks_sha256:
+            raise ValueError("camera checks changed during processing")
+        if digest(options.source_labels) != labels_sha256:
+            raise ValueError("source labels changed during processing")
+        load_labels(options.source_labels)
+        if digest(Path(__file__)) != code_sha256:
+            raise ValueError("tool code changed during processing")
         report: dict[str, JsonValue] = {
-            "index_sha256": digest(options.index),
-            "source_labels_sha256": digest(options.source_labels),
-            "camera_checks_sha256": digest(options.camera_checks)
-            if options.camera_checks
-            else None,
-            "code_sha256": digest(Path(__file__)),
+            "index_sha256": index_sha256,
+            "source_labels_sha256": labels_sha256,
+            "camera_checks_sha256": checks_sha256,
+            "code_sha256": code_sha256,
             "results": results,
         }
         options.output.mkdir(parents=True, exist_ok=False)
