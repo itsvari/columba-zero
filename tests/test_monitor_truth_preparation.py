@@ -670,6 +670,30 @@ def test_known_scene_missing_expected_photo_retains_partial_inventory_and_post_s
     assert score["global_verdict"] == "inconclusive"
 
 
+@pytest.mark.parametrize("visible_fraction", [0.6, 0.99])
+def test_partially_visible_photo_has_identity_evidence_without_qualified_centre(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, visible_fraction: float
+) -> None:
+    fixture = make_fixture(tmp_path / "fixture", monkeypatch)
+    render = fixture.browser.renders[(SESSION, 1)]
+    partial = replace(render.targets[0], visible_fraction=visible_fraction)
+    render = replace(render, targets=(partial,))
+    recorded = fixture.recording.frames[0]
+    label, _ = preparation.prepare_label(
+        evidence(render),
+        recorded,
+        {STANDING: local_row(recorded, fixture.labels[STANDING])},
+        fixture.labels,
+        fixture.policy,
+        None,
+    )
+    assert label is not None
+    target = cast(list[dict[str, JsonValue]], label["targets"])[0]
+    assert target["visible"] is True
+    assert target["registration_valid"] is False
+    assert target["centre_px"] is None
+
+
 def add_direct_qualification(fixture: Fixture, damage: str | None = None) -> Path:
     directory = fixture.qualification_path.parent
     checks_path, locations_path, comparison_path = (

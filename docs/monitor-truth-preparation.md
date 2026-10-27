@@ -68,7 +68,11 @@ settling period and counts subsequent unresolved time as unknown. Controlled
 absence or full occlusion can establish `visible: false`; contradictory passing
 photograph evidence makes the whole frame label unresolved.
 
-Only policy-qualified assets receive centres. An unqualified passing fit can
+Only fully visible crops of policy-qualified assets receive centres. Partial
+occlusion or clipping can change the visible-bird box, so an otherwise passing
+photo fit supplies identity evidence while its centre remains unknown. The tool
+does not infer the remaining visible silhouette from the original source box.
+An unqualified passing fit can
 establish photograph identity and visibility while its centre remains unknown.
 The centre is the mapped reviewed visible-bird box centre, which can differ from
 the photograph's centre. Axis uncertainty comes directly from the local fit's

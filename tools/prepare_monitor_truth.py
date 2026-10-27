@@ -917,7 +917,10 @@ def prepare_label(
         )
         reachable, reach_evidence = reach_bounds(target, render, labels[target.asset], policy)
         qualified = (
-            visible is True and photo is not None and target.asset in policy.qualified_assets
+            visible is True
+            and target.visible_fraction == 1
+            and photo is not None
+            and target.asset in policy.qualified_assets
         )
         centre = photo.centre_px if qualified and photo is not None else None
         uncertainty = (
@@ -944,6 +947,7 @@ def prepare_label(
             ),
             "local_fit_sha256": photo.evidence_sha256 if photo else None,
             "centre_qualified": qualified,
+            "complete_source_crop_visible": target.visible_fraction == 1,
             "reach": reach_evidence,
         }
         truths.append(
