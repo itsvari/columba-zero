@@ -33,12 +33,19 @@ EXCLUSION_REASONS = (
     "settling",
     "sampling_gap",
     "no_expected_target",
+    "visibility_unresolved",
     "invisible",
     "reach_unresolved",
     "unreachable",
     "registration_failed",
 )
-UNKNOWN_REASONS = ("missing_annotations", "sampling_gap", "registration_failed", "reach_unresolved")
+UNKNOWN_REASONS = (
+    "missing_annotations",
+    "sampling_gap",
+    "registration_failed",
+    "reach_unresolved",
+    "visibility_unresolved",
+)
 Mode = Literal["hardware", "simulate"]
 SelectionResult = Literal["correct", "incorrect", "unresolved"]
 
@@ -83,7 +90,7 @@ class Scene:
 @dataclass(frozen=True, slots=True)
 class TargetTruth:
     identity: str
-    visible: bool
+    visible: bool | None
     reachable: bool | None
     registration_valid: bool
     centre_px: tuple[float, float] | None
@@ -435,13 +442,18 @@ def _target_truth(value: JsonValue, frame: RecordedFrame) -> TargetTruth:
             raise ValueError("centre_px must lie within the recorded JPEG dimensions")
     truth = TargetTruth(
         _text(target["identity"], "identity"),
-        _boolean(target["visible"], "visible"),
+        None if target["visible"] is None else _boolean(target["visible"], "visible"),
         None if target["reachable"] is None else _boolean(target["reachable"], "reachable"),
         _boolean(target["registration_valid"], "registration_valid"),
         centre_px,
         centre_uncertainty_px,
     )
-    if truth.visible and truth.reachable is True and truth.registration_valid and centre_px is None:
+    if (
+        truth.visible is True
+        and truth.reachable is True
+        and truth.registration_valid
+        and centre_px is None
+    ):
         raise ValueError("visible reachable targets with valid registration require centre_px")
     return truth
 
@@ -610,7 +622,9 @@ def _exclusion(annotation: Annotation | None) -> str | None:
     target = next(
         target for target in annotation.targets if target.identity == annotation.expected_identity
     )
-    if not target.visible:
+    if target.visible is None:
+        return "visibility_unresolved"
+    if target.visible is False:
         return "invisible"
     if target.reachable is None:
         return "reach_unresolved"

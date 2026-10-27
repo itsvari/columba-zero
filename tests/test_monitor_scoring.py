@@ -875,6 +875,54 @@ def test_no_eligible_or_unknown_duration_is_inconclusive(tmp_path: Path) -> None
     assert centring["verdict"] == "inconclusive"
 
 
+def test_known_scene_preserves_settling_when_visibility_is_unknown(tmp_path: Path) -> None:
+    recording = write_recording(
+        tmp_path, offsets_s=(0, 1, 2, 3, 4), selected_tracks=(1, 1, 1, 1, 1)
+    )
+    unresolved = label()
+    first_target(unresolved).update(visible=None, centre_px=None, registration_valid=False)
+    report = score_recording(
+        recording,
+        labelled_document(
+            recording, (unresolved, unresolved, label(), label(), label()), settling_s=2
+        ),
+    )
+    coverage = mapping(report["coverage"])
+    assert mapping(coverage["excluded_duration_s_by_reason"])["settling"] == 2
+    assert coverage["unknown_duration_s"] == 0
+    assert mapping(report["centring"])["occupancy_lower_bound_including_unknown_time"] == 1
+
+
+def test_unknown_visibility_after_settling_remains_pessimistic(tmp_path: Path) -> None:
+    recording = write_recording(
+        tmp_path, offsets_s=(0, 1, 2, 3, 4), selected_tracks=(1, 1, 1, 1, 1)
+    )
+    unresolved = label()
+    first_target(unresolved).update(visible=None, centre_px=None, registration_valid=False)
+    report = score_recording(
+        recording,
+        labelled_document(
+            recording, (label(), label(), unresolved, label(), label()), settling_s=2
+        ),
+    )
+    coverage = mapping(report["coverage"])
+    assert coverage["unknown_duration_s"] == 1
+    assert mapping(coverage["excluded_duration_s_by_reason"])["visibility_unresolved"] == 1
+    centring = mapping(report["centring"])
+    assert centring["occupancy_lower_bound_including_unknown_time"] == 0.5
+    assert centring["occupancy_upper_bound_including_unknown_time"] == 1
+    assert centring["verdict"] == "inconclusive"
+
+
+@pytest.mark.parametrize("value", [0, 1, "unknown", []])
+def test_visibility_requires_boolean_or_explicit_null(tmp_path: Path, value: JsonValue) -> None:
+    recording = write_recording(tmp_path)
+    invalid = label()
+    first_target(invalid)["visible"] = value
+    with pytest.raises(ValueError, match="visible must be boolean"):
+        score_recording(recording, labelled_document(recording, (invalid, label(), label())))
+
+
 def test_real_cli_blank_template_and_report_never_overwrite_evidence(tmp_path: Path) -> None:
     write_recording(tmp_path, mode="simulate")
     template_path = tmp_path / "review.json"

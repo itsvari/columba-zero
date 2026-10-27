@@ -134,7 +134,7 @@ Each target has these fields, with `centre_uncertainty_px` optional for legacy m
 | Target field | Value |
 | --- | --- |
 | `identity` | Unique stimulus identity within this scene occurrence. The expected identity must be in this inventory. |
-| `visible` | Boolean established from the recording and stimulus evidence, independently of whether a detector found it. |
+| `visible` | Boolean established from the recording and stimulus evidence, or `null` when pixel visibility remains unresolved. Never infer invisibility from a missed match or detection. |
 | `reachable` | `true` for independently established reach, `false` only for proven unreachability, or `null` for unresolved or inapplicable reach. Do not infer reach from a clamped command alone. |
 | `registration_valid` | Boolean confirming valid camera-coordinate truth. Set true for reviewed manual pixels without requiring a homography; for mapped truth, require independent registration validation. False excludes the sample as unknown geometry. |
 | `centre_method` | Exactly `"manual_pixels"`, `"validated_registration"` or `"validated_local_photograph"`. |
@@ -149,8 +149,16 @@ not statistical confidence intervals. Version 1 labels without allowances remain
 readable for `manual_pixels` and `validated_registration`; zero is a compatibility
 default, not evidence that a measurement has no error.
 
-Unresolved visibility still requires a null frame label because `visible` is a
-strict boolean. Reach may remain `null` for an invisible or non-expected target
+The complete inventory enumerates intended stimulus slots; it does not assert
+that every slot is currently observable. If frame association and the inventory
+are established but pixel visibility is unresolved, retain the scene label and
+use `visible: null`. For the expected target this contributes
+`visibility_unresolved` unknown time after the declared settling window. It never
+means invisible and cannot add centred time. This preserves independently known
+scene timing when a photograph match fails. Use a null frame label when frame
+association or the intended inventory itself is unresolved.
+
+Reach may remain `null` for an invisible or non-expected target
 without invalidating the complete inventory. For a visible expected target,
 `reachable: null` means unresolved reach and contributes `reach_unresolved`
 unknown time. It is never interpreted as proven unreachability. Invisible,
@@ -207,16 +215,16 @@ first-observed-scene convention does not establish the browser's exact transitio
 time; review that bias separately.
 
 `coverage.excluded_duration_s_by_reason` gives disjoint elapsed seconds for
-settling, sampling gaps, missing annotations, no expected target, invisibility,
+settling, sampling gaps, missing annotations, no expected target, unresolved visibility, invisibility,
 unresolved reach, unreachability and failed registration. Settling is deducted
 first where the scene is labelled. A gap **strictly greater than** the declared maximum excludes
 its entire remaining interval. Other exclusions take precedence in this order:
-missing annotation, no expected target, invisible, reach unresolved, unreachable,
+missing annotation, no expected target, visibility unresolved, invisible, reach unresolved, unreachable,
 failed registration. Overlapping reasons therefore do not inflate the sum. The
 `long_sampling_gaps_total_s` diagnostic also includes any overlap with settling.
 Scored duration plus all exclusion durations equals the fixed recording span.
 
-Missing labels, sampling gaps, failed registration and unresolved expected reach
+Missing labels, sampling gaps, failed registration, unresolved expected visibility and unresolved expected reach
 contribute to `unknown_duration_s`. The report includes
 labelled and scored fractions of the full recording, frame counts, and a
 conservative occupancy bound that retains all unknown time in its denominator,
