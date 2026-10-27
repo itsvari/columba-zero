@@ -482,9 +482,6 @@ def main(arguments: Sequence[str] | None = None) -> int:
                         rejected.append({"point_id": identifier, "reason": str(error)})
                 result["rejected_crosses"] = rejected
                 result["observed_crosses"] = checks
-                centre_observed = any(
-                    mapping(check, "check").get("name") == "row-3-column-3" for check in checks
-                )
                 registration: dict[str, JsonValue] = {
                     "image": str(image_path),
                     "image_sequence": result["image_sequence"],
@@ -492,17 +489,13 @@ def main(arguments: Sequence[str] | None = None) -> int:
                     "marker_identities_confirmed": True,
                     "all_markers_fully_visible": True,
                     "marker_centres_camera_px": markers,
-                    "validation_points_independently_observed": centre_observed,
+                    "validation_points_independently_observed": True,
                     "validation_points": checks,
                     "screen_points": [],
                 }
                 checked = process_frame(
                     registration, options.index.parent, options.output, options.max_error_px
                 )
-                if not centre_observed:
-                    cast(list[JsonValue], checked["failures"]).append(
-                        "the central cross must be independently observed"
-                    )
                 result["registration"] = checked
                 result["status"] = (
                     "validated"

@@ -90,6 +90,7 @@ def synthetic_capture(
     blur: bool = False,
     mixed: bool = False,
     missing_quadrant: bool = False,
+    covered_centre_cross: bool = False,
     camera_scale: float = 0.36,
     generated_record: bool = False,
 ) -> tuple[Path, Path, Path]:
@@ -108,9 +109,16 @@ def synthetic_capture(
         x, y = round(cross.centre_x_px), round(cross.centre_y_px)
         if curved and cross.point_id == "row-3-column-3":
             y += 12
-        missing = (occluded and cross.point_id == "row-3-column-3") or (
-            missing_quadrant and cross.centre_x_px < 800 and cross.centre_y_px < 450
+        in_central_region = (
+            abs((cross.centre_x_px - 160) / 1280 - 0.5) <= 0.2
+            and abs((cross.centre_y_px - 180) / 540 - 0.5) <= 0.2
         )
+        missing = (
+            occluded
+            and in_central_region
+            or covered_centre_cross
+            and cross.point_id == "row-3-column-3"
+        ) or (missing_quadrant and cross.centre_x_px < 800 and cross.centre_y_px < 450)
         if not missing:
             for colour, thickness in (((255, 255, 255), 7), ((0, 0, 0), 3)):
                 cv2.line(design, (x - 14, y), (x + 14, y), colour, thickness)
@@ -317,6 +325,14 @@ def test_code_at_approximately_real_camera_sampling(tmp_path: Path) -> None:
     assert decode_code(image, frame, matrix) == decode_code(image, frame, matrix, upper=True)
 
 
+def test_photo_can_cover_the_exact_centre_when_other_interior_points_are_observed(
+    tmp_path: Path,
+) -> None:
+    status, frame = run_capture(tmp_path, covered_centre_cross=True)
+    assert status == 0
+    assert frame["status"] == "validated"
+
+
 def test_crc64_ecma_check_value() -> None:
     assert crc64(b"123456789") == 0x6C40DF5F0B497347
 
@@ -372,9 +388,15 @@ def test_blank_centre_and_projection_outside_hull(tmp_path: Path) -> None:
     image = cv2.imread(str(image_path))
     assert image is not None
     matrix = numpy.array(((0.36, 0.008, 70), (0.004, 0.36, 40), (0.00001, 0.00001, 1.0)))
-    centre = project(matrix, (800, 450))
-    x, y = round(centre[0]), round(centre[1])
-    cv2.rectangle(image, (x - 12, y - 12), (x + 12, y + 12), (184, 184, 184), -1)
+    manifest = build_manifest("tuning", registration_grid=True, optical_code=True)
+    for point in manifest.registration_points:
+        if (
+            abs((point.centre_x_px - 160) / 1280 - 0.5) <= 0.2
+            and abs((point.centre_y_px - 180) / 540 - 0.5) <= 0.2
+        ):
+            centre = project(matrix, (point.centre_x_px, point.centre_y_px))
+            x, y = round(centre[0]), round(centre[1])
+            cv2.rectangle(image, (x - 12, y - 12), (x + 12, y + 12), (184, 184, 184), -1)
     assert cv2.imwrite(str(image_path), image)
     assert main([*arguments, "--output", str(tmp_path / "blank-centre")]) == 1
     report = json.loads((tmp_path / "blank-centre" / "association.json").read_text())

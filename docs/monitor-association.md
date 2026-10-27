@@ -106,16 +106,18 @@ crosses with their reasons. Scripted photograph coverage excludes a cross before
 matching, but the visibility flag cannot see physical glare, preview overlays or
 other optical occlusion. Failure to detect a feature is not evidence of its
 absence. All 25 logged cross identities and coordinates must match the known
-grid. The exact central cross, plus the existing centre and four-quadrant
-coverage checks, must be independently observed. The existing registration tool
+grid. Independently observed crosses must cover the centre region and all four
+quadrants, as required by the existing registration tool. That tool
 then checks the marker geometry and held-out residuals against `--max-error-px`.
 No cross is used to fit the four-marker homography. A cross beyond the five-pixel
 search radius is rejected, which can make a curved or poorly seeded image
 unvalidated rather than measuring its full error.
 
-The centred positive photograph covers the exact central cross in many frames,
-so those frames are expected to remain unvalidated. An empty scene may provide
-better coverage; that does not transfer its mapping to another camera image.
+The centred positive photograph covers the exact central cross in many frames.
+Other independently observed crosses within the central 20% region can satisfy
+the centre check. If that whole region is obscured, the image remains unvalidated.
+An empty scene may provide better coverage; that does not transfer its mapping
+to another camera image.
 
 For a validated mapping, `projected_photograph_centres` contains only present
 photograph rectangle centres inside the observed cross hull and camera image.
