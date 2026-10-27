@@ -17,8 +17,9 @@ rectangles are `(1056, 96, 384, 72)` and `(1056, 740, 384, 72)` in the
 1600 × 900 design. At approximately 0.2 camera pixels per design pixel a cell
 is about 2.4 camera pixels: focus, contrast, aliasing, curvature and exposure
 can make decoding impossible. Inspect both bands and all marker margins through
-the camera before recording. No physical capture of this new code has been
-validated yet.
+the camera before recording. The campaign has decoded both bands in real camera
+captures; this establishes limited optical identity evidence, not geometric or
+hardware acceptance.
 
 The 24-byte, row-major, most-significant-bit-first payload contains the first
 16 bits of the presentation SHA-256, a fresh random 64-bit browser-session ID,
@@ -48,6 +49,41 @@ sampled bands can still mix imagery while both codes look valid. Treat the resul
 as optical identity evidence, not proof of instantaneous exposure or clock
 synchronisation. Reject frames with visible tearing, blending, motion or other
 ambiguity during review; do not infer timing by subtracting browser and Pi clocks.
+
+## Associate identity without claiming screen geometry
+
+Use `associate_monitor_codes.py` when the curved display prevents a validated
+global homography. It reports only `optically_associated` or `rejected`; it does
+not produce bird centres or a geometric validation flag.
+
+```sh
+python tools/associate_monitor_codes.py demo/index.jsonl browser.jsonl \
+  --reference-index reference/demo/index.jsonl \
+  --reference-browser reference/browser.jsonl \
+  --reference-markers reference/markers.json \
+  --output outputs/code-association
+```
+
+The reference marker file uses the schema below. References must share the
+presentation's fixed layout and pass their own dual-band optical decoding against
+their original browser export. The optional `--reference-report` is provenance
+only. It never supplies expected bits or selects an identity.
+
+The tool first proposes sampling positions from exact marker detections in the
+current image. If these yield no association, it uses local SIFT matches against
+each verified reference, with the target region masked. These mappings propose
+where to sample the codes; they do not become target-position truth. Both bands
+must independently pass the existing size, contrast, margin and CRC checks and
+agree on one payload that uniquely matches the exported browser record. Evaluated
+proposals must not produce competing valid payloads. The output hashes inputs,
+references, source images and code, and retains rejection diagnostics.
+
+In the retained passive and 190 ms experimental captures, this workflow associated
+482/538 and 423/498 images respectively, including all 22 scenes. Those coverage
+figures describe these recordings and do not establish decoding accuracy on new
+captures. Blank, erased-band and disagreeing-band controls remained rejected.
+Rejected images remain unknown unless a separate, explicitly bounded invariant
+content interval can be established. No browser/Pi clock subtraction is used.
 
 ## Prepare each image
 
