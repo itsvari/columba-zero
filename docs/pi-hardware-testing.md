@@ -85,8 +85,11 @@ rpicam-still --nopreview --timeout 2000 --output outputs/setup/camera.jpg
 
 [The camera documentation](https://www.raspberrypi.com/documentation/computers/camera_software.html)
 describes these commands. Check the intended camera index, colour order, field of
-view, focus, image orientation, and box alignment. A picture on a monitor is useful
-for repeatable detection tests. Later tests need real site footage and pigeons.
+view, focus, image orientation, and box alignment. Use the
+[offline monitor stimulus tooling](monitor-stimulus.md) for reproducible displayed
+targets and browser-side evidence. Verify its static positive through live Pi
+preview before running a playlist. Monitor-based acceptance is the current bench
+campaign. Field-accuracy claims need separate site footage and pigeons.
 The camera utilities do not read the application's YAML. For an upside-down
 sensor, add `--rotation 180` to the still command. Verify control directions using
 the application's configured capture image, rather than an independently oriented still.
