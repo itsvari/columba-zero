@@ -2,6 +2,32 @@
 
 ## 1. Delivery status and next-session handover
 
+### Monitor campaign update, 27 October 2026
+
+The user accepted the observed approximately 12.5 FPS throughput and withdrew the
+15 FPS goal. Continue measuring sustained throughput, command age, centring,
+recovery and stability. The historical handover below retains its original
+measurements and targets; the acceptance section now reflects this decision.
+
+The user is observing the hardware and has authorised wider movement. The first
+expanded profile permits home ±100 µs at the existing reduced speed. A 30-second
+run issued 160 timed hardware tracking moves, with 198.0 ms sensor-to-driver-return
+age at p95, then returned home and disabled both channels. This is one short run,
+not full acceptance or proof that the entire expanded envelope has been checked.
+The initial ±50 µs run only acquired home and made no tracking corrections.
+
+The test monitor is a 34-inch, 1500R curved ultrawide, approximately 38 cm from
+the camera. Its quoted 350–400 cd/m² brightness is a specification, not a
+measurement. Reduced, repositioned stimuli put all four markers within view.
+A global planar homography needs independent validation on this curved surface.
+The powered home view differs substantially from the earlier unpowered view;
+establish framing at powered home before interpreting following results.
+
+Monitor tooling and its usage are in [docs/monitor-stimulus.md](docs/monitor-stimulus.md).
+Measurements and outstanding gates are in [deploy/VALIDATION.md](deploy/VALIDATION.md).
+Source revision `6fcf7e4` prepares tracking dependencies before camera and mount
+startup to remove first-use import stalls; live revalidation is pending.
+
 Use this plan to implement the demonstration on the current application architecture,
 reusing the useful hardware and controller work from
 [PR #2](https://github.com/itsvari/columba-zero/pull/2). This document revises the
@@ -566,7 +592,9 @@ establish field accuracy.
 
 Initial acceptance targets:
 
-- At least **15 processed frames/s** sustained on the Pi, with control running at 20 Hz.
+- Record sustained processing throughput against the accepted approximately
+  **12.5 FPS** baseline, with control running at 20 Hz. The user withdrew the
+  earlier 15 FPS requirement on 27 October 2026.
 - Frame-to-command age below **200 ms at p95** during normal operation.
 - After settling, the target centre stays within the central **20% of image width and height for at least 80%** of visible tracking time, within mechanical reach.
 - No repeated switching between similarly sized stationary displayed pigeons.

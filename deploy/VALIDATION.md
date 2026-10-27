@@ -1,5 +1,85 @@
 # Validation status
 
+## Monitor campaign, 27 October 2026, in progress
+
+The user accepts approximately 12.5 processed FPS and has withdrawn the 15 FPS
+goal. Other acceptance goals remain. Wider movement is authorised while the user
+observes; each envelope still needs measured checks. Following remains opt-in.
+
+### Deployment and software
+
+The power-supply replacement interrupted recent filesystem writes. Recent Git
+refs, objects and source files became empty. The first transferred bundle also
+failed its checksum. Recovered the deployment from a fresh bundle whose SHA-256
+matches the development copy, retained the interrupted source and Git directory,
+and verified the clean repository with `git fsck`. Ignored calibration, models,
+environment and older evidence remain. The older `columba-zero` checkout was not
+changed. Fan trip temperatures survived reboot at 45, 50, 55 and 60°C.
+
+The recovered Pi baseline passed 584 tests and 360 subtests with two optional
+skips, Ruff lint and formatting, native CTest, and both model-package checks.
+The development gate after the startup and stimulus changes passes 585 tests and
+362 subtests with six native skips, Ruff lint and formatting, and strict mypy
+across 112 files. Real Chromium checks cover both playlists at full and reduced
+display sizes. The full Pi typing gate has not been reclassified as passing.
+
+### Display and short physical runs
+
+The physical display is a 34-inch ultrawide with a 1500R curve. The user increased
+camera distance from approximately 30 to 38 cm. The quoted 350–400 cd/m² brightness
+is a panel specification; actual luminance was not measured. A real camera frame
+confirms an upright pigeon at 0.92 confidence initially. Reduced, repositioned
+presentations include all four markers; known positives remain confirmed.
+
+The initial home ±50 µs run made no tracking moves. Enabling the saved home
+changed camera aim substantially from the unpowered setup, leaving the target
+outside the useful view. The user observed a smooth home movement with cable
+clearance. The run stopped cleanly and both channels read FULL_OFF. Repositioned
+the presentation within the powered-home view before the next run.
+
+The subsequent 30-second run allowed home ±100 µs, retaining a 3 nominal °/s speed
+limit and the shipped model and thresholds. It exercised centred and horizontal
+offset scenes, then accepted a home-and-pause request. Results:
+
+- 373 processed frames in 29.785 s, or 12.523 FPS, with zero log drops.
+- 160 hardware tracking moves, all with sensor-derived command timing. Their
+  driver-return age was 198.0 ms at p95, 159.848 ms mean and 206.269 ms maximum.
+- 577 logged hardware ticks. Observed interval p95 was 51.2 ms. The 754.573 ms
+  maximum includes a startup stall; this is not a clean 20 Hz acceptance result.
+- Commands visited pan 100.800 to 107.382 and tilt 93.672 to 97.200 nominal
+  degrees. These are commanded coordinates, not measured physical angles. The
+  whole ±100 µs envelope was not exercised.
+- 145 recorded frames, zero recording drops, and a playable exported MP4 reported
+  at 29.586 s against 29.584668 s expected. Raw JPEGs and metadata remain.
+- Clean shutdown and FULL_OFF readback on both channels.
+
+A new-process diagnostic measured OpenCV import at 834.954 ms and SciPy optimiser
+import at 225.548 ms. These explain the first-use tracking stalls. Revision
+`6fcf7e4` loads them before camera capture and starts the mount only after tracker
+construction succeeds. Its regression fails against the previous startup order
+and passes after the fix. Live cadence revalidation remains pending.
+
+The 20-case thread sweep is diagnostic only. Camera position changed during it,
+and its original fixed case order confounded case with thermal drift. No setting
+was adopted from it. The reusable probe now warms up first, reverses case order
+on alternate repetitions, forces simulation with outputs off, and retains source,
+model, configuration, temperature, frequency and throttling evidence.
+
+### Outstanding gates
+
+Validate the startup fix on hardware, correction signs, settling, all movement
+envelopes actually used, selection and loss, pause/resume, faults and restart.
+Then compare the four output modes with fixed stimuli and a real preview client,
+and run the hour-long campaign after the short cases pass. Centring needs
+independent camera truth with time-weighted exclusions. Four corner markers alone
+do not establish a valid homography on the curved monitor. No centring or
+one-hour acceptance is claimed yet. The fixed-zone feature remains deferred.
+
+Local evidence is under `outputs/validation/monitor-20261027/`. Device evidence is
+under `outputs/setup/`, `outputs/monitor-hardware-smoke/`,
+`outputs/monitor-hardware-100us/` and `outputs/monitor-thread-probe/`. Raw media,
+room images and calibration remain outside Git.
+
 ## Pi bring-up, 27 October 2026, in progress
 
 SSH access to the assembled Pi, IMX708 camera, and pan-tilt mount is working.
