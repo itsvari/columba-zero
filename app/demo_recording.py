@@ -28,6 +28,7 @@ DEFAULT_EXPORT_TIMEOUT_S = 900.0
 DEFAULT_FRAME_DURATION_S = 0.1
 DEFAULT_MAX_BYTES = 536870912
 INPUT_TIMEBASE_HZ = 1000
+MAXIMUM_CONSECUTIVE_B_FRAMES = 0
 DURATION_TOLERANCE_S = 0.01
 SUBPROCESS_POLL_INTERVAL_S = 0.02
 SUBPROCESS_STOP_TIMEOUT_S = 1.0
@@ -454,6 +455,9 @@ def export_recording(
                     "libx264",
                     "-preset",
                     "veryfast",
+                    # reordered variable-rate packets can truncate the MP4 duration.
+                    "-bf",
+                    str(MAXIMUM_CONSECUTIVE_B_FRAMES),
                     "-pix_fmt",
                     "yuv420p",
                     "-enc_time_base",

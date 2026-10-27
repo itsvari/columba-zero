@@ -635,3 +635,53 @@ def test_export_interruption_kills_and_reaps_real_child(
     assert output_path.read_bytes() == b"old video"
     assert {path.name: path.read_bytes() for path in spool.iterdir()} == before
     assert not list(tmp_path.glob(".demo-export-*"))
+
+
+@pytest.mark.skipif(
+    not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="FFmpeg tools unavailable"
+)
+def test_real_export_preserves_irregular_low_rate_duration_and_final_hold(
+    tmp_path: Path, events: Events, jpeg: bytes
+) -> None:
+    spool = make_spool(tmp_path, events, jpeg)
+    index_path = spool / "index.jsonl"
+    records = [
+        cast(dict[str, JsonValue], json.loads(line)) for line in index_path.read_text().splitlines()
+    ]
+    timestamps_s = (10.0, 10.439, 10.906, 11.437)
+    for record, timestamp_s in zip(records, timestamps_s, strict=True):
+        record["monotonic_s"] = timestamp_s
+    index_path.write_text("\n".join(json.dumps(record) for record in records) + "\n")
+    before = {path.name: path.read_bytes() for path in spool.iterdir()}
+    output_path = tmp_path / "irregular-low-rate.mp4"
+
+    result = export_recording(spool, output_path, default_frame_duration_s=0.5)
+
+    assert result.success, result.error
+    assert result.duration_s == pytest.approx(1.937, abs=0.002)
+    assert result.expected_duration_s == pytest.approx(1.937)
+    probe = subprocess.run(
+        [
+            str(shutil.which("ffprobe")),
+            "-v",
+            "error",
+            "-count_frames",
+            "-show_entries",
+            "frame=best_effort_timestamp_time:stream=nb_read_frames,duration:format=duration",
+            "-of",
+            "json",
+            str(output_path),
+        ],
+        check=True,
+        capture_output=True,
+        timeout=TEST_TIMEOUT_S,
+    )
+    data = cast(dict[str, JsonValue], json.loads(probe.stdout))
+    decoded = cast(list[dict[str, str]], data["frames"])
+    presentation_times_s = [float(item["best_effort_timestamp_time"]) for item in decoded]
+    assert presentation_times_s == pytest.approx([0.0, 0.439, 0.906, 1.437, 1.937], abs=0.002)
+    assert presentation_times_s[-1] - presentation_times_s[-2] == pytest.approx(0.5, abs=0.002)
+    stream = cast(list[dict[str, str]], data["streams"])[0]
+    assert int(stream["nb_read_frames"]) == FRAME_COUNT + 1
+    assert float(stream["duration"]) == pytest.approx(1.937, abs=0.002)
+    assert {path.name: path.read_bytes() for path in spool.iterdir()} == before
