@@ -242,8 +242,12 @@ allowance, rounded upwards. On a fresh sample, eight mappings passed the resulti
 worst-case check, with a maximum 6.481 pixels including annotation allowance; one
 additional checked image was rejected by feature matching. Five other images had
 ambiguous photo boundaries and supplied no check. This is limited sample evidence,
-not a statistical error guarantee. No profile-pigeon rectangle has an independent
-corner check yet. The source-edge allowance and camera allowance both reduce the
+not a statistical error guarantee. No profile-pigeon photograph rectangle has an independent
+corner check. Separate agent annotations of visible-bird extrema check four
+accepted profile fits within the same 7-pixel centre budget, including a
+subjective 2-pixel allowance per annotated edge; two other profile fits remain
+rejected. This small sample includes adjacent frames and does not supply a
+photograph-corner check or a statistical guarantee. The source-edge allowance and camera allowance both reduce the
 scoring band; neither changes the 20% centring goal. Reports are under
 `outputs/validation/monitor-20261027/photo-camera-heldout-valid/`.
 
@@ -258,12 +262,83 @@ physical acceptance or speedups; the two-thread comparison has sequential therma
 carryover. Retain four threads, 30 FPS, passive waiting and the original control
 policy. Evidence is in `outputs/validation/monitor-20261027/latency-diagnosis/`.
 
+### Four output modes and hot operation
+
+At deployed revision `7e0076e`, each output mode completed one 201-second tuning
+playlist with physical following, the same ±100 µs profile, 3 nominal °/s speed
+limit, four NCNN threads, 30 FPS camera request, passive OpenMP waiting and the
+original 250 ms freshness setting. Preview and clean recording ran at 5 FPS.
+These are sequential single runs; thermal carryover prevents a causal ranking.
+
+| Output mode | Command-age p95 | Tracking/stale observation-age p95 | Hot processing FPS |
+| --- | ---: | ---: | ---: |
+| Tracking only | 211.1 ms | 226.8 ms | 11.685 |
+| Preview only | 224.5 ms | 242.5 ms | 11.018 |
+| Recording only | 230.8 ms | 249.4 ms | 10.720 |
+| Preview and recording | 234.0 ms | 246.1 ms | 10.669 |
+
+Command age covers sensor-timed move commands and is affected by the 250 ms
+freshness eligibility rule. The separate observation-age distribution includes
+tracking and stale ticks. Both distributions meet the revised 300 ms p95 goal
+in these runs. Hot command-age p95 was 216.1–239.9 ms. Hot processing throughput
+uses inference-frame timestamps after the first captured frame plus 120 seconds,
+with `(frame_count - 1) / (last_timestamp - first_timestamp)`.
+
+During the timed controller windows, sidecar CPU temperatures peaked at 86.45,
+87.0, 87.0 and 88.1°C respectively. Current low throttle bits were nonzero in
+179/201, 204/204, 201/201 and 204/204 samples; peak process RSS was
+289.4–309.0 MiB. Export samples are excluded. Temperature and throttle flags are
+reported observations, not a declaration that long-term thermal acceptance has
+passed. The cooler/HAT arrangement was unchanged.
+
+Each run has one untimed initial `acquiring` snapshot before its first frame,
+with no driver action. This accounts for the summary's single missing/invalid
+interval. All subsequent timed intervals were positive, with 50.99–51.10 ms p95,
+53.88–55.97 ms maximum and none over 75 ms. There were no log or render drops.
+The bounded latest-frame capture buffer intentionally overwrote camera frames
+that processing could not consume; those counts are separate from lost logs or
+recording frames.
+
+All four runs exited cleanly with one supervisor stop, no forced kill and both
+channels reading FULL_OFF. Enabled preview modes decoded 800×450 images in the
+real browser at the start, middle and end. Both recordings exported successfully
+and independently decoded through local FFmpeg with exit 0. Source JPEGs remain.
+Evidence, archive hashes and the rerunnable offline analysis are in
+`outputs/validation/monitor-20261027/output-matrix/matrix-20261027T130524Z-3a8fa141/`.
+
+### Physical controls and injected faults
+
+The corrected control/fault pilot held its commanded pose while paused, accepted
+home to 100.8/97.2 nominal degrees, and resumed tracking. An unread MJPEG socket
+remained connected for ten seconds while a normal browser continued receiving
+images. This establishes continued service with an unread client; it does not
+measure the socket timeout. Making only the disposable recording directory
+unwritable produced the expected JPEG permission error. Recording entered its
+documented `error` state while preview encoding and tracking continued for a
+further five seconds. The app retained exit status 1 for that error, and both
+channels read FULL_OFF after the single supervisor stop. The earlier pilot's
+actor incorrectly waited for `failed` rather than `error`; its assertion failure
+is retained, and the corrected typed actor rejects that wrong state in mypy.
+Evidence is in `control-fault-actor-v2.jsonl` and the extracted control-fault
+archive under the campaign evidence directory.
+
+A separate real-camera/mount fixture stalled producer read 300 for 1.2 seconds
+before taking the next real frame, then raised an explicit software capture
+error before read 750. Sensor timestamps were unchanged. The original camera
+error and exit status 1 remain recorded. The app exported 127 retained clean
+JPEGs into a 26.296-second partial recording against 26.295415 seconds expected,
+and both servo outputs read FULL_OFF. The child exited without any supervisor
+TERM or forced kill. This is software fault injection with a real CSI camera,
+not a physical cable-disconnection test. Trace and provenance are in
+`outputs/validation/monitor-20261027/capture-fault-fixture/`.
+
 ### Outstanding gates
 
-Validate correction signs, settling, all movement
-envelopes actually used, selection and loss, pause/resume, faults and restart.
-Then compare the four output modes with fixed stimuli and a real preview client,
-and run the hour-long campaign after the short cases pass. Centring needs
+Finish independent settling, centring, selection and loss checks within the
+measured movement envelope, and inspect the camera-stall recovery trace and clean
+restart. A clean 15-second preview-and-recording restart after the injected
+capture failure exited 0, exported successfully, and read FULL_OFF on both
+channels. Then run the hour-long campaign after the short cases pass. Centring needs
 independent camera truth with time-weighted exclusions. Four corner markers alone
 do not establish a valid homography on the curved monitor. No centring or
 one-hour acceptance is claimed yet. The fixed-zone feature remains deferred.

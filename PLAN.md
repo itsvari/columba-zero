@@ -41,8 +41,15 @@ adopted. The user initially retained the 200 ms p95 latency goal, then explicitl
 relaxed it to 300 ms after reviewing the hot measurements and cooling arrangement.
 The official active cooler has slightly restricted airflow beneath the HAT.
 Keep the original 250 ms freshness policy and preserve smooth control.
-Independent centring, faults, the four output modes
-and endurance remain open.
+Four full tuning-playlist runs cover tracking alone, preview alone, recording
+alone and both outputs. Command-age p95 was 211.1–234.0 ms and uncensored
+tracking/stale observation-age p95 was 226.8–249.4 ms, within the revised goal.
+Hot processing throughput was 10.67–11.69 FPS after 120 seconds; current thermal
+throttling occurred and capture-period CPU temperature peaked at 88.1°C. These
+are single sequential runs, not a performance ranking or endurance result.
+Pause/home/resume, an unread preview client, recording-write failure and an
+injected camera stall/read failure have hardware evidence. Independent centring,
+selection and endurance remain open.
 
 Use this plan to implement the demonstration on the current application architecture,
 reusing the useful hardware and controller work from
