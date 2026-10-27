@@ -62,9 +62,9 @@ the reviewed labels; it does not run a matcher or read matcher output files.
 
 ## Annotation schema, version 1
 
-All listed fields are required except the legacy uncertainty allowance described
-below; extra fields and duplicate JSON keys are rejected. JSON numbers must be
-finite; booleans do not count as numbers. Strings
+All listed fields are required except the conditional render interval and legacy
+uncertainty allowance described below. Extra fields and duplicate JSON keys are
+rejected. JSON numbers must be finite; booleans do not count as numbers. Strings
 must be non-blank. The scorer validates structure and provenance; the operator
 remains responsible for the independence and accuracy of the evidence.
 
@@ -87,19 +87,47 @@ comparable runs; changing it after seeing a score invalidates that comparison.
 Each frame entry has exactly `filename`, `sequence`, `width_px`, `height_px`,
 `jpeg_sha256` and `label`. Preserve the generated values. The filename/sequence
 pair must exist in the recording and appear at most once. Dimensions and hash
-must match the referenced JPEG. A non-null `label` has exactly these fields:
+must match the referenced JPEG. A non-null `label` has these fields, with
+`render_interval` permitted only when `render_number` is null:
 
 | Label field | Value |
 | --- | --- |
 | `presentation_id` | Preserved stimulus presentation ID. |
 | `run_number`, `repeat_index` | Non-negative integers from the associated render record. Preserve the browser's numbering. |
 | `scene_id` | Actual scene ID, scoped by presentation, run and repeat. |
-| `render_number` | Non-negative integer read from captured content and associated with the export. Multiple camera samples may share a render. |
+| `render_number` | Non-negative integer read from captured content and associated with the export, or `null` only with the reviewed equivalent-content interval below. Multiple camera samples may share an exact render. |
+| `render_interval` | Required only when `render_number` is `null`; otherwise it must be absent. Exactly `first_render_number`, `last_render_number`, `equivalent_content_confirmed` and `evidence`, as described below. |
 | `inventory_complete` | `true`, explicitly affirming review of every intended target independently of selection. Otherwise leave the whole label null. |
 | `expected_identity` | Expected stimulus identity string, or `null` when selection should be empty at this sample. |
 | `targets` | List of all intended targets, including invisible ones, using the target schema below. An empty list is permitted for a reviewed empty scene. |
 | `selection` | `null` if identity mapping is unresolved or no track is selected; otherwise exactly `{"identity": "reviewed stimulus identity", "evidence": "independent association reference"}`. |
 | `evidence` | Reviewer and evidence references establishing scene/render association, the full inventory and the expected-selection rule, including any transition allowance. |
+
+An equivalent-content interval uses ordered, non-negative integer endpoints,
+including both endpoints, `equivalent_content_confirmed: true`, and non-blank
+evidence. For example:
+
+```json
+{
+  "render_number": null,
+  "render_interval": {
+    "first_render_number": 40,
+    "last_render_number": 43,
+    "equivalent_content_confirmed": true,
+    "evidence": "independent review reference covering every render from 40 through 43"
+  }
+}
+```
+
+The reviewer or external label builder must check every intervening browser
+render, including scene identity, target content and selection expectations.
+An interval cannot span a scene change or a change that affects those labels.
+The parser trusts this explicit assertion, like `inventory_complete`; it does
+not inspect browser exports or derive brackets from camera codes. An interval
+establishes equivalent content without claiming a decoded exact render number
+or an exact exposure-to-render association. Geometry scoring uses the reviewed
+camera centre and its uncertainty in either variant. Legacy version 1 labels
+with an exact integer and no interval remain readable.
 
 Each target has these fields, with `centre_uncertainty_px` optional for legacy methods:
 
@@ -107,7 +135,7 @@ Each target has these fields, with `centre_uncertainty_px` optional for legacy m
 | --- | --- |
 | `identity` | Unique stimulus identity within this scene occurrence. The expected identity must be in this inventory. |
 | `visible` | Boolean established from the recording and stimulus evidence, independently of whether a detector found it. |
-| `reachable` | Boolean established from independently checked movement bounds and scene geometry, not inferred from a clamped command alone. |
+| `reachable` | `true` for independently established reach, `false` only for proven unreachability, or `null` for unresolved or inapplicable reach. Do not infer reach from a clamped command alone. |
 | `registration_valid` | Boolean confirming valid camera-coordinate truth. Set true for reviewed manual pixels without requiring a homography; for mapped truth, require independent registration validation. False excludes the sample as unknown geometry. |
 | `centre_method` | Exactly `"manual_pixels"`, `"validated_registration"` or `"validated_local_photograph"`. |
 | `centre_px` | `null`, or exactly `{"x_px": number, "y_px": number}` in the stored JPEG's orientation and pixel coordinates. Required when visible, reachable and registration-valid; x and y must lie inside the image. |
@@ -121,9 +149,13 @@ not statistical confidence intervals. Version 1 labels without allowances remain
 readable for `manual_pixels` and `validated_registration`; zero is a compatibility
 default, not evidence that a measurement has no error.
 
-Unresolved visibility or reach is not false: leave the frame label null. Invisible
-or unreachable targets may have null centres. A visibly clipped target whose
-centre cannot be independently located inside the image is outside this scorer's
+Unresolved visibility still requires a null frame label because `visible` is a
+strict boolean. Reach may remain `null` for an invisible or non-expected target
+without invalidating the complete inventory. For a visible expected target,
+`reachable: null` means unresolved reach and contributes `reach_unresolved`
+unknown time. It is never interpreted as proven unreachability. Invisible,
+unreachable and reach-unresolved targets may have null centres. A visibly clipped
+target whose centre cannot be independently located inside the image is outside this scorer's
 coordinate model; retain it as unknown rather than inventing a centre or calling
 it invisible. Partial occlusion still counts as visible when its centre has valid
 independent truth. Do not redefine visibility using detector confidence.
@@ -166,7 +198,9 @@ Settling begins at the first labelled recorded sample of each
 presentation/run/repeat/scene occurrence and is split exactly at the declared
 elapsed-time boundary. Selecting another tracker ID does not restart it. An
 occurrence cannot disappear behind another scene and then reappear; use correct
-repeat/run identifiers. Render numbers cannot decrease within an occurrence.
+repeat/run identifiers. Render associations must admit a nondecreasing sequence
+within an occurrence. Intervals may overlap; the scorer rejects impossible
+reversals without choosing an exact render from an interval.
 Unlabelled scene boundaries make coverage incomplete. Missing early labels can
 shift the settling exclusion later and change eligible time. This unchanged
 first-observed-scene convention does not establish the browser's exact transition
@@ -174,16 +208,16 @@ time; review that bias separately.
 
 `coverage.excluded_duration_s_by_reason` gives disjoint elapsed seconds for
 settling, sampling gaps, missing annotations, no expected target, invisibility,
-unreachability and failed registration. Settling is deducted first where the
-scene is labelled. A gap **strictly greater than** the declared maximum excludes
+unresolved reach, unreachability and failed registration. Settling is deducted
+first where the scene is labelled. A gap **strictly greater than** the declared maximum excludes
 its entire remaining interval. Other exclusions take precedence in this order:
-missing annotation, no expected target, invisible, unreachable, failed
-registration. Overlapping reasons therefore do not inflate the sum. The
+missing annotation, no expected target, invisible, reach unresolved, unreachable,
+failed registration. Overlapping reasons therefore do not inflate the sum. The
 `long_sampling_gaps_total_s` diagnostic also includes any overlap with settling.
 Scored duration plus all exclusion durations equals the fixed recording span.
 
-Missing labels, sampling gaps and failed registration contribute to
-`unknown_duration_s`. The report includes
+Missing labels, sampling gaps, failed registration and unresolved expected reach
+contribute to `unknown_duration_s`. The report includes
 labelled and scored fractions of the full recording, frame counts, and a
 conservative occupancy bound that retains all unknown time in its denominator,
 alongside independently justified exclusions. These fields expose a high score

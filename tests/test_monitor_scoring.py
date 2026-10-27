@@ -171,6 +171,20 @@ def first_target(frame_label: dict[str, JsonValue]) -> dict[str, JsonValue]:
     return mapping(targets[0])
 
 
+def equivalent_label(
+    first_render_number: int = 1, last_render_number: int = 3
+) -> dict[str, JsonValue]:
+    return label() | {
+        "render_number": None,
+        "render_interval": {
+            "first_render_number": first_render_number,
+            "last_render_number": last_render_number,
+            "equivalent_content_confirmed": True,
+            "evidence": "synthetic independent review of every intervening render and selection",
+        },
+    }
+
+
 def test_irregular_elapsed_time_and_settling_are_not_frame_averages(tmp_path: Path) -> None:
     recording = write_recording(tmp_path, (0.0, 0.25, 1.0, 2.0), (1, 1, 1, 1))
     document = labelled_document(
@@ -350,6 +364,10 @@ def test_settling_restarts_on_scene_occurrence_not_tracker_changes(tmp_path: Pat
     [
         ("visible", "yes"),
         ("reachable", 1),
+        ("reachable", 0),
+        ("reachable", 1.0),
+        ("reachable", "yes"),
+        ("reachable", []),
         ("registration_valid", None),
         ("centre_method", "detector_box"),
         ("centre_px", None),
@@ -465,6 +483,169 @@ def test_scene_reuse_and_render_reversal_are_rejected(tmp_path: Path) -> None:
     ):
         with pytest.raises(ValueError):
             score_recording(recording, labelled_document(recording, labels))
+
+
+def test_equivalent_render_intervals_preserve_geometry_and_selection_durations(
+    tmp_path: Path,
+) -> None:
+    recording = write_recording(tmp_path)
+    exact = score_recording(recording, labelled_document(recording, (label(),) * 3))
+    reviewed = (equivalent_label(1, 3), equivalent_label(2, 4), label() | {"render_number": 3})
+    report = score_recording(recording, labelled_document(recording, reviewed))
+    assert report["centring"] == exact["centring"]
+    assert report["coverage"] == exact["coverage"]
+    selection = mapping(report["selection"])
+    assert selection["post_settling_duration_s_by_result"] == {
+        "correct": 2.0,
+        "incorrect": 0.0,
+        "unresolved": 0.0,
+    }
+    observations = selection["observations"]
+    assert isinstance(observations, list)
+    for position in (0, 1):
+        observation = mapping(observations[position])
+        assert observation["render_number"] is None
+        assert observation["render_interval"] == reviewed[position]["render_interval"]
+    assert mapping(observations[2])["render_number"] == 3
+    assert "render_interval" not in mapping(observations[2])
+    assert report["global_verdict"] == "inconclusive"
+
+
+def test_single_equivalent_render_zero_is_valid_without_claiming_exact_decode(
+    tmp_path: Path,
+) -> None:
+    recording = write_recording(tmp_path)
+    report = score_recording(recording, labelled_document(recording, (equivalent_label(0, 0),) * 3))
+    observations = mapping(report["selection"])["observations"]
+    assert isinstance(observations, list)
+    assert mapping(observations[0])["render_number"] is None
+    assert mapping(mapping(observations[0])["render_interval"])["first_render_number"] == 0
+    assert mapping(report["centring"])["centred_duration_s"] == 2.0
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("first_render_number", -1),
+        ("first_render_number", True),
+        ("first_render_number", 1.5),
+        ("last_render_number", -1),
+        ("last_render_number", False),
+        ("last_render_number", 3.0),
+        ("last_render_number", 0),
+        ("equivalent_content_confirmed", False),
+        ("equivalent_content_confirmed", 1),
+        ("equivalent_content_confirmed", None),
+        ("evidence", " "),
+        ("extra", "not permitted"),
+    ],
+)
+def test_invalid_equivalent_render_interval_fields_are_rejected(
+    tmp_path: Path, field: str, value: JsonValue
+) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = equivalent_label()
+    mapping(reviewed["render_interval"])[field] = value
+    with pytest.raises(ValueError):
+        score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+
+
+@pytest.mark.parametrize("render_number", (1, True, -1, "1"))
+def test_render_interval_cannot_accompany_an_exact_render_field(
+    tmp_path: Path, render_number: JsonValue
+) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = equivalent_label() | {"render_number": render_number}
+    with pytest.raises(ValueError, match="render_interval requires render_number: null"):
+        score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+
+
+@pytest.mark.parametrize("interval", (None, {}, {"first_render_number": 1}))
+def test_null_render_requires_a_complete_interval(tmp_path: Path, interval: JsonValue) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = label() | {"render_number": None}
+    with pytest.raises(ValueError, match="requires render_interval"):
+        score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+    reviewed["render_interval"] = interval
+    with pytest.raises(ValueError, match="render_interval"):
+        score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+
+
+def test_render_chronology_rejects_reversal_even_after_overlapping_intervals(
+    tmp_path: Path,
+) -> None:
+    recording = write_recording(tmp_path)
+    for reviewed in (
+        (label() | {"render_number": 5}, equivalent_label(1, 10), label() | {"render_number": 4}),
+        (equivalent_label(5, 10), equivalent_label(1, 4), equivalent_label(5, 10)),
+    ):
+        with pytest.raises(ValueError, match="must not decrease"):
+            score_recording(recording, labelled_document(recording, reviewed))
+
+
+def test_render_interval_chronology_restarts_for_a_new_scene_occurrence(tmp_path: Path) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = (
+        equivalent_label(5, 10),
+        equivalent_label(0, 2) | {"scene_id": "next"},
+        label(scene_id="next"),
+    )
+    report = score_recording(recording, labelled_document(recording, reviewed))
+    assert mapping(report["centring"])["eligible_duration_s"] == 2.0
+
+
+def test_unresolved_expected_reach_is_unknown_and_stays_in_worst_case_bounds(
+    tmp_path: Path,
+) -> None:
+    recording = write_recording(tmp_path)
+    unresolved = label()
+    first_target(unresolved)["reachable"] = None
+    first_target(unresolved)["centre_px"] = None
+    report = score_recording(
+        recording, labelled_document(recording, (unresolved, label(), label()))
+    )
+    coverage = mapping(report["coverage"])
+    exclusions = mapping(coverage["excluded_duration_s_by_reason"])
+    assert exclusions["reach_unresolved"] == 1.0
+    assert exclusions["unreachable"] == 0.0
+    assert exclusions["invisible"] == 0.0
+    assert coverage["unknown_duration_s"] == 1.0
+    assert coverage["complete"] is False
+    centring = mapping(report["centring"])
+    assert centring["eligible_duration_s"] == 1.0
+    assert centring["occupancy_fraction_on_scored_time"] == 1.0
+    assert centring["occupancy_lower_bound_including_unknown_time"] == 0.5
+    assert centring["occupancy_upper_bound_including_unknown_time"] == 1.0
+    assert centring["verdict"] == "inconclusive"
+
+
+def test_nonexpected_null_reach_keeps_the_known_expected_target_eligible(tmp_path: Path) -> None:
+    recording = write_recording(tmp_path)
+    reviewed = label()
+    other_target = first_target(label()) | {
+        "identity": "pigeon-b",
+        "reachable": None,
+        "centre_px": None,
+    }
+    reviewed["targets"] = [first_target(reviewed), other_target]
+    report = score_recording(recording, labelled_document(recording, (reviewed,) * 3))
+    assert mapping(report["coverage"])["unknown_duration_s"] == 0.0
+    assert mapping(report["centring"])["eligible_duration_s"] == 2.0
+    assert mapping(report["centring"])["centred_duration_s"] == 2.0
+
+
+def test_invisible_null_reach_is_invisible_rather_than_unknown(tmp_path: Path) -> None:
+    recording = write_recording(tmp_path)
+    invisible = label()
+    first_target(invisible).update(visible=False, reachable=None, centre_px=None)
+    report = score_recording(recording, labelled_document(recording, (invisible, label(), label())))
+    coverage = mapping(report["coverage"])
+    exclusions = mapping(coverage["excluded_duration_s_by_reason"])
+    assert exclusions["invisible"] == 1.0
+    assert exclusions["reach_unresolved"] == 0.0
+    assert coverage["unknown_duration_s"] == 0.0
+    assert coverage["complete"] is True
+    assert mapping(report["centring"])["eligible_duration_s"] == 1.0
 
 
 def test_incomplete_run_telemetry_cannot_pass_centring(tmp_path: Path) -> None:

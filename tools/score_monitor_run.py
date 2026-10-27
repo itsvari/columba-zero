@@ -34,10 +34,11 @@ EXCLUSION_REASONS = (
     "sampling_gap",
     "no_expected_target",
     "invisible",
+    "reach_unresolved",
     "unreachable",
     "registration_failed",
 )
-UNKNOWN_REASONS = ("missing_annotations", "sampling_gap", "registration_failed")
+UNKNOWN_REASONS = ("missing_annotations", "sampling_gap", "registration_failed", "reach_unresolved")
 Mode = Literal["hardware", "simulate"]
 SelectionResult = Literal["correct", "incorrect", "unresolved"]
 
@@ -83,7 +84,7 @@ class Scene:
 class TargetTruth:
     identity: str
     visible: bool
-    reachable: bool
+    reachable: bool | None
     registration_valid: bool
     centre_px: tuple[float, float] | None
     centre_uncertainty_px: tuple[float, float]
@@ -97,9 +98,21 @@ class CentringBounds:
 
 
 @dataclass(frozen=True, slots=True)
+class ExactRender:
+    render_number: int
+
+
+@dataclass(frozen=True, slots=True)
+class EquivalentRenders:
+    first_render_number: int
+    last_render_number: int
+    evidence: str
+
+
+@dataclass(frozen=True, slots=True)
 class Annotation:
     scene: Scene
-    render_number: int
+    render: ExactRender | EquivalentRenders
     expected_identity: str | None
     targets: tuple[TargetTruth, ...]
     selected_identity: str | None
@@ -423,22 +436,63 @@ def _target_truth(value: JsonValue, frame: RecordedFrame) -> TargetTruth:
     truth = TargetTruth(
         _text(target["identity"], "identity"),
         _boolean(target["visible"], "visible"),
-        _boolean(target["reachable"], "reachable"),
+        None if target["reachable"] is None else _boolean(target["reachable"], "reachable"),
         _boolean(target["registration_valid"], "registration_valid"),
         centre_px,
         centre_uncertainty_px,
     )
-    if truth.visible and truth.reachable and truth.registration_valid and centre_px is None:
+    if truth.visible and truth.reachable is True and truth.registration_valid and centre_px is None:
         raise ValueError("visible reachable targets with valid registration require centre_px")
     return truth
 
 
+def _render_association(label: dict[str, JsonValue]) -> ExactRender | EquivalentRenders:
+    if label["render_number"] is not None:
+        if "render_interval" in label:
+            raise ValueError("render_interval requires render_number: null")
+        return ExactRender(_integer(label["render_number"], "render_number"))
+    if "render_interval" not in label:
+        raise ValueError("render_number: null requires render_interval")
+    interval = _fields(
+        label["render_interval"],
+        "render_interval",
+        "first_render_number last_render_number equivalent_content_confirmed evidence",
+    )
+    if interval["equivalent_content_confirmed"] is not True:
+        raise ValueError("render_interval must affirm independently reviewed content equivalence")
+    first_render_number = _integer(interval["first_render_number"], "first_render_number")
+    last_render_number = _integer(interval["last_render_number"], "last_render_number")
+    if first_render_number > last_render_number:
+        raise ValueError("render_interval must have ordered render numbers")
+    return EquivalentRenders(
+        first_render_number,
+        last_render_number,
+        _text(interval["evidence"], "render_interval.evidence"),
+    )
+
+
+def _render_fields(render: ExactRender | EquivalentRenders | None) -> dict[str, JsonValue]:
+    if render is None or isinstance(render, ExactRender):
+        return {"render_number": render.render_number if render is not None else None}
+    return {
+        "render_number": None,
+        "render_interval": {
+            "first_render_number": render.first_render_number,
+            "last_render_number": render.last_render_number,
+            "equivalent_content_confirmed": True,
+            "evidence": render.evidence,
+        },
+    }
+
+
 def _annotation(value: JsonValue, frame: RecordedFrame) -> Annotation:
+    label = _mapping(value, "label")
     label = _fields(
         value,
         "label",
         "presentation_id run_number repeat_index scene_id render_number inventory_complete "
-        "expected_identity targets selection evidence",
+        "expected_identity targets selection evidence"
+        + (" render_interval" if "render_interval" in label else ""),
     )
     if label["inventory_complete"] is not True:
         raise ValueError("inventory_complete must affirm review of every intended target")
@@ -468,7 +522,7 @@ def _annotation(value: JsonValue, frame: RecordedFrame) -> Annotation:
             _integer(label["repeat_index"], "repeat_index"),
             _text(label["scene_id"], "scene_id"),
         ),
-        _integer(label["render_number"], "render_number"),
+        _render_association(label),
         expected_identity,
         targets,
         selected_identity,
@@ -518,6 +572,7 @@ def _scene_starts(
 ) -> dict[Scene, float]:
     starts: dict[Scene, float] = {}
     previous: Annotation | None = None
+    minimum_render_number = 0
     for frame in frames:
         annotation = annotations.get(frame.sequence)
         if annotation is None:
@@ -528,9 +583,20 @@ def _scene_starts(
             and annotation.scene in starts
         ):
             raise ValueError("a scene occurrence cannot reappear; use the correct run/repeat IDs")
-        if previous is not None and previous.scene == annotation.scene:
-            if annotation.render_number < previous.render_number:
-                raise ValueError("render_number must not decrease within a scene occurrence")
+        render = annotation.render
+        first_render_number = (
+            render.render_number if isinstance(render, ExactRender) else render.first_render_number
+        )
+        last_render_number = (
+            render.render_number if isinstance(render, ExactRender) else render.last_render_number
+        )
+        minimum_render_number = (
+            max(minimum_render_number, first_render_number)
+            if previous is not None and previous.scene == annotation.scene
+            else first_render_number
+        )
+        if last_render_number < minimum_render_number:
+            raise ValueError("render associations must not decrease within a scene occurrence")
         starts.setdefault(annotation.scene, frame.monotonic_s)
         previous = annotation
     return starts
@@ -546,7 +612,9 @@ def _exclusion(annotation: Annotation | None) -> str | None:
     )
     if not target.visible:
         return "invisible"
-    if not target.reachable:
+    if target.reachable is None:
+        return "reach_unresolved"
+    if target.reachable is False:
         return "unreachable"
     if not target.registration_valid:
         return "registration_failed"
@@ -648,7 +716,7 @@ def score_recording(recording: Recording, value: JsonValue) -> dict[str, JsonVal
                 "settling_s": settling_duration_s,
                 "exclusion": exclusion,
                 "scene_id": annotation.scene.scene_id if annotation else None,
-                "render_number": annotation.render_number if annotation else None,
+                **_render_fields(annotation.render if annotation else None),
                 "expected_identity": annotation.expected_identity if annotation else None,
                 "selected_track_id": frame.selected_track_id,
                 "selection_state": frame.selection_state,
