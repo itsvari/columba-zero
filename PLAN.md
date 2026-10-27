@@ -9,7 +9,8 @@ The user withdrew the 15 FPS goal and subsequently accepted the earlier hot
 timing and stability pass. Record and report the actual hot throughput, temperature
 and throttling state. Continue measuring command age, centring, recovery and
 stability. The historical handover below retains its original measurements and
-targets; the acceptance section now reflects this decision.
+targets; the acceptance section now reflects this decision. The user later relaxed
+the demonstration latency goal to **300 ms at p95**, retaining smooth control.
 
 The user authorised wider movement and reported smooth movement with cable
 clearance during the completed slow sweep through both ends of both axes. The first
@@ -36,8 +37,11 @@ recorded 221.3, 221.8 and 221.6 ms p95 command age, failing the 200 ms latency
 goal. Their hot throughput was approximately 11.2 FPS at median 84.8°C with active
 throttling and peaks up to 87.55°C. A 190 ms observation-timeout experiment capped
 move-age statistics while causing frequent stop-start corrections; it is not
-adopted. The user confirmed that 200 ms remains a p95 latency goal and smooth
-control must be preserved. Independent centring, faults, the four output modes
+adopted. The user initially retained the 200 ms p95 latency goal, then explicitly
+relaxed it to 300 ms after reviewing the hot measurements and cooling arrangement.
+The official active cooler has slightly restricted airflow beneath the HAT.
+Keep the original 250 ms freshness policy and preserve smooth control.
+Independent centring, faults, the four output modes
 and endurance remain open.
 
 Use this plan to implement the demonstration on the current application architecture,
@@ -609,7 +613,9 @@ Initial acceptance targets:
   range near **83–85°C**, conditional on control timing and stability, and withdrew
   the earlier 15 FPS requirement on 27 October 2026. The short approximately
   12.5 FPS result was measured while the device was warming up.
-- Frame-to-command age below **200 ms at p95** during normal operation.
+- Sensor-to-driver-return command age below **300 ms at p95** during normal
+  operation. Report uncensored observation age and stale time alongside it. The
+  user relaxed the earlier 200 ms demonstration goal on 27 October 2026.
 - After settling, the target centre stays within the central **20% of image width and height for at least 80%** of visible tracking time, within mechanical reach.
 - No repeated switching between similarly sized stationary displayed pigeons.
 - Brief occlusion, target departure, camera failure, slow browser clients, and recording errors produce predictable recovery.

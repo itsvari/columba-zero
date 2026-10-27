@@ -2,7 +2,7 @@
   "schema_version": 1,
   "recorded_at_utc": "2026-10-27T11:52:52.500137+00:00",
   "review_basis": "User confirmed all five proposed visible-bird boxes shown in source-box-review.html in this conversation. These describe the visible portions only.",
-  "allowance_basis": "Provisional visual allowances chosen before camera scoring; not measured confidence intervals.",
+  "allowance_basis": "Source edges: provisional visual allowance, not a confidence interval. Camera registration: 7 px calibrated from maximum original corner residual 3.7982 px plus the independent annotator's per-axis 2 px allowance (Euclidean upper allowance 2*sqrt(2)), rounded upwards before testing a fresh held-out sample. Original 2 px checks remain failed; scoring propagates the larger uncertainty.",
   "labels": [
     {
       "asset_id": "tuning-standing-pigeon",
@@ -20,7 +20,7 @@
         204
       ],
       "edge_allowance_source_px": 10,
-      "registration_allowance_camera_px": 2,
+      "registration_allowance_camera_px": 7,
       "confirmed": true,
       "reviewer": "user confirmation of all five visible-bird boxes in this conversation"
     },
@@ -40,7 +40,7 @@
         125
       ],
       "edge_allowance_source_px": 10,
-      "registration_allowance_camera_px": 2,
+      "registration_allowance_camera_px": 7,
       "confirmed": true,
       "reviewer": "user confirmation of all five visible-bird boxes in this conversation"
     },
@@ -60,7 +60,7 @@
         107
       ],
       "edge_allowance_source_px": 10,
-      "registration_allowance_camera_px": 2,
+      "registration_allowance_camera_px": 7,
       "confirmed": true,
       "reviewer": "user confirmation of all five visible-bird boxes in this conversation"
     },
@@ -80,7 +80,7 @@
         96
       ],
       "edge_allowance_source_px": 10,
-      "registration_allowance_camera_px": 2,
+      "registration_allowance_camera_px": 7,
       "confirmed": true,
       "reviewer": "user confirmation of all five visible-bird boxes in this conversation"
     },
@@ -100,9 +100,10 @@
         75
       ],
       "edge_allowance_source_px": 10,
-      "registration_allowance_camera_px": 2,
+      "registration_allowance_camera_px": 7,
       "confirmed": true,
       "reviewer": "user confirmation of all five visible-bird boxes in this conversation"
     }
-  ]
+  ],
+  "calibration_evidence": "outputs/validation/monitor-20261027/photo-camera-validation/locations.json; camera-corner-checks/annotation-notes.json"
 }

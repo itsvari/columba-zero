@@ -180,7 +180,7 @@ additional diagnostic, but does not run this live four-mode test.
 |---|---|---|
 | Processing throughput | Report hot throughput; the user accepted the earlier 10–12 FPS range near 83–85°C, conditional on timing and stability | Live frame windows, run summary, temperature and throttle flags |
 | Controller cadence | 20 Hz | Monotonic worker tick intervals, with log drops and workload recorded |
-| Frame-to-command age | p95 below 200 ms | Observation timestamp through completion of the driver write, with sensor or delivery timing labelled |
+| Frame-to-command age | p95 below 300 ms, as revised by the user | Observation timestamp through completion of the driver write, with sensor or delivery timing labelled; also report uncensored observation age and stale time |
 | Centring after settling | Within ±10% on each axis for at least 80% of visible, reachable tracking time | Unannotated camera recording, independent target truth and time-weighted offsets, with settling and exclusions recorded |
 | Selection | No repeated switching among similarly sized stationary birds | Target events and matching footage |
 | Preview and recording | Playable, correct elapsed timing, bounded queues | Real browser session, recorder counts, MP4 decode and duration checks |

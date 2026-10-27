@@ -9,6 +9,13 @@ The short approximately 12.5 FPS result was measured during warm-up. Other
 acceptance goals remain. Wider movement is authorised; each envelope still needs
 measured checks. Following remains opt-in.
 
+The user subsequently relaxed the demonstration latency goal to 300 ms at p95,
+while retaining smooth control. The earlier 200 ms failures below remain failures
+against that original goal. Keep the 250 ms observation-timeout policy and report
+uncensored observation age and stale time alongside move-age statistics. The
+official active cooler sits beneath the pan-tilt HAT, which the user reports
+slightly restricts airflow.
+
 ### Deployment and software
 
 The power-supply replacement interrupted recent filesystem writes. Recent Git
@@ -217,6 +224,39 @@ photograph centres can differ from visible-bird bounding-box centres. Define and
 review the actual visible target centre before constructing acceptance labels;
 do not substitute the photograph rectangle centre. The original full bird's
 unseen extent cannot be recovered from a clipped source crop.
+
+### Source-local truth and hardware measurement updates
+
+The user confirmed visible-bird bounding boxes on all five source photographs.
+`deploy/monitor-source-labels.json` binds them to source hashes and crop geometry.
+The offline local-photo matcher is independent of model detections, controller
+offsets and the global monitor homography. The scorer now propagates explicit
+centre uncertainty and uses the worst-case occupancy lower bound, including
+unknown time, for its scoped centring verdict. Point estimates remain separate.
+
+The original 2-pixel local-mapping check passed only one of 15 independently
+annotated camera rectangles. Changing to an affine model did not resolve it.
+Those failures remain recorded. A 7-pixel camera allowance was then declared from
+the 3.798-pixel calibration residual plus the annotator's per-axis 2-pixel visual
+allowance, rounded upwards. On a fresh sample, eight mappings passed the resulting
+worst-case check, with a maximum 6.481 pixels including annotation allowance; one
+additional checked image was rejected by feature matching. Five other images had
+ambiguous photo boundaries and supplied no check. This is limited sample evidence,
+not a statistical error guarantee. No profile-pigeon rectangle has an independent
+corner check yet. The source-edge allowance and camera allowance both reduce the
+scoring band; neither changes the 20% centring goal. Reports are under
+`outputs/validation/monitor-20261027/photo-camera-heldout-valid/`.
+
+Read-only, simulated-mount profiling ruled out a held Python GIL and BLAS thread
+oversubscription as major causes. Native extraction dominates. Actual measured
+CPU clock fell to 1.5 GHz during thermal limiting despite the nominal 2.4 GHz
+frequency readout. Five balanced repetitions did not support changing full-FOV
+capture from 30 to 50 FPS: median uncensored simulated tick-age p95 was 210.5 ms
+versus 215.1 ms. Two NCNN threads after thermal equilibration also failed to
+improve timing, at 227.2 ms median p95. These are diagnostic simulated runs, not
+physical acceptance or speedups; the two-thread comparison has sequential thermal
+carryover. Retain four threads, 30 FPS, passive waiting and the original control
+policy. Evidence is in `outputs/validation/monitor-20261027/latency-diagnosis/`.
 
 ### Outstanding gates
 
