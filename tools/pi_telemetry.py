@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -24,6 +26,26 @@ DEFAULT_INTERVAL_S = 1.0
 DEFAULT_DURATION_S = 7200.0
 MAXIMUM_INTERVAL_S = 60.0
 SCHEMA_VERSION = 1
+ARM_CLOCK_PATTERN = re.compile(r"frequency\(\d+\)=(\d+)")
+CLOCK_QUERY_TIMEOUT_S = 1.0
+
+
+def measured_arm_frequency_hz() -> int | None:
+    try:
+        result = subprocess.run(
+            ["vcgencmd", "measure_clock", "arm"],
+            capture_output=True,
+            text=True,
+            timeout=CLOCK_QUERY_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    matched = ARM_CLOCK_PATTERN.fullmatch(result.stdout.strip())
+    if result.returncode != 0 or matched is None:
+        return None
+    frequency_hz = int(matched.group(1))
+    return frequency_hz if frequency_hz > 0 else None
 
 
 def record_process(
@@ -59,6 +81,7 @@ def record_process(
                     stop_reason = "process_exited"
                     break
                 sample = device_sample()
+                sample["cpu_measured_frequency_hz"] = measured_arm_frequency_hz()
                 sample.update(
                     kind="sample",
                     process_id=process_id,
