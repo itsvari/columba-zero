@@ -5,6 +5,11 @@ recordings described in [the stimulus guide](monitor-stimulus.md). It reads
 `demo/index.jsonl`, the referenced JPEGs and `detections.jsonl` from one run
 directory. It opens no camera, hardware connection, browser or server.
 
+Use `preview.record_unannotated: true` for new camera evidence. The index must
+explicitly mark every retained frame with `annotations_included: false`.
+Annotated demonstration frames and older frames without this provenance remain
+inconclusive for centring, even when their labels are complete.
+
 The centring goal from [the plan](../PLAN.md) is at least 80% occupancy inside
 the central 20% of **both** recording dimensions after a declared settling
 period. For an 800 × 450 recording, that rectangle is x = 320–480 and

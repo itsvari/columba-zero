@@ -61,7 +61,8 @@ reconstructing its layout from the manifest: the record contains actual viewport
 CSS rectangles, including layout and scaling. `image_sequence` is the camera
 source sequence copied from `sequence` in the recording's `demo/index.jsonl`.
 It must be unique within this file. It is not the JPEG filename's spool ordinal.
-For example, the saved `frame_000000057.jpg` has source sequence 340. The tool
+For example, `frame_000000057.jpg` in the startup-fixed run
+`20261027T095120Z-8c3509d2` has source sequence 340. Other runs differ. The tool
 records the supplied sequence and does not join or verify it against the index.
 The numerical coordinates below illustrate the shape only; they are not real
 measurements or a usable calibration.

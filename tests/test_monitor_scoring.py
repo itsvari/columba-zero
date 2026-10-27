@@ -84,7 +84,11 @@ def write_recording(
                 "monotonic_s": START_MONOTONIC_S + offset_s,
                 "captured_at": captured_at,
                 "timebase": "delivery_monotonic",
-                "metadata": {"target": target, "controller": controller},
+                "metadata": {
+                    "target": target,
+                    "controller": controller,
+                    "annotations_included": False,
+                },
             }
         )
         records.append(
@@ -211,6 +215,22 @@ def test_missing_selection_does_not_remove_visible_truth_from_denominator(tmp_pa
     assert mapping(report["centring"])["occupancy_fraction_on_scored_time"] == 0.5
     durations = mapping(mapping(report["selection"])["post_settling_duration_s_by_result"])
     assert durations["incorrect"] == 2.0
+
+
+@pytest.mark.parametrize("annotations_included", (True, None))
+def test_annotated_or_unknown_camera_evidence_cannot_pass_centring(
+    tmp_path: Path, annotations_included: bool | None
+) -> None:
+    write_recording(tmp_path)
+    index_path = tmp_path / "demo" / "index.jsonl"
+    records = read_records(index_path)
+    metadata = mapping(mapping(records[0])["metadata"])
+    metadata["annotations_included"] = annotations_included
+    write_records(index_path, records)
+    recording = load_recording(tmp_path)
+    report = score_recording(recording, labelled_document(recording, (label(),) * 3))
+    assert mapping(report["centring"])["verdict"] == "inconclusive"
+    assert "unannotated image provenance" in str(recording.issues)
 
 
 def test_selection_and_loss_observations_need_independent_identity_labels(tmp_path: Path) -> None:

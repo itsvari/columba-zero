@@ -317,13 +317,19 @@ def load_recording(directory: Path) -> Recording:
         if logged is None or metadata.get("target") != logged.get("target"):
             raise ValueError("recording target metadata does not match detections.jsonl")
     ends = [record for record in records if record.get("event") == "run_end"]
+    issues = _recording_issues(ends, frames)
+    if any(
+        _mapping(record.get("metadata"), "metadata").get("annotations_included") is not False
+        for record in index
+    ):
+        issues += ("unannotated image provenance is missing or false",)
     return Recording(
         directory.resolve(),
         hashlib.sha256(index_path.read_bytes()).hexdigest(),
         hashlib.sha256(detections_path.read_bytes()).hexdigest(),
         mode,
         frames,
-        _recording_issues(ends, frames),
+        issues,
     )
 
 
