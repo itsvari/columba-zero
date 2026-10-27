@@ -31,6 +31,15 @@ make the match ambiguous. CRC-64 detects accidental corruption; it is not an
 authentication mechanism. A collision or an adversarially altered log is not
 ruled out. Keep the complete original JSONL and recording together.
 
+Each band searches a fixed grid of camera translations from -2 to +2 pixels
+on each axis in 0.25-pixel steps, including zero. All 289 translations are
+checked before acceptance. Every candidate retains the minimum 1.7-pixel cell
+size, 45-level contrast, 8-level cell margin, and CRC-64 checks. Sampling uses
+bilinear interpolation rounded to 8-bit intensities. Zero translation keeps the
+original OpenCV sampler. The search accepts exactly one distinct payload across
+the full grid; multiple valid payloads make the band ambiguous. Browser identities
+are consulted only after decoding, never to choose translations or repair bits.
+
 Both independently sampled bands must decode, pass their checksums, and agree.
 This rejects visible band disagreement and most torn or corrupted codes. It does
 **not** prove that every target-region pixel came from the same display render:
@@ -92,7 +101,12 @@ application.
 JPEG and each uniquely selected browser frame. `image_sequence` is taken from
 the index. `association` contains the full selected presentation, session, run,
 render and scene/frame identities; `optical_code_hex` records the two agreeing
-bands' decoded bytes. `candidate` means no unique optical association was
+bands' decoded bytes. `optical_sampling` records each band's selected translation,
+minimum cell margin, and number of passing translations. A passing zero translation
+is retained; otherwise the selected translation has the greatest minimum cell
+margin. The report declares the search radius and step. These shifts affect only
+code sampling; the four-marker homography and independent cross checks remain
+unchanged. `candidate` means no unique optical association was
 established. `unvalidated` means association succeeded but independent geometry
 checks did not. `validated` means the limited checks passed; the detailed
 registration result calls this `validated_within_sampled_hull`.

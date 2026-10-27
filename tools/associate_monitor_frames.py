@@ -48,6 +48,8 @@ CRC64_MASK = 0xFFFFFFFFFFFFFFFF
 MINIMUM_CELL_CAMERA_PX = 1.7
 MINIMUM_CODE_CONTRAST = 45.0
 MINIMUM_CLASS_MARGIN = 8.0
+CODE_SEARCH_RADIUS_CAMERA_PX = 2.0
+CODE_SEARCH_STEP_CAMERA_PX = 0.25
 CROSS_RADIUS_DESIGN_PX = 14
 CROSS_OUTLINE_DESIGN_PX = 7
 CROSS_LINE_DESIGN_PX = 3
@@ -133,7 +135,12 @@ def camera_matrix(frame: dict[str, JsonValue], markers: dict[str, JsonValue]) ->
 
 
 def decode_code(
-    image: Image, frame: dict[str, JsonValue], matrix: Matrix, *, upper: bool = False
+    image: Image,
+    frame: dict[str, JsonValue],
+    matrix: Matrix,
+    *,
+    upper: bool = False,
+    diagnostics: dict[str, JsonValue] | None = None,
 ) -> bytes:
     key = "optical_check_screen_css_px" if upper else "optical_code_screen_css_px"
     left, top, width, height = rectangle(frame.get(key), "optical code")
@@ -156,8 +163,8 @@ def decode_code(
         > GEOMETRY_TOLERANCE_CSS_PX
     ):
         raise ValueError("optical code rectangle does not match stimulus geometry")
-    intensities: list[float] = []
-    grey = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    sample_positions: list[list[Point]] = []
+    grey = cast(Image, cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
     cell_width, cell_height = width / CODE_COLUMNS, height / CODE_ROWS
     for row in range(CODE_ROWS):
         for column in range(CODE_COLUMNS):
@@ -170,7 +177,7 @@ def decode_code(
                 < MINIMUM_CELL_CAMERA_PX
             ):
                 raise ValueError("optical cells are too small for reliable sampling")
-            samples: list[float] = []
+            samples: list[Point] = []
             for offset_x, offset_y in (
                 (0.0, 0.0),
                 (-0.15, 0.0),
@@ -183,8 +190,84 @@ def decode_code(
                 )
                 if x < 0 or y < 0 or x >= grey.shape[1] - 1 or y >= grey.shape[0] - 1:
                     raise ValueError("optical code is outside the image")
-                samples.append(float(cv2.getRectSubPix(grey, (1, 1), (x, y))[0, 0]))
-            intensities.append(float(numpy.median(samples)))
+                samples.append((x, y))
+            sample_positions.append(samples)
+    positions = numpy.asarray(sample_positions, dtype=numpy.float64)
+    shifts = numpy.arange(
+        -CODE_SEARCH_RADIUS_CAMERA_PX,
+        CODE_SEARCH_RADIUS_CAMERA_PX + CODE_SEARCH_STEP_CAMERA_PX / 2,
+        CODE_SEARCH_STEP_CAMERA_PX,
+    )
+    translations = [(0.0, 0.0)] + [
+        (float(x), float(y)) for y in shifts for x in shifts if x != 0 or y != 0
+    ]
+    matches: dict[bytes, tuple[Point, int, float]] = {}
+    initial_failure = "optical code CRC-64 failed"
+    for index, translation in enumerate(translations):
+        try:
+            intensities = sample_code(grey, positions, translation)
+            decoded = code_from_intensities(intensities)
+            threshold = float(numpy.mean(numpy.percentile(intensities, (10, 90))))
+            margin = float(numpy.min(numpy.abs(intensities - threshold)))
+            selected_shift, count, selected_margin = matches.get(decoded, (translation, 0, margin))
+            if selected_shift != (0.0, 0.0) and margin > selected_margin:
+                selected_shift, selected_margin = translation, margin
+            matches[decoded] = (selected_shift, count + 1, selected_margin)
+        except ValueError as error:
+            if index == 0:
+                initial_failure = str(error)
+    if len(matches) > 1:
+        raise ValueError("multiple CRC-checked optical payloads within the translation search")
+    if not matches:
+        raise ValueError(initial_failure + "; no valid code within the translation search")
+    decoded, (translation, count, margin) = next(iter(matches.items()))
+    if diagnostics is not None:
+        diagnostics.update(
+            {
+                "selected_shift_camera_px": list(translation),
+                "valid_translation_count": count,
+                "minimum_class_margin": margin,
+                "search_radius_camera_px": CODE_SEARCH_RADIUS_CAMERA_PX,
+                "search_step_camera_px": CODE_SEARCH_STEP_CAMERA_PX,
+                "unique_payload_count": len(matches),
+            }
+        )
+    return decoded
+
+
+def sample_code(grey: Image, positions: Matrix, translation: Point) -> Matrix:
+    coordinates = positions + numpy.asarray(translation)
+    horizontal, vertical = coordinates[..., 0], coordinates[..., 1]
+    if (
+        horizontal.min() < 0
+        or vertical.min() < 0
+        or horizontal.max() >= grey.shape[1] - 1
+        or vertical.max() >= grey.shape[0] - 1
+    ):
+        raise ValueError("optical code is outside the image")
+    if translation == (0.0, 0.0):
+        samples = numpy.asarray(
+            [
+                [
+                    float(cv2.getRectSubPix(grey, (1, 1), (float(x), float(y)))[0, 0])
+                    for x, y in cell
+                ]
+                for cell in coordinates
+            ]
+        )
+        return cast(Matrix, numpy.median(samples, axis=1))
+    left, top = numpy.floor(horizontal).astype(int), numpy.floor(vertical).astype(int)
+    fraction_x, fraction_y = horizontal - left, vertical - top
+    samples = (
+        grey[top, left] * (1 - fraction_x) * (1 - fraction_y)
+        + grey[top, left + 1] * fraction_x * (1 - fraction_y)
+        + grey[top + 1, left] * (1 - fraction_x) * fraction_y
+        + grey[top + 1, left + 1] * fraction_x * fraction_y
+    )
+    return cast(Matrix, numpy.median(numpy.rint(samples), axis=1))
+
+
+def code_from_intensities(intensities: Matrix) -> bytes:
     low, high = numpy.percentile(intensities, (10, 90))
     if high - low < MINIMUM_CODE_CONTRAST:
         raise ValueError("insufficient optical code contrast")
@@ -344,7 +427,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                     raise ValueError("image must occur once in the index and marker file")
                 seen.add(name)
                 result["image_sequence"] = index_by_name[name]["sequence"]
-                image_path = options.index.parent / name
+                image_path = (options.index.parent / name).resolve()
                 result["image_sha256"] = hashlib.sha256(image_path.read_bytes()).hexdigest()
                 loaded_image = cv2.imread(str(image_path))
                 if loaded_image is None:
@@ -372,8 +455,17 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 for layout_frame in layouts.values():
                     try:
                         matrix = camera_matrix(layout_frame, markers)
-                        decoded = decode_code(image, layout_frame, matrix)
-                        if decode_code(image, layout_frame, matrix, upper=True) != decoded:
+                        lower_sampling: dict[str, JsonValue] = {}
+                        upper_sampling: dict[str, JsonValue] = {}
+                        decoded = decode_code(
+                            image, layout_frame, matrix, diagnostics=lower_sampling
+                        )
+                        if (
+                            decode_code(
+                                image, layout_frame, matrix, upper=True, diagnostics=upper_sampling
+                            )
+                            != decoded
+                        ):
                             continue
                         possible = by_code.get(decoded, [])
                         if len(possible) != 1:
@@ -395,6 +487,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
                             sort_keys=True,
                         ):
                             matches[decoded] = selected
+                            result["optical_sampling"] = {
+                                "lower": lower_sampling,
+                                "upper": upper_sampling,
+                            }
                     except (ValueError, cv2.error):
                         continue
                 if len(matches) != 1:
@@ -538,6 +634,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
             "browser_jsonl_sha256": hashlib.sha256(options.browser.read_bytes()).hexdigest(),
             "marker_annotations_sha256": hashlib.sha256(options.markers.read_bytes()).hexdigest(),
             "maximum_error_camera_px": options.max_error_px,
+            "optical_search_radius_camera_px": CODE_SEARCH_RADIUS_CAMERA_PX,
+            "optical_search_step_camera_px": CODE_SEARCH_STEP_CAMERA_PX,
             "frames": results,
         }
         (options.output / "association.json").write_text(

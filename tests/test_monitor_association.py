@@ -93,6 +93,8 @@ def synthetic_capture(
     covered_centre_cross: bool = False,
     camera_scale: float = 0.36,
     generated_record: bool = False,
+    shifted: bool = False,
+    competing: bool = False,
 ) -> tuple[Path, Path, Path]:
     manifest = build_manifest("tuning", registration_grid=True, optical_code=True)
     records = generated_browser_records() if generated_record else []
@@ -139,8 +141,18 @@ def synthetic_capture(
             if corrupt and bit_index == 41:
                 bit ^= 1
             colour = (0, 0, 0) if bit else (255, 255, 255)
-            x, y = 1056 + bit_index % 32 * 12, top + bit_index // 32 * 12
+            horizontal_shift_px = -4 if shifted else 0
+            vertical_shift_px = (6 if top == 96 else -5) if shifted else 0
+            x, y = (
+                1056 + bit_index % 32 * 12 + horizontal_shift_px,
+                top + bit_index // 32 * 12 + vertical_shift_px,
+            )
             cv2.rectangle(design, (x, y), (x + 11, y + 11), colour, -1)
+            if competing:
+                other_code = identity_bytes(presentation, session, run, render + 1)
+                other_bit = (other_code[bit_index // 8] >> (7 - bit_index % 8)) & 1
+                other_colour = (0, 0, 0) if other_bit else (255, 255, 255)
+                cv2.rectangle(design, (x, y + 6), (x + 11, y + 11), other_colour, -1)
     matrix = numpy.array(
         ((camera_scale, 0.008, 70), (0.004, camera_scale, 40), (0.00001, 0.00001, 1.0))
     )
@@ -257,6 +269,9 @@ def test_perspective_blur_noise_and_cli_round_trip(tmp_path: Path) -> None:
     assert frame["image_sequence"] == 340
     assert cast(dict[str, JsonValue], frame["association"])["render_number"] == 317
     assert len(cast(list[JsonValue], frame["observed_crosses"])) >= 5
+    sampling = cast(dict[str, JsonValue], frame["optical_sampling"])
+    for band in ("lower", "upper"):
+        assert cast(dict[str, JsonValue], sampling[band])["selected_shift_camera_px"] == [0.0, 0.0]
     assert len(cast(list[JsonValue], frame["projected_photograph_centres"])) == 1
     assert (tmp_path / "result" / "association.json").is_file()
 
@@ -267,6 +282,8 @@ def test_corruption_curvature_and_missing_centre_fail_closed(tmp_path: Path, cas
     assert status == 1
     assert frame["status"] != "validated"
     assert not frame.get("projected_photograph_centres")
+    if case in ("corrupt", "mixed"):
+        assert frame["status"] == "candidate"
     if case == "curved":
         registration = cast(dict[str, JsonValue], frame["registration"])
         assert cast(float, registration["max_validation_error_px"]) > 3
@@ -401,3 +418,61 @@ def test_blank_centre_and_projection_outside_hull(tmp_path: Path) -> None:
     assert main([*arguments, "--output", str(tmp_path / "blank-centre")]) == 1
     report = json.loads((tmp_path / "blank-centre" / "association.json").read_text())
     assert report["frames"][0]["status"] == "unvalidated"
+
+
+def test_independently_shifted_bands_preserve_identity_and_report_search(tmp_path: Path) -> None:
+    status, frame = run_capture(tmp_path, shifted=True)
+    assert status == 0, frame
+    sampling = cast(dict[str, JsonValue], frame["optical_sampling"])
+    for band in ("lower", "upper"):
+        diagnostics = cast(dict[str, JsonValue], sampling[band])
+        assert diagnostics["selected_shift_camera_px"] != [0.0, 0.0]
+        assert diagnostics["search_radius_camera_px"] == 2.0
+        assert diagnostics["search_step_camera_px"] == 0.25
+        assert diagnostics["unique_payload_count"] == 1
+        assert cast(int, diagnostics["valid_translation_count"]) > 0
+    assert cast(dict[str, JsonValue], frame["association"])["render_number"] == 317
+
+
+def test_competing_crc_valid_payloads_fail_even_if_one_matches_browser(tmp_path: Path) -> None:
+    _, browser, annotation = synthetic_capture(tmp_path, competing=True)
+    frame = cast(dict[str, JsonValue], json.loads(browser.read_text()))
+    markers = cast(
+        dict[str, JsonValue],
+        json.loads(annotation.read_text())["frames"][0]["marker_centres_camera_px"],
+    )
+    image = cv2.imread(str(tmp_path / "frame_000000057.jpg"))
+    assert image is not None
+    with pytest.raises(ValueError, match="multiple CRC-checked optical payloads"):
+        decode_code(
+            cast(numpy.ndarray[tuple[int, ...], numpy.dtype[numpy.uint8]], image),
+            frame,
+            camera_matrix(frame, markers),
+        )
+
+
+def test_cli_registers_capture_from_relative_index_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture_directory = tmp_path / "capture"
+    capture_directory.mkdir()
+    synthetic_capture(capture_directory)
+    monkeypatch.chdir(tmp_path)
+    output = Path("result")
+    assert (
+        main(
+            [
+                "capture/index.jsonl",
+                "capture/browser.jsonl",
+                "capture/markers.json",
+                "--output",
+                str(output),
+                "--max-error-px",
+                "3",
+            ]
+        )
+        == 0
+    )
+    report = json.loads((output / "association.json").read_text())
+    assert report["frames"][0]["registration"]["status"] == "validated_within_sampled_hull"
