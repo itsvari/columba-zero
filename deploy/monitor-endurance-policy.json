@@ -90,6 +90,6 @@
   },
   "assessment_tool": {
     "path": "tools/assess_monitor_endurance.py",
-    "sha256": "4799770b57db91e95f956ecb931bd3a47615e9c18ae1e24bb71881bcf0dbfc8d"
+    "sha256": "93e2e10db8298471629090beb3b3bdc352076bc905b67d8a045e252693b8ef82"
   }
 }

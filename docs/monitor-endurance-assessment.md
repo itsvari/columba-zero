@@ -15,6 +15,7 @@ python tools/assess_monitor_endurance.py \
   --voltage-final /path/to/final-voltage.json \
   --video /path/to/unannotated.mp4 \
   --decode-proof /path/to/decode-proof.json \
+  --policy-sha256 HASH_FROM_THE_FROZEN_RUN_PLAN \
   --output-directory /path/to/new-assessment
 ```
 

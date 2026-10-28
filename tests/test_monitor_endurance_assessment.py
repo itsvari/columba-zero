@@ -218,6 +218,8 @@ def test_policy_hash_mismatch_refuses_assessment(tmp_path: Path) -> None:
         str(tmp_path),
         "--output-directory",
         str(tmp_path / "out"),
+        "--policy-sha256",
+        "0" * 64,
     ]
     for option in (
         "telemetry",
@@ -325,12 +327,19 @@ def test_cli_writes_hashed_report_and_preserves_inputs(tmp_path: Path) -> None:
         str(output),
         "--video",
         str(video),
+        "--policy-sha256",
+        assessment.sha256(assessment.ROOT / "deploy/monitor-endurance-policy.json"),
     ]
     for name in ("telemetry", "browser"):
         command.extend([f"--{name}", str(tmp_path / f"{name}.jsonl")])
     for name in ("supervisor", "full-off", "baseline", "voltage-final", "decode-proof"):
         command.extend([f"--{name}", str(tmp_path / f"{name}.json")])
     original = (tmp_path / "detections.jsonl").read_bytes()
+    incorrect = list(command)
+    incorrect[incorrect.index("--policy-sha256") + 1] = "0" * 64
+    rejected = subprocess.run(incorrect, capture_output=True, text=True)
+    assert rejected.returncode != 0
+    assert not output.exists()
     subprocess.run(command, capture_output=True, text=True, check=True)
     assert (tmp_path / "detections.jsonl").read_bytes() == original
     manifest = assessment.read_json(output / "manifest.json")

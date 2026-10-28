@@ -12,7 +12,6 @@ from typing import cast
 
 from app.json_data import JsonValue
 
-POLICY_SHA256 = "94f383e6299edecf164ad3ba4e5aba4924eb1494ab6eae5d313e6aef4477903a"
 SOURCE_TIMESTAMP_TOLERANCE_S = 0.000001
 MAXIMUM_SAMPLE_INTERVAL_MULTIPLIER = 2
 MILLISECONDS_PER_SECOND = 1000.0
@@ -565,6 +564,7 @@ def main() -> int:
     parser.add_argument(
         "--policy", type=Path, default=ROOT / "deploy/monitor-endurance-policy.json"
     )
+    parser.add_argument("--policy-sha256", required=True, help="hash frozen in the run plan")
     parser.add_argument("--output-directory", type=Path, required=True)
     args = parser.parse_args()
     inputs = {
@@ -580,9 +580,12 @@ def main() -> int:
         "policy": args.policy,
     }
     hashes = {name: sha256(path) for name, path in inputs.items()}
-    if hashes["policy"] != POLICY_SHA256:
+    if hashes["policy"] != args.policy_sha256:
         raise ValueError("policy SHA-256 does not match the pinned acceptance policy")
     policy = read_json(args.policy)
+    assessment_tool = mapping(policy.get("assessment_tool"))
+    if assessment_tool.get("sha256") != sha256(Path(__file__)):
+        raise ValueError("assessment tool differs from the policy's frozen version")
     truth = mapping(mapping(policy["centring_confirmation"])["frozen_files_sha256"])
     truth_hashes: dict[str, JsonValue] = {}
     for name, expected in truth.items():
