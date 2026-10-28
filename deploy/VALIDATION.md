@@ -36,8 +36,9 @@ cause or changing its capacity.
 Independent capture-only telemetry spans 65.55–88.65°C; the final 600-second
 temperature median is 85.35°C. Measured ARM clock has median 1.500019 GHz, while
 the cpufreq request remains 2.4 GHz. Current thermal-limit bits occur in 99.635%
-of capture samples. This establishes pervasive thermal limiting, without proving
-it caused every throughput loss or the writer stall. Baseline `0xe0000` and final
+of capture samples. This establishes pervasive thermal limiting, without
+establishing that it caused the throughput losses or the writer stall. Baseline
+`0xe0000` and final
 `0xe0008` are on the same boot, with no current or new latched under-voltage.
 Telemetry starts 0.563 seconds after capture; hot sampling coverage passes and
 same-boot baseline/final latch receipts cover the voltage gate. The temperature
@@ -73,6 +74,12 @@ Evidence is under `outputs/validation/monitor-20261028/`: `hour-run-pointer.json
 `82636d8978df972313424f8a03a5b0c156c4356e19144a540852024f80131ea8`;
 the MP4 SHA-256 is
 `57346442d7749cbe8816ec8421e4192f60608f3a471bf0e42e5b77750342f155`.
+
+Final independent Claude Opus 5.5 review at `6d54c74` recomputed every material
+metric from raw evidence, reproduced the frozen assessment and manifest
+byte-for-byte, and found no remaining software blocker. Its wording and audit
+receipt corrections were applied afterwards; no code, gate or result changed.
+The review is retained as `outputs/validation/monitor-20261028/opus-hour-final-review.md`.
 
 ## Resumed campaign, 28 October 2026
 

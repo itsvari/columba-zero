@@ -37,7 +37,7 @@ pass from this hour. Details are in `deploy/VALIDATION.md` and the retained
 
 The following records the preparation and bounded checks before the hour.
 
-On 28 October the user resumed the campaign, confirmed clear cables and readiness
+On 28 October the user resumed the campaign, stated readiness
 to observe, and explicitly permitted movement checks without continuous physical
 supervision. The later explicit reply, “Include the hour this session”, supersedes
 the previous one-hour deferral.
