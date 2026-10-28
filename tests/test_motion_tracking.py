@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from dataclasses import replace
-from typing import cast
+from pathlib import Path
+from typing import TypedDict, cast
 
 import cv2
 import numpy
@@ -18,6 +20,22 @@ FRAME_WIDTH_PX = 320
 FRAME_HEIGHT_PX = 240
 CAPTURED_AT_S = 1_800_000_000.0
 CONFIRMED_AT_S = CAPTURED_AT_S + 100
+
+
+class OcclusionDetection(TypedDict):
+    confidence: float
+    bounds_px: list[float]
+
+
+class OcclusionObservation(TypedDict):
+    sequence: int
+    observed_at_s: float
+    processed_at_s: float
+    detections: list[OcclusionDetection]
+
+
+class OcclusionReplay(TypedDict):
+    observations: list[OcclusionObservation]
 
 
 def detection(
@@ -68,12 +86,46 @@ def identities(result: TrackingUpdate) -> list[int | None]:
     return [item.track_id for item in result.detections]
 
 
+def test_partial_occlusion_replay_preserves_identity_when_bird_reappears() -> None:
+    fixture = Path(__file__).parent / "fixtures" / "monitor_partial_occlusion.json"
+    replay = cast(OcclusionReplay, json.loads(fixture.read_text()))
+    motion_tracker = MotionTracker(
+        ConfirmationConfig(enabled=True, k=2, n=3, iou=0.3),
+        ["pigeon"],
+        acquisition_confidence=0.62646484375,
+    )
+    frame = numpy.zeros((450, 800, 3), dtype=numpy.uint8)
+    trigger_count = 0
+    for observation in replay["observations"]:
+        detections = []
+        for item in observation["detections"]:
+            left_px, top_px, right_px, bottom_px = item["bounds_px"]
+            detections.append(
+                Detection("pigeon", item["confidence"], left_px, top_px, right_px, bottom_px)
+            )
+        result = update(
+            motion_tracker,
+            detections,
+            observation["observed_at_s"],
+            observation["sequence"],
+            frame,
+            now_s=observation["processed_at_s"],
+        )
+        trigger_count += len(result.triggers)
+        assert identities(result) == [1] * len(detections), observation["sequence"]
+    assert trigger_count == 1
+
+
 @pytest.mark.parametrize(
     ("frame_rate_fps", "walking_speed_px_s", "box_size_px"),
     ((15.0, 120.0, 40.0), (15.0, 200.0, 80.0), (30.0, 120.0, 40.0), (30.0, 200.0, 80.0)),
 )
+@pytest.mark.parametrize("walking_confidence", (0.8, 0.3))
 def test_walking_from_rest_keeps_the_confirmed_identity(
-    frame_rate_fps: float, walking_speed_px_s: float, box_size_px: float
+    frame_rate_fps: float,
+    walking_speed_px_s: float,
+    box_size_px: float,
+    walking_confidence: float,
 ) -> None:
     motion_tracker = tracker()
     frame = numpy.zeros((450, 800, 3), dtype=numpy.uint8)
@@ -87,7 +139,14 @@ def test_walking_from_rest_keeps_the_confirmed_identity(
         left_px = 100.0 + walking_frames * walking_speed_px_s / frame_rate_fps
         result = update(
             motion_tracker,
-            [detection(left_px=left_px, width_px=box_size_px, height_px=box_size_px)],
+            [
+                detection(
+                    left_px=left_px,
+                    width_px=box_size_px,
+                    height_px=box_size_px,
+                    confidence=walking_confidence if walking_frames else 0.8,
+                )
+            ],
             sequence / frame_rate_fps,
             sequence=sequence,
             frame=frame,

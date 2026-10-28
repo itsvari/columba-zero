@@ -21,6 +21,7 @@ from .tracking import TriggerEvent, box_of, iou_matrix
 Coordinates = NDArray[numpy.float64]
 STATE_POSITION_COUNT = 4
 STATE_SIZE = STATE_POSITION_COUNT * 2
+CENTRE_COORDINATE_COUNT = 2
 MINIMUM_BOX_SIZE_PX = 1.0
 INITIAL_POSITION_VARIANCE_PX2 = 10.0
 INITIAL_VELOCITY_VARIANCE_PX2_S2 = 10_000.0
@@ -114,13 +115,22 @@ class _MotionTrack:
         self.predicted_at_s = observed_at_s
         self.matched = False
 
-    def observe(self, detection: Detection, observed_at_s: float, hit: bool) -> None:
+    def observe(
+        self,
+        detection: Detection,
+        observed_at_s: float,
+        hit: bool,
+        motion_confident: bool,
+    ) -> None:
         residual = _measurement(detection) - self.state[:STATE_POSITION_COUNT]
         measurement_noise = numpy.eye(STATE_POSITION_COUNT) * MEASUREMENT_VARIANCE_PX2
         innovation = (
             self.covariance[:STATE_POSITION_COUNT, :STATE_POSITION_COUNT] + measurement_noise
         )
         gain = numpy.linalg.solve(innovation, self.covariance[:STATE_POSITION_COUNT, :]).T
+        if not motion_confident:
+            # partial maintenance boxes must not overwrite learnt size or velocity.
+            gain[CENTRE_COORDINATE_COUNT:, :] = 0
         self.state = self.state + gain @ residual
         correction = numpy.eye(STATE_SIZE)
         correction[:, :STATE_POSITION_COUNT] -= gain
@@ -345,7 +355,12 @@ class MotionTracker:
             hit = detection.confidence >= self.acquisition_confidence and (
                 detection.label in self.trigger_classes
             )
-            track.observe(detection, observed_at_s, hit)
+            track.observe(
+                detection,
+                observed_at_s,
+                hit,
+                motion_confident=detection.confidence >= self.acquisition_confidence,
+            )
             assigned[index] = track.detection
         for track in self._tracks:
             if not track.matched:
