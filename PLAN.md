@@ -1,5 +1,15 @@
 # Columba Zero: pan-tilt integration and demonstration video
 
+## Next work: planned, not started
+
+The monitor-validation changes are merged into `main` through
+[PR #3](https://github.com/itsvari/columba-zero/pull/3), merge `577cf48`.
+The user requested a follow-up plan for independent centring and target-selection
+verification, followed by the fixed-zone feature. The plan is in
+[Independent verification and zone plan](docs/independent-verification-and-zone-plan.md).
+No implementation, new capture or physical movement is authorised by this
+planning step; wait for the user to resume the work.
+
 ## 1. Delivery status and next-session handover
 
 ### Monitor campaign update, 28 October 2026
@@ -9,7 +19,7 @@ this result.” The measured demonstration is accepted for its current scope;
 further throughput and recorder tuning is optional. The original frozen verdict
 below remains unchanged. Independent centring and expected-selection verification
 are still incomplete, and the fixed-zone stretch goal remains deferred. Changes
-are retained on `feat/monitor-hardware-validation` for the Git handover.
+are merged into `main` through PR #3.
 
 **The authorised hour completed and failed the frozen engineering gates.** The
 60.4-minute capture ran all 18 playlist repeats. Whole-hot processing was
