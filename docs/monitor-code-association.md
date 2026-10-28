@@ -43,6 +43,14 @@ with their reasons and never provide sampling proposals. Reference centroids
 provide sampling geometry only; successful decoding does not certify those
 centroids as geometric truth.
 
+The proposal positions may also be model predictions from independently located
+fixed-grid crosses. Keep the observed marker annotations separately. Record the
+grid inputs, model, hashes and predicted-position status in `review_evidence`;
+do not label model predictions as confirmed marker observations. Check that the
+resulting reference exclusion mask covers every photograph, including annotation
+uncertainty. The decoder still requires agreeing CRC-valid bands and a unique
+export match. These proposals supply optical sampling geometry only.
+
 For each target image, the tool tries exact marker-pattern candidates first.
 Those candidates provide a sampling proposal without manual-confirmation flags.
 If they yield no optical association, the tool evaluates every verified reference

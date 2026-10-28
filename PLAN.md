@@ -2,11 +2,12 @@
 
 ## 1. Delivery status and next-session handover
 
-### Monitor campaign update, 27 October 2026
+### Monitor campaign update, 28 October 2026
 
 On 28 October the user resumed the campaign, confirmed clear cables and readiness
 to observe, and explicitly permitted movement checks without continuous physical
-supervision. The previous one-hour deferral is superseded by that instruction.
+supervision. The later explicit reply, “Include the hour this session”, supersedes
+the previous one-hour deferral.
 Keep the tested ±100 µs envelope, reduced speed and independent stop deadlines.
 The first fix at `1f518f2` was too broad at hot frame rates. The reviewed
 correction at `dc444c5` protects learnt size and velocity only for low-confidence
@@ -16,18 +17,54 @@ partial-occlusion replay still retains its ID. Runtime expiry and 250 ms
 freshness are unchanged.
 
 The endurance actor now runs its inhibitor in a separate session and ignores
-repeated interruption during cleanup; 22 offline tests pass using the actual
-desktop wrappers. The desktop tracker gate passes 849 tests and 369 subtests;
-Pi passes 847 tests and 375 subtests. Strict desktop mypy, Ruff, Pi CTest and
-model checks pass. The offline assessment has ten additional focused tests.
+repeated interruption during cleanup; 24 offline tests pass using the actual
+desktop wrappers. The latest desktop gate, including the offline assessment,
+passes 860 tests and 370 subtests, with six optional skips. Strict desktop mypy
+passes across 132 files, and the canonical Ruff gate passes across 135 files.
+Pi at runtime revision `dc444c5` passes
+847 tests and 375 subtests, with eight optional skips, plus native CTest and
+model checks. The offline assessment's ten focused tests also pass.
 The first desktop browser gate failed because its temporary executable was gone;
 the restored pinned browser gate passes and both logs remain. The Pi rebooted
 with flags `0x0` and outputs disabled. The fresh repeat then stopped at its
 positive-source guard: the camera did not see the stimulus. It made no tracking
 corrections and ended with one TERM, no KILL, both outputs FULL_OFF and flags `0`.
-The browser renders the page, but a follow-disabled camera check still sees the
-monitor edge and room. Setup/display clarification is pending before further
-movement; confirmatory centring and endurance have not run.
+The user then confirmed that the Pi/base had moved. Slow, bounded servo ramps
+established a new home at pan 80.1 and tilt 89.1 nominal degrees, or 1390 and
+1490 µs. The new profile retains home ±100 µs on both axes. A slow sweep completed
+both ends and returns on both axes, with FULL_OFF read back after all eight steps.
+The presentation is now left-aligned at display scale 0.65 and target scale 1.25.
+Its scenes exactly match the original tuning playlist. Diagnostic target-scale-2
+variants were rejected because six stationary scenes clipped their photographs.
+
+The final home view has all four markers and reliable detection. Terra independently
+checked photograph corners before local fitting in two home images and eight
+powered sweep holds. All sampled standing-pigeon fits pass the unchanged 7 px
+budget, including the declared manual uncertainty. Additional shorebird checks
+and a separate follow-disabled, framed profile calibration also pass on their
+sampled images. This does not qualify unobserved poses or target selection.
+
+The fresh 201-second following calibration completed with both outputs FULL_OFF,
+one TERM, no KILL and no writer drops. After 120 seconds, processing was 10.597 FPS;
+p95 first-use sensor age was 192.9 ms and uncensored tracking/stale age was
+250.6 ms. The maximum controller interval was 55.906 ms. Temperature peaked at
+87.0°C with thermal throttling; no under-voltage bits were set. Its MP4 decoded
+independently. These are bounded calibration results, not an hour result.
+
+Independent grid geometry enabled strict optical association for 864 of 1,025
+JPEGs across all 22 scenes. The 161 rejected frames remain unknown. The sampling
+positions are model predictions, not manually observed marker centres; a separate
+visual check confirms that the reference feature mask excludes the photograph.
+No decoder threshold or CRC requirement changed.
+
+The opt-in photograph frame is calibration-only and following was disabled for
+that capture. Manual apparent-area intervals are too wide to qualify the
+similar-size target-selection scene in the new camera view. Centring and
+selection therefore remain pending; the old exploratory pass is not transferred
+to this pose. The one-hour timing, recording and stability subgate is explicitly
+authorised and has not started. Both policy copies now qualify only this bounded
+hardware setup for that subgate and retain pending centring status. The actor
+rejects a pending setup, changed frozen inputs or a framed following stimulus.
 The frozen criteria are in `deploy/monitor-endurance-policy.json`; the new
 duty, cadence and memory limits are engineering budgets, not historical results.
 
@@ -39,7 +76,7 @@ stability. The historical handover below retains its original measurements and
 targets; the acceptance section now reflects this decision. The user later relaxed
 the demonstration latency goal to **300 ms at p95**, retaining smooth control.
 
-The user authorised wider movement and reported smooth movement with cable
+On 27 October the user authorised wider movement and reported smooth movement with cable
 clearance during the completed slow sweep through both ends of both axes. The first
 expanded profile permits home ±100 µs at the existing reduced speed. A 30-second
 run issued 160 timed hardware tracking moves, with 198.0 ms sensor-to-driver-return
@@ -47,9 +84,10 @@ age at p95, then returned home and disabled both channels. This is one short run
 not full acceptance or proof that the entire expanded envelope has been checked.
 The initial ±50 µs run only acquired home and made no tracking corrections.
 
-The test monitor is a 34-inch, 1500R curved ultrawide, approximately 38 cm from
-the camera. Its quoted 350–400 cd/m² brightness is a specification, not a
-measurement. Reduced, repositioned stimuli put all four markers within view.
+The test monitor is a 34-inch, 1500R curved ultrawide. The camera was approximately
+38 cm away on 27 October; distance after the 28 October base move is unconfirmed.
+The quoted 350–400 cd/m² brightness is a specification, not a measurement.
+Reduced, repositioned stimuli put all four markers within view.
 A global planar homography needs independent validation on this curved surface.
 The powered home view differs substantially from the earlier unpowered view;
 establish framing at powered home before interpreting following results.
@@ -86,17 +124,17 @@ the Kalman box prediction collapsed to one pixel wide before retention expired.
 The earlier processing-age explanation is superseded. There are no software
 shipping blockers. Centring remains exploratory because the profile qualification
 was added after scoring, and the narrow pass needs a fresh confirmatory recording.
-The hour-long test has not yet run; the user has now resumed that work.
+The hour-long test has not yet run; the user explicitly included it in this session.
 
-Before a future endurance run, fix the prepared actor's completion race, initial
-browser-record export and inhibitor-wrapper process handling (review E1–E3), then
-pin the pass/fail gates. Recommended E4–E6 improve evidence recovery and latency
-reporting. Decide whether to fix partial-occlusion identity retention before that
-run, and establish a clean throttle-latch baseline when hardware work resumes.
-The current 300 ms move-age check is bounded by the 250 ms freshness cutoff;
-report uncensored ages and an explicitly defined first-use latency measure too.
-The full review and preserved diagnostics are under
-`outputs/validation/monitor-20261027/`.
+Review E1–E6 and the subsequent T1, R1 and P1 findings are addressed by the
+current tracker, runner and frozen policy. The post-reboot voltage baseline is
+clear. Visibility, bounded following and sampled geometry have fresh evidence.
+Independent centring and selection remain separate from the authorised hour.
+The 300 ms latency gates use uncensored
+observation age and first-use age; move age remains descriptive because the
+250 ms freshness cutoff bounds it. Reviews, superseded versions and verification
+logs remain under `outputs/validation/monitor-20261027/` and
+`outputs/validation/monitor-20261028/`.
 
 Use this plan to implement the demonstration on the current application architecture,
 reusing the useful hardware and controller work from

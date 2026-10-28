@@ -3,16 +3,20 @@
 ## Resumed campaign, 28 October 2026
 
 The user resumed the work and explicitly permits movement checks without
-continuous physical supervision. This supersedes the wrap-up deferral below.
+continuous physical supervision. The later explicit reply, “Include the hour
+this session”, supersedes the wrap-up deferral below.
 Keep the tested ±100 µs travel, 3 nominal °/s maximum speed and 250 ms freshness.
-No new physical run has started yet.
 
 Update after the resumed review: `1f518f2` regressed normal low-confidence motion
 at 10–11 FPS. `dc444c5` narrows protection to size outliers; six regressions fail
-before and pass afterwards, with 82 nearby tests passing. The full tracker gate
-passes 849 desktop tests and 847 Pi tests, plus their recorded subtests. The runner
+before and pass afterwards, with 82 nearby tests passing. The latest desktop gate,
+including the offline assessment and photograph-frame browser checks, passes
+860 tests and 370 subtests, with six optional skips. Strict mypy passes across
+132 files, and the canonical Ruff gate passes across 135 files. Pi at
+runtime revision `dc444c5` passes 847 tests and 375 subtests, with eight optional
+skips, plus native CTest and model checks. The runner
 now keeps the actor outside the inhibitor's parent-death chain, suppresses later
-cleanup interruptions, and passes 22 tests including the real desktop wrappers.
+cleanup interruptions, and passes 24 tests including the real desktop wrappers.
 Both policy copies pin truth hashes and explicit gate scopes. The assessment
 tool takes its expected policy hash from the frozen run plan, avoiding a circular
 tool/policy checksum; its ten focused tests pass.
@@ -25,27 +29,84 @@ but no tracking corrections. The archive SHA-256 was verified. This is a guarded
 failed test setup, not a tracking or centring pass. The actual camera view shows
 the monitor edge and room rather than the rendered stimulus. Raising the test
 browser and a separate follow-disabled camera recording did not resolve visibility.
-Setup/display clarification is pending; no hour run has started. Evidence and
-the display/camera comparison are in `outputs/validation/monitor-20261028/`.
+The colour diagnostic proved that the physical monitor follows the test browser.
+The user then confirmed the Pi/base had moved, invalidating the old home and reach
+mapping. No hour run has started. Evidence is in
+`outputs/validation/monitor-20261028/`.
 
-Runtime `1f518f2` prevents low-confidence partial boxes from updating learnt size
-or velocity while still retaining their real positions and observation times.
-The new 21-observation regression reproduces the ID split at frame 5040 before
-the fix and preserves the identity afterwards. Seventy-two nearby tests and two
-subtests pass, including walking with maintenance-confidence detections. Full
-desktop verification passes 839 tests and 369 subtests; Pi verification passes
-837 tests and 375 subtests. Ruff, strict desktop mypy, Pi native CTest, model
-verification and Git integrity checks pass. The initial desktop browser failures
-were caused by the removed temporary executable; the pinned replacement and both
-gate logs are retained in `outputs/validation/monitor-20261028/`.
+Slow servo ramps established new home commands of pan 80.1 and tilt 89.1 nominal
+degrees, or 1390 and 1490 µs. Both outputs read FULL_OFF after each ramp. The new
+profile uses pan 1290–1490 µs and tilt 1390–1590 µs. Eight subsequent slow sweep
+phases reached both endpoints and returned home, with completion and FULL_OFF
+receipts for each phase. The separate follow-disabled camera capture exited 0
+after one TERM, without KILL. Camera footage and command logs remain separate.
+The user did not observe this sweep. There is no new operator confirmation of
+smoothness or cable clearance. The footage establishes camera response and the
+receipts establish commanded travel and output disable, not cable clearance.
 
-The repaired private endurance actor/helper pass 16 offline tests, including
-real SIGINT/SIGTERM cleanup. E1–E6 are implemented and original scripts remain in
-`pre-resume/endurance-runner/` beneath the earlier evidence directory. A fresh
-short recording will provide confirmatory centring evidence under the frozen
-truth policy; the hour will assess timing and stability. Criteria are frozen in
-`deploy/monitor-endurance-policy.json`. Focused independent review and physical
-verification of the new code remain pending.
+The selected presentation is display scale 0.65, target scale 1.25, horizontal
+position 0 and vertical position 1. Its scene list exactly matches the original
+tuning playlist. The target-scale-2 diagnostic variants are excluded because
+six stationary scenes clip their photographs. The final home has all four markers
+visible and reliable detection. Terra independently annotated photo corners
+before matching in two home frames and eight powered sweep holds. All sampled
+standing-pigeon fits pass the unchanged 7 px limit, including the declared manual
+uncertainty. Independent shorebird checks and a follow-disabled profile calibration
+with visible photograph frames also pass on their sampled images. In the latter,
+eight camera fits across four powered pan holds have worst error 5.941 px including
+the declared ±2 px corner uncertainty. Frames are excluded from following captures.
+
+The 201-second following calibration at
+`output-matrix/matrix-20261028T100018Z-d237b91d/both` completed. It processed
+2,248 frames and retained 1,025 unannotated JPEGs without recording, rendering or
+log writer drops. The 3,905 latest-frame capture drops are separate from recording
+loss. One TERM, no KILL, child exit 0 and both FULL_OFF were recorded. The maximum
+controller interval was 55.906 ms. After the 120-second warm-up, the remaining
+84.931 seconds processed 900 frames: 10.597 FPS. Hot p95 first-use sensor age was
+192.9 ms, and uncensored tracking/stale age was 250.6 ms, below 300 ms. Full-run
+move age was 229.7 ms at p95 and remains freshness-censored. Temperature peaked
+at 87.0°C; final flags `0xe0008` show thermal history/current soft-temperature
+limit with no current or historical under-voltage bits. The 205.132-second MP4
+independently decoded without error, versus 205.131130 seconds expected. Evidence
+and decode proof are under `outputs/validation/monitor-20261028/`.
+
+The strict optical decoder associated 864 of 1,025 frames across all 22 scenes.
+The 161 rejects remain in the report. Initial global-marker proposals failed;
+right-column fixed-grid geometry supplied successful sampling proposals without
+changing CRC or ambiguity thresholds. These are model-predicted marker positions,
+not confirmed physical marker centroids. Independent masking checks show that
+the reference photograph and its uncertainty envelope contribute no SIFT pixels.
+The geometry, visual checks and rejected candidates remain separately auditable.
+
+The new calibration is not a confirmatory centring recording. In the framed
+profile samples, independent visible-bird area ratios have point estimates
+1.200–1.332 but broad uncertainty intervals spanning 1.25. Consequently the
+similar-size scene cannot establish the expected target choice in this camera
+view. No runtime threshold or truth target was changed to manufacture a pass.
+Both policy copies qualify the current home, bounded travel and visibility only
+for the hour's timing, recording and stability gates. Independent centring and
+selection remain pending, and the old pose's qualification policy is excluded
+from the current frozen inputs. The actor refuses launch for a pending setup,
+changed frozen inputs or a framed following page. The hour is authorised but has
+not started; its numerical engineering criteria are unchanged.
+The monitor remains the reported 34-inch, 1500R display. The earlier approximately
+38 cm distance predates the move; current distance is unconfirmed. Its
+350–400 cd/m² brightness remains a quoted specification, not a measurement.
+
+The original 21-observation fixture still retains one identity through the
+partial occlusion. The initial broad hold at `1f518f2`, its earlier test counts
+and the parent-wrapper runner design are superseded by the corrections above.
+The initial desktop browser failures came from a removed temporary executable;
+the pinned replacement and both gate logs remain in
+`outputs/validation/monitor-20261028/`.
+
+E1–E6 are implemented. Original scripts remain in
+`pre-resume/endurance-runner/` beneath the earlier evidence directory. Independent
+review identified T1, R1 and P1; the corrections were applied locally and checked
+with regressions and the real inhibitor wrappers. A fresh short recording is
+still needed for confirmatory centring after expected-selection truth is resolved.
+The hour will assess timing, recording and stability separately. Criteria are frozen in
+`deploy/monitor-endurance-policy.json`.
 
 ## Monitor campaign, 27 October 2026, in progress
 
