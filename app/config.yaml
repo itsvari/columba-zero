@@ -7,6 +7,7 @@ camera:
   stream: lores            # main | lores (hardware-scaled full field of view, e.g. 640x360)
   main_size: null         # lores only: [width, height] of the main stream; null picks a binned mode
   lens_position: null     # dioptres for manual focus (0 = infinity); null keeps autofocus
+  exposure_compensation_ev: null # CSI auto-exposure bias in EV; null keeps the camera default
   max_exposure_us: null   # cap automatic exposure, e.g. 16666 for 1/60 s
   tuning_file: null       # e.g. imx708_noir.json for the NoIR camera
   camera_index: 0

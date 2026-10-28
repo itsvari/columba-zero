@@ -99,6 +99,34 @@ class CameraConfigTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ConfigError):
                 load_config({"camera": {"width": 640, "height": 360, **invalid}})
 
+    def test_exposure_compensation_parsing_and_override(self) -> None:
+        self.assertIsNone(load_config({}).camera.exposure_compensation_ev)
+        config = load_config(
+            {
+                "camera": {"exposure_compensation_ev": -1.5},
+                "cameras": [
+                    {"name": "day", "role": "day"},
+                    {"name": "night", "role": "night", "exposure_compensation_ev": 0},
+                ],
+            }
+        )
+        self.assertEqual(config.camera_for(config.cameras[0]).exposure_compensation_ev, -1.5)
+        night = config.camera_for(config.cameras[1])
+        self.assertEqual(night.exposure_compensation_ev, 0.0)
+        self.assertEqual(create_camera(night).exposure_compensation_ev, 0.0)
+        for invalid in (True, "-1", float("nan"), float("inf")):
+            with self.subTest(invalid=invalid), self.assertRaises(ConfigError):
+                load_config({"camera": {"exposure_compensation_ev": invalid}})
+            with self.subTest(entry=invalid), self.assertRaises(ConfigError):
+                load_config(
+                    {
+                        "cameras": [
+                            {"name": "day", "role": "day", "exposure_compensation_ev": invalid},
+                            {"name": "night", "role": "night"},
+                        ]
+                    }
+                )
+
     def test_day_night_cameras_inherit_shared_settings_and_validate(self) -> None:
         config = load_config(
             {
@@ -201,6 +229,52 @@ class Picamera2CaptureTests(unittest.TestCase):
                     None if expected is None else controls.AfModeEnum.Continuous,
                 )
                 self.assertIn("lens_position", capture.warnings[0])
+
+    def test_exposure_compensation_is_applied_with_manual_focus_and_zero(self) -> None:
+        for exposure_ev in (-1.5, 0.0, -8.0, 8.0):
+            camera = fake_camera(
+                {
+                    "ExposureValue": (-8.0, 8.0, 0.0),
+                    "AfMode": (),
+                    "LensPosition": (0.0, 15.0, 1.0),
+                }
+            )
+            with self.subTest(exposure_ev=exposure_ev), picamera(camera):
+                Picamera2Capture(
+                    640,
+                    480,
+                    15,
+                    lens_position=2.0,
+                    exposure_compensation_ev=exposure_ev,
+                ).start()
+            requested = camera.create_video_configuration.call_args.kwargs["controls"]
+            self.assertEqual(requested["ExposureValue"], exposure_ev)
+            self.assertEqual(requested["LensPosition"], 2.0)
+
+    def test_default_omits_exposure_compensation(self) -> None:
+        camera = fake_camera()
+        with picamera(camera):
+            Picamera2Capture(640, 480, 15).start()
+        self.assertNotIn(
+            "ExposureValue", camera.create_video_configuration.call_args.kwargs["controls"]
+        )
+
+    def test_exposure_compensation_rejects_unsupported_or_invalid_requests(self) -> None:
+        for available, exposure_ev, message in (
+            ({}, -1.5, "support"),
+            ({"ExposureValue": (-1.0, 1.0, 0.0)}, -1.5, "outside camera range"),
+            ({"ExposureValue": ()}, 0.0, "range is unavailable"),
+            ({"ExposureValue": (-8.0, 8.0, 0.0)}, float("nan"), "finite number"),
+        ):
+            camera = fake_camera(available)
+            with self.subTest(available=available), picamera(camera):
+                capture = Picamera2Capture(640, 480, 15, exposure_compensation_ev=exposure_ev)
+                with self.assertRaisesRegex(CaptureError, message):
+                    capture.start()
+                capture.close()
+            camera.create_video_configuration.assert_not_called()
+            camera.start.assert_not_called()
+            camera.close.assert_called_once()
 
     def test_exposure_cap_uses_the_sensor_tuning(self) -> None:
         camera = fake_camera()

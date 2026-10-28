@@ -39,6 +39,7 @@ CAMERA_FIELDS = frozenset(
         "main_size",
         "lens_position",
         "max_exposure_us",
+        "exposure_compensation_ev",
         "tuning_file",
         "camera_index",
         "name",
@@ -53,6 +54,7 @@ CAMERA_ENTRY_FIELDS = frozenset(
         "tuning_file",
         "lens_position",
         "max_exposure_us",
+        "exposure_compensation_ev",
         "rotation_deg",
     }
 )
@@ -176,6 +178,7 @@ class CameraConfig:
     main_size: tuple[int, int] | None = None
     lens_position: float | None = None
     max_exposure_us: int | None = None
+    exposure_compensation_ev: float | None = None
     tuning_file: str | None = None
     camera_index: int = 0
     name: str | None = None
@@ -196,6 +199,7 @@ class CameraEntry:
     tuning_file: str | None = None
     lens_position: float | None = None
     max_exposure_us: int | None = None
+    exposure_compensation_ev: float | None = None
     rotation_deg: CameraRotation | None = None
 
 
@@ -285,6 +289,7 @@ def read_camera(section: dict[str, JsonValue], defaults: CameraConfig) -> Camera
     main_size = section.get("main_size")
     lens_position = section.get("lens_position")
     max_exposure_us = section.get("max_exposure_us")
+    exposure_compensation_ev = section.get("exposure_compensation_ev")
     tuning_file = section.get("tuning_file")
     name = section.get("name")
     return CameraConfig(
@@ -303,6 +308,11 @@ def read_camera(section: dict[str, JsonValue], defaults: CameraConfig) -> Camera
             None
             if max_exposure_us is None
             else positive_integer(max_exposure_us, "max_exposure_us")
+        ),
+        exposure_compensation_ev=(
+            None
+            if exposure_compensation_ev is None
+            else finite_number(exposure_compensation_ev, "exposure_compensation_ev")
         ),
         tuning_file=None if tuning_file is None else non_empty_path(tuning_file, "tuning_file"),
         camera_index=non_negative_integer(
@@ -330,6 +340,7 @@ def read_camera_entries(value: JsonValue) -> tuple[CameraEntry, ...]:
         tuning_file = entry.get("tuning_file")
         lens_position = entry.get("lens_position")
         max_exposure_us = entry.get("max_exposure_us")
+        exposure_compensation_ev = entry.get("exposure_compensation_ev")
         rotation_deg = entry.get("rotation_deg")
         entries.append(
             CameraEntry(
@@ -350,6 +361,11 @@ def read_camera_entries(value: JsonValue) -> tuple[CameraEntry, ...]:
                     None
                     if max_exposure_us is None
                     else positive_integer(max_exposure_us, "max_exposure_us")
+                ),
+                exposure_compensation_ev=(
+                    None
+                    if exposure_compensation_ev is None
+                    else finite_number(exposure_compensation_ev, "exposure_compensation_ev")
                 ),
                 rotation_deg=(
                     None
@@ -667,6 +683,11 @@ class AppConfig:
                 if entry.max_exposure_us is not None
                 else camera.max_exposure_us
             ),
+            exposure_compensation_ev=(
+                entry.exposure_compensation_ev
+                if entry.exposure_compensation_ev is not None
+                else camera.exposure_compensation_ev
+            ),
             tuning_file=entry.tuning_file if entry.tuning_file is not None else camera.tuning_file,
             camera_index=(
                 entry.camera_index if entry.camera_index is not None else camera.camera_index
@@ -696,6 +717,8 @@ class AppConfig:
         finite_positive_number(self.model.confidence, "confidence")
         if self.model.confidence > 1:
             raise ConfigError("confidence must be in (0, 1]")
+        if self.camera.exposure_compensation_ev is not None:
+            finite_number(self.camera.exposure_compensation_ev, "exposure_compensation_ev")
         choice(self.model.backend, "model.backend", MODEL_BACKENDS)
         positive_integer(self.model.threads, "model.threads")
         choice(self.camera.stream, "camera.stream", CAMERA_STREAMS)
@@ -789,6 +812,8 @@ class AppConfig:
             for index, entry in enumerate(self.cameras):
                 if entry.rotation_deg is not None:
                     rotation_degrees(entry.rotation_deg, f"cameras[{index}].rotation_deg")
+                if entry.exposure_compensation_ev is not None:
+                    finite_number(entry.exposure_compensation_ev, "exposure_compensation_ev")
                 if entry.lens_position is not None and entry.lens_position < 0:
                     raise ConfigError("lens_position must be non-negative")
             if follow.enabled:

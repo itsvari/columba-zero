@@ -130,6 +130,7 @@ class Picamera2Capture:
         main_size: tuple[int, int] | None = None,
         lens_position: float | None = None,
         max_exposure_us: int | None = None,
+        exposure_compensation_ev: float | None = None,
         tuning_file: str | None = None,
         camera_index: int = 0,
         name: str | None = None,
@@ -140,6 +141,7 @@ class Picamera2Capture:
         self.main_size = main_size
         self.lens_position = lens_position
         self.max_exposure_us = max_exposure_us
+        self.exposure_compensation_ev = exposure_compensation_ev
         self.tuning_file = tuning_file
         self.camera_index = camera_index
         self.name = name or f"camera{camera_index}"
@@ -178,6 +180,31 @@ class Picamera2Capture:
     def _controls(self, camera: Picamera2, controls: object) -> dict[str, object]:
         available = camera.camera_controls
         requested: dict[str, object] = {"FrameRate": self.fps}
+        if self.exposure_compensation_ev is not None:
+            exposure_ev = self.exposure_compensation_ev
+            if isinstance(exposure_ev, bool) or not math.isfinite(exposure_ev):
+                raise CaptureError("exposure_compensation_ev must be a finite number")
+            if "ExposureValue" not in available:
+                raise CaptureError("exposure_compensation_ev requires camera ExposureValue support")
+            limits = available["ExposureValue"]
+            if (
+                not isinstance(limits, tuple)
+                or len(limits) < 2
+                or not all(
+                    isinstance(bound, (int, float))
+                    and not isinstance(bound, bool)
+                    and math.isfinite(bound)
+                    for bound in limits[:2]
+                )
+            ):
+                raise CaptureError("camera ExposureValue range is unavailable")
+            low, high = limits[:2]
+            if not low <= exposure_ev <= high:
+                raise CaptureError(
+                    f"exposure_compensation_ev {exposure_ev:g} is outside camera range "
+                    f"[{low:g}, {high:g}]"
+                )
+            requested["ExposureValue"] = exposure_ev
         autofocus = cast(object, getattr(controls, "AfModeEnum", None))
         if self.lens_position is not None:
             if "LensPosition" in available and "AfMode" in available:

@@ -113,6 +113,7 @@ def create_camera(camera: CameraConfig) -> Picamera2Capture:
         main_size=camera.main_size,
         lens_position=camera.lens_position,
         max_exposure_us=camera.max_exposure_us,
+        exposure_compensation_ev=camera.exposure_compensation_ev,
         tuning_file=camera.tuning_file,
         camera_index=camera.camera_index,
         name=camera.label,

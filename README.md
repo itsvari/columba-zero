@@ -184,6 +184,7 @@ defaults equal the values shown.
 | `stream` | `lores` | `lores` makes the camera hardware scale the full field of view down to `width` x `height`. Where the low-resolution stream cannot be RGB (Pi 4 and earlier), it is captured as YUV420 and converted. |
 | `main_size` | null | With `lores`: size of the main stream that sets the field of view. Null picks half the sensor resolution at the frame's aspect ratio (a 2x2 binned mode). |
 | `lens_position` | null | Manual focus in dioptres (0 = infinity), clamped to the camera's range. Without `LensPosition` support the camera keeps its default (continuous autofocus when `AfMode` exists, else fixed focus) and a warning is printed. |
+| `exposure_compensation_ev` | null | CSI auto-exposure bias in stops (EV), e.g. -1.5 darkens the image. null preserves the camera default; explicit 0 requests neutral compensation. Unsupported or out-of-range values fail at camera startup; values are never clamped. Replay uses the recorded exposure and ignores this setting. |
 | `max_exposure_us` | null | Caps automatic exposure (e.g. 16666 for 1/60 s) by clamping the AGC exposure modes of the sensor's tuning, as described in the Picamera2 manual. |
 | `tuning_file` | null | Camera tuning by name (e.g. `imx708_noir.json` for the NoIR camera) or path. If it cannot be loaded, the default tuning is used with a warning. |
 | `camera_index` | 0 | Which CSI camera to open. |
@@ -232,8 +233,8 @@ calibration and orientation are defined. Reaction tests disable following.
 `cameras:` and `camera_switch:` (off unless `cameras` is given)
 
 List exactly one `role: day` and one `role: night` camera, each with a `name`
-and optional `camera_index`, `tuning_file`, `lens_position` and
-`max_exposure_us`; other settings come from `camera:`. Only one camera is open
+and optional `camera_index`, `tuning_file`, `lens_position`,
+`max_exposure_us`, and `exposure_compensation_ev`; other settings come from `camera:`. Only one camera is open
 at a time, starting with the day camera. The run switches to the night camera
 when the active camera's lux estimate stays below `camera_switch.night_below_lux`
 [10] for `hold_s` [5] seconds, and back when it stays above `day_above_lux` [40].
