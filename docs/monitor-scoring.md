@@ -325,3 +325,13 @@ Tests use explicitly synthetic camera truth and logs, including absent selection
 irregular timing, gaps, loss expectations, registration failure and invalid
 provenance, plus uncertainty rectangles, exact band and goal boundaries, and
 worst-case unknown-time bounds. They do not generate annotations for real recordings.
+
+An annotation may declare `expected_policy: "allowance"` with
+`expected_identity: null` for a predeclared acquisition or smoothing interval
+whose expected selection is independently undecided. Selection remains unresolved
+whether or not a track was selected. After the ordinary settling interval, this
+time is retained as `expected_selection_unresolved` in the conservative centring
+unknown denominator. It cannot count as correct expected absence. Omitted
+`expected_policy` defaults to `"required"`; under that legacy policy, a null
+expected identity still requires no selected target. Non-null expected identities
+with an allowance policy are rejected.

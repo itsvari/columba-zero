@@ -33,6 +33,7 @@ EXCLUSION_REASONS = (
     "settling",
     "sampling_gap",
     "no_expected_target",
+    "expected_selection_unresolved",
     "visibility_unresolved",
     "invisible",
     "reach_unresolved",
@@ -40,6 +41,7 @@ EXCLUSION_REASONS = (
     "registration_failed",
 )
 UNKNOWN_REASONS = (
+    "expected_selection_unresolved",
     "missing_annotations",
     "sampling_gap",
     "registration_failed",
@@ -48,6 +50,7 @@ UNKNOWN_REASONS = (
 )
 Mode = Literal["hardware", "simulate"]
 SelectionResult = Literal["correct", "incorrect", "unresolved"]
+ExpectedPolicy = Literal["required", "allowance"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +126,7 @@ class Annotation:
     expected_identity: str | None
     targets: tuple[TargetTruth, ...]
     selected_identity: str | None
+    expected_policy: ExpectedPolicy = "required"
 
 
 def _mapping(value: JsonValue, context: str) -> dict[str, JsonValue]:
@@ -504,7 +508,8 @@ def _annotation(value: JsonValue, frame: RecordedFrame) -> Annotation:
         "label",
         "presentation_id run_number repeat_index scene_id render_number inventory_complete "
         "expected_identity targets selection evidence"
-        + (" render_interval" if "render_interval" in label else ""),
+        + (" render_interval" if "render_interval" in label else "")
+        + (" expected_policy" if "expected_policy" in label else ""),
     )
     if label["inventory_complete"] is not True:
         raise ValueError("inventory_complete must affirm review of every intended target")
@@ -520,6 +525,11 @@ def _annotation(value: JsonValue, frame: RecordedFrame) -> Annotation:
         expected_identity = _text(expected_identity, "expected_identity")
         if expected_identity not in identities:
             raise ValueError("expected_identity must exist in the complete target inventory")
+    expected_policy = label.get("expected_policy", "required")
+    if expected_policy not in ("required", "allowance"):
+        raise ValueError("expected_policy must be required or allowance")
+    if expected_policy == "allowance" and expected_identity is not None:
+        raise ValueError("allowance requires an undecided expected_identity")
     selected_identity = None
     if label["selection"] is not None:
         selection = _fields(label["selection"], "selection", "identity evidence")
@@ -538,6 +548,7 @@ def _annotation(value: JsonValue, frame: RecordedFrame) -> Annotation:
         expected_identity,
         targets,
         selected_identity,
+        cast(ExpectedPolicy, expected_policy),
     )
 
 
@@ -617,6 +628,8 @@ def _scene_starts(
 def _exclusion(annotation: Annotation | None) -> str | None:
     if annotation is None:
         return "missing_annotations"
+    if annotation.expected_policy == "allowance":
+        return "expected_selection_unresolved"
     if annotation.expected_identity is None:
         return "no_expected_target"
     target = next(
@@ -665,7 +678,7 @@ def _centring_bounds(annotation: Annotation, frame: RecordedFrame) -> CentringBo
 
 
 def _selection_result(annotation: Annotation | None, frame: RecordedFrame) -> SelectionResult:
-    if annotation is None:
+    if annotation is None or annotation.expected_policy == "allowance":
         return "unresolved"
     if frame.selected_track_id is None:
         return "correct" if annotation.expected_identity is None else "incorrect"
@@ -732,6 +745,7 @@ def score_recording(recording: Recording, value: JsonValue) -> dict[str, JsonVal
                 "scene_id": annotation.scene.scene_id if annotation else None,
                 **_render_fields(annotation.render if annotation else None),
                 "expected_identity": annotation.expected_identity if annotation else None,
+                "expected_policy": annotation.expected_policy if annotation else None,
                 "selected_track_id": frame.selected_track_id,
                 "selection_state": frame.selection_state,
                 "observed_selected_identity": annotation.selected_identity if annotation else None,

@@ -90,6 +90,7 @@ class Qualification:
     width_px: int
     height_px: int
     proof_hashes: dict[str, JsonValue]
+    evidence_hashes: tuple[tuple[Path, str], ...]
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,7 @@ class Render:
     content: str
     raw: dict[str, JsonValue]
     sha256: str
+    expected_policy: scorer.ExpectedPolicy = "required"
 
 
 @dataclass(frozen=True)
@@ -260,10 +262,48 @@ def direct_centre_qualification(
     }
 
 
+def qualification_evidence_paths(policy: dict[str, JsonValue]) -> tuple[Path, ...]:
+    evidence = [
+        Path(locator.text_value(policy.get(key), key))
+        for key in ("camera_validation_report", "feature_reuse_equivalence_report")
+    ]
+    if policy.get("qualified_direct_centre_assets"):
+        evidence.extend(
+            Path(locator.text_value(policy.get(key), key))
+            for key in (
+                "direct_centre_validation_report",
+                "direct_centre_checks",
+                "direct_centre_locations",
+            )
+        )
+    reach = locator.mapping(policy.get("reach"), "reach policy")
+    home = Path(locator.text_value(reach.get("home_reference_image"), "home reference image"))
+    evidence.extend(
+        (
+            home,
+            home.parent / "index.jsonl",
+            Path(
+                locator.text_value(reach.get("axis_measurement_report"), "axis measurement report")
+            ),
+        )
+    )
+    return tuple(dict.fromkeys(path.resolve() for path in evidence))
+
+
+def verify_qualification_evidence(evidence_hashes: tuple[tuple[Path, str], ...]) -> None:
+    if any(digest(path) != checksum for path, checksum in evidence_hashes):
+        raise ValueError(
+            "qualification evidence changed during preparation; rerun with frozen evidence"
+        )
+
+
 def read_qualification(
     path: Path, source_labels: Path, locations: dict[str, JsonValue]
 ) -> Qualification:
     policy = document(path)
+    evidence_hashes = tuple(
+        (evidence, digest(evidence)) for evidence in qualification_evidence_paths(policy)
+    )
     if policy.get("source_labels_sha256") != digest(source_labels) or locations.get(
         "source_labels_sha256"
     ) != digest(source_labels):
@@ -336,6 +376,7 @@ def read_qualification(
     allowance = locator.number(reach.get("home_mapping_allowance_camera_px"), "home allowance")
     if allowance != policy.get("registration_allowance_camera_px") or allowance != 7:
         raise ValueError("qualification requires the predeclared7px registration allowance")
+    verify_qualification_evidence(evidence_hashes)
     return Qualification(
         policy,
         qualified,
@@ -355,6 +396,7 @@ def read_qualification(
             "axis_measurement_sha256": reach["axis_measurement_sha256"],
             **direct_proof,
         },
+        evidence_hashes,
     )
 
 
@@ -394,6 +436,11 @@ def make_render(frame: dict[str, JsonValue], manifest: dict[str, JsonValue]) -> 
     rule = expected_rule(manifest, frame)
     selected = rule.get("selected_identity")
     expected = None if selected is None else locator.text_value(selected, "expected identity")
+    expected_policy = locator.text_value(rule.get("expected_policy", "required"), "expected policy")
+    if expected_policy not in ("required", "allowance"):
+        raise ValueError("expected policy must be required or allowance")
+    if expected_policy == "allowance" and expected is not None:
+        raise ValueError("allowance requires an undecided expected identity")
     targets: list[RenderTarget] = []
     for item in cast(list[JsonValue], frame["targets"]):
         target = locator.mapping(item, "render target")
@@ -452,6 +499,7 @@ def make_render(frame: dict[str, JsonValue], manifest: dict[str, JsonValue]) -> 
         canonical(content),
         frame,
         value_hash(frame),
+        cast(scorer.ExpectedPolicy, expected_policy),
     )
 
 
@@ -874,6 +922,7 @@ def prepare_label(
         "render_evidence": evidence.evidence,
         "targets": [],
         "expected_identity": render.expected_identity,
+        "expected_policy": render.expected_policy,
         "intended_target_inventory": [target.raw for target in render.targets],
     }
     photos: dict[str, Photo] = {}
@@ -973,6 +1022,7 @@ def prepare_label(
         "render_number": evidence.first_render if evidence.exact else None,
         "inventory_complete": True,
         "expected_identity": render.expected_identity,
+        "expected_policy": render.expected_policy,
         "targets": truths,
         "selection": {"identity": selected, "evidence": canonical(selection_evidence)}
         if selected is not None and frame.selected_track_id is not None
@@ -1086,6 +1136,7 @@ def main(arguments: list[str] | None = None) -> int:
             raise ValueError("an input changed during preparation; rerun with a frozen policy")
         if any(digest(Path(path)) != checksum for path, checksum in code_hashes.items()):
             raise ValueError("preparation/scoring code changed during preparation")
+        verify_qualification_evidence(policy.evidence_hashes)
         options.output.mkdir(parents=True, exist_ok=False)
         (options.output / "qualification-snapshot.json").write_text(
             json.dumps(policy.raw, indent=2, allow_nan=False) + "\n"
@@ -1102,6 +1153,9 @@ def main(arguments: list[str] | None = None) -> int:
             ),
             "inputs_sha256": cast(JsonValue, input_hashes),
             "qualification_evidence": policy.proof_hashes,
+            "qualification_dependency_sha256": {
+                str(path): checksum for path, checksum in policy.evidence_hashes
+            },
             "qualification_snapshot_sha256": digest(options.output / "qualification-snapshot.json"),
             "qualification_bound_before_labels": True,
             "code_sha256": cast(JsonValue, code_hashes),

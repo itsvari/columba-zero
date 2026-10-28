@@ -654,6 +654,10 @@ def test_known_scene_missing_expected_photo_retains_partial_inventory_and_post_s
         )
         == 0
     )
+    provenance = preparation.document(output / "preparation.json")
+    assert provenance["qualification_dependency_sha256"] == {
+        str(path): checksum for path, checksum in fixture.policy.evidence_hashes
+    }
     annotations = preparation.document(output / "annotations.json")
     rows = cast(list[dict[str, JsonValue]], annotations["frames"])
     label = cast(dict[str, JsonValue], rows[0]["label"])
@@ -862,3 +866,82 @@ def test_browser_counter_and_inventory_cannot_be_invented(
     raw["targets"] = []
     with pytest.raises(ValueError, match="intended target slot"):
         preparation.make_render(raw, manifest(fixture.labels))
+
+
+@pytest.mark.parametrize("direct_evidence", [False, True])
+def test_qualification_freezes_nested_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, direct_evidence: bool
+) -> None:
+    fixture = make_fixture(tmp_path / "fixture", monkeypatch)
+    path = add_direct_qualification(fixture) if direct_evidence else fixture.qualification_path
+    policy = preparation.read_qualification(
+        path, fixture.labels_path, preparation.document(fixture.location_path)
+    )
+    expected_count = 8 if direct_evidence else 5
+    assert len(policy.evidence_hashes) == expected_count
+    for evidence_path, _ in policy.evidence_hashes:
+        original = evidence_path.read_bytes()
+        evidence_path.write_bytes(original + b" ")
+        with pytest.raises(ValueError, match="qualification evidence changed"):
+            preparation.verify_qualification_evidence(policy.evidence_hashes)
+        evidence_path.write_bytes(original)
+    preparation.verify_qualification_evidence(policy.evidence_hashes)
+
+
+def test_changed_nested_qualification_evidence_prevents_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_fixture(tmp_path / "fixture", monkeypatch)
+    original_score = scorer.score_recording
+    heldout = Path(cast(str, fixture.policy.raw["camera_validation_report"]))
+
+    def score_with_changed_evidence(
+        recording: scorer.Recording, annotations: dict[str, JsonValue]
+    ) -> dict[str, JsonValue]:
+        result = original_score(recording, annotations)
+        heldout.write_text(heldout.read_text() + " ")
+        return result
+
+    monkeypatch.setattr(scorer, "score_recording", score_with_changed_evidence)
+    output = tmp_path / "prepared"
+    with pytest.raises(SystemExit) as failure:
+        preparation.main(
+            [
+                str(fixture.recording.directory),
+                str(fixture.browser_path),
+                "--associations",
+                str(fixture.association_path),
+                "--locations",
+                str(fixture.location_path),
+                "--source-labels",
+                str(fixture.labels_path),
+                "--qualification",
+                str(fixture.qualification_path),
+                "--output",
+                str(output),
+            ]
+        )
+    assert failure.value.code == 2
+    assert not output.exists()
+
+
+def test_expected_selection_allowance_survives_manifest_to_label(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = make_fixture(tmp_path / "fixture", monkeypatch)
+    manifest_value = manifest(fixture.labels)
+    scene = cast(list[dict[str, JsonValue]], manifest_value["scenes"])[0]
+    rule = cast(list[dict[str, JsonValue]], scene["annotations"])[0]
+    rule["selected_identity"] = None
+    rule["expected_policy"] = "allowance"
+    render = preparation.make_render(frame(1), manifest_value)
+    assert render.expected_identity is None and render.expected_policy == "allowance"
+    recorded = fixture.recording.frames[0]
+    annotation, details = preparation.prepare_label(
+        evidence(render), recorded, {}, fixture.labels, fixture.policy, None
+    )
+    assert annotation is not None
+    assert annotation["expected_identity"] is None
+    assert annotation["expected_policy"] == "allowance"
+    assert details["expected_policy"] == "allowance"
+    assert '"expected_policy": "allowance"' in render.content

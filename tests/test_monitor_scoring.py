@@ -966,3 +966,57 @@ def test_real_cli_blank_template_and_report_never_overwrite_evidence(tmp_path: P
         main(arguments)
     assert raised.value.code == 2
     assert template_path.read_bytes() == original
+
+
+@pytest.mark.parametrize("expected_policy", [None, "required", "allowance"])
+@pytest.mark.parametrize("selected_track", [None, 1])
+def test_expected_selection_allowance_preserves_unknown_time(
+    tmp_path: Path, expected_policy: str | None, selected_track: int | None
+) -> None:
+    recording = write_recording(tmp_path, (0, 1, 2), (selected_track,) * 3)
+    annotation = label(expected_identity=None, selected_identity=None)
+    if expected_policy is not None:
+        annotation["expected_policy"] = expected_policy
+    report = score_recording(recording, labelled_document(recording, (annotation,) * 3))
+    selection = mapping(report["selection"])["post_settling_duration_s_by_result"]
+    coverage = mapping(report["coverage"])
+    centring = mapping(report["centring"])
+    if expected_policy == "allowance":
+        assert selection == {"correct": 0, "incorrect": 0, "unresolved": 2}
+        assert coverage["unknown_duration_s"] == 2
+        assert mapping(coverage["excluded_duration_s_by_reason"])["no_expected_target"] == 0
+        assert centring["occupancy_lower_bound_including_unknown_time"] == 0
+        assert centring["occupancy_upper_bound_including_unknown_time"] == 1
+    else:
+        assert mapping(selection)["correct" if selected_track is None else "unresolved"] == 2
+        assert coverage["unknown_duration_s"] == 0
+        assert mapping(coverage["excluded_duration_s_by_reason"])["no_expected_target"] == 2
+    assert centring["verdict"] == "inconclusive"
+
+
+@pytest.mark.parametrize("expected_policy", ["invalid", "allowance"])
+def test_invalid_or_decided_allowance_policy_rejected(tmp_path: Path, expected_policy: str) -> None:
+    recording = write_recording(tmp_path)
+    annotation = label() | {"expected_policy": expected_policy}
+    with pytest.raises(ValueError, match="expected_policy|undecided"):
+        score_recording(recording, labelled_document(recording, (annotation,) * 3))
+
+
+def test_allowance_unknown_time_starts_after_declared_settling(tmp_path: Path) -> None:
+    recording = write_recording(tmp_path, (0, 1, 2, 3), (None,) * 4)
+    annotation = label(expected_identity=None, selected_identity=None) | {
+        "expected_policy": "allowance"
+    }
+    report = score_recording(
+        recording, labelled_document(recording, (annotation,) * 4, settling_s=1)
+    )
+    coverage = mapping(report["coverage"])
+    exclusions = mapping(coverage["excluded_duration_s_by_reason"])
+    assert exclusions["settling"] == 1
+    assert exclusions["expected_selection_unresolved"] == 2
+    assert coverage["unknown_duration_s"] == 2
+    assert mapping(report["selection"])["post_settling_duration_s_by_result"] == {
+        "correct": 0,
+        "incorrect": 0,
+        "unresolved": 2,
+    }

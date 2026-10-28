@@ -21,7 +21,12 @@ The outputs are `annotations.json`, `score.json`, `preparation.json` and
 `qualification-snapshot.json`. The preparation report records input and code
 hashes, qualification evidence, per-frame render evidence, local-fit decisions,
 reach bounds, selection mapping and rejection reasons. Existing output directories
-are refused. Input and code hashes must remain unchanged during preparation.
+are refused. Input and code hashes must remain unchanged during preparation. Nested qualification
+evidence is also frozen before policy validation and checked again before output:
+the camera-validation and equivalence reports, any direct-centre comparison,
+checks and locations, and the reach home image, home index and axis report.
+`qualification_dependency_sha256` in `preparation.json` records their absolute
+paths and hashes. A changed dependency refuses output.
 
 ## Render evidence
 
@@ -117,3 +122,31 @@ sample gap and conservative occupancy bounds, including all unknown time.
 Recording-integrity failures remain visible. Report the actual lower and upper
 bounds and scoped verdict alongside these limitations; the preparation tool's
 global verdict remains inconclusive.
+
+
+## Current moved-camera qualification gap
+
+The retained rehomed-camera evidence is calibration, not confirmation. The axis
+sweep independently checks standing-pigeon photograph corners at sampled poses;
+the calibration asset recording checks the shorebird at correlated static views.
+The guided profile checks cover framed calibration photographs. Their transfer
+to unframed confirmation scenes remains unqualified. The independently observed
+profile/standing area-ratio intervals also cross the 1.25 switching threshold, so
+they cannot freeze comparable-size expected identities for those scenes.
+
+These recordings have separate indexes. They must not be merged into a synthetic
+single-index camera-validation report or inherit an earlier pose's qualification.
+The current policy reader's single camera-validation report and legacy locator
+equivalence requirement do not yet provide a current-pose evidence-group workflow.
+A future scoped policy needs separately hashed index, checks, locations, annotation
+receipt and fixture/pose scope for every evidence group. It must retain all
+observations and rejections, and authorise centres only within justified transfer
+scope. Fresh fixture evidence must resolve that scope before broader promotion.
+Unknown centres and unknown time remain in the assessment until then.
+
+Manifest `expected_policy` values are copied into prepared labels and render
+content evidence. A `required` rule (the default) declares a definite expected
+identity or expected absence. An `allowance` rule requires a null expected
+identity and preserves independently undecided acquisition or smoothing time as
+unresolved selection and, after settling, unknown centring time. It never turns
+an undecided interval into an expected-absence success.
