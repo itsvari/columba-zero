@@ -238,3 +238,92 @@ clock. It checks real JPEG decoding, canvas output, controls, replay, scene
 geometry, challengers, occlusion, clipping, repeated playback, JSONL export, and
 bounded logging for both playlists. It does not run the Pi or prove physical
 display visibility. No project dependencies are added.
+
+## Independent verification fixture
+
+The opt-in `independent` playlist separates fixture preparation from the accepted
+`tuning` and `evaluation` presentations. Their durations, paths and photographic
+choices remain unchanged. Generate a fresh local page and manifest:
+
+```sh
+python tools/monitor_stimulus.py --playlist independent \
+  --output outputs/independent/monitor.html --optical-code
+```
+
+This playlist reuses tuning motion, scale, loss and negative cases. Its nine
+static offset holds last at least 12 seconds (`--static-duration-s` can extend
+them). Its three selection scenes each last 24 seconds. Each starts with the
+incumbent alone for 12 seconds; the challenger appears within that same scene,
+without moving or replacing the incumbent. Scene boundaries are separate trials
+and require fresh acquisition; they do not assert cross-scene identity retention.
+
+Selection identities use distinct approved crops: `tuning-standing-pigeon` for
+the incumbent and `tuning-profile-pigeon` for the challenger. This preserves the
+truth tools' single-instance-per-asset association. The subthreshold/comparable
+challenger's source photograph area is 0.64 times the incumbent's; larger
+challengers are 2.56 times its area. Height accounts for the crops' different
+aspect ratios. The existing approved nominal source visible-bird boxes cover
+both complete crops, so this also normalises those nominal boxes. Their source
+edge allowances and camera projection uncertainty still require fresh independent
+qualification; this does not normalise detector boxes. These deliberately generous margins
+avoid testing the exact 1.25 boundary in a camera fixture. Exact near-equal
+and switching-boundary behaviour remains a deterministic software test. They do **not** establish
+camera-visible bird area or detector box ratios. Independently qualify projected
+bird extents and uncertainty across the actual camera poses before confirmation:
+comparable upper ratio bound below 1.25; larger lower bound above 1.25. If either
+fails, retain the rejection and redesign; detector output cannot supply truth.
+
+Selection annotations freeze this timeline, with half-open frame intervals:
+
+| Case | 0–12 seconds | 12–15 seconds | 15–24 seconds |
+|---|---|---|---|
+| Subthreshold/comparable | Acquisition/settling allowance | Incumbent required | Incumbent required |
+| Brief larger | Acquisition/settling allowance | Incumbent required | Incumbent required |
+| Sustained larger | Acquisition/settling allowance | Smoothing/hold response allowance | Challenger required |
+
+The brief challenger exists only from 12 through 12.3 seconds, shorter than the
+configured 0.5-second switch hold. The sustained challenger's three-second response
+allowance includes confirmation, smoothing and hold; freeze it before opening
+confirmation results. An allowance has `expected_policy: "allowance"` and a null
+`selected_identity`; it means no required identity during that interval, **not** an
+expected absence of selection. Other annotations default to `"required"`.
+Non-selection legacy annotations remain descriptive; they are not a replacement
+for a separately frozen camera truth and reach policy. Failure to acquire or
+exercise the intended path must remain visible as unexercised or inconclusive.
+
+For preparation, keep hardware following disabled. The independent page exposes
+**Calibration pose → Show paused pose**. It seeks to exact static and selection
+annotation-start frames in the first repeat, pauses playback and logs a
+`calibration_pose` event. At 30 Hz the selection poses are frame 0 (incumbent),
+360 (challenge begins), and additionally 450 (sustained response allowance ends).
+The two challenge poses have identical static geometry. The brief frame-360 pose
+stays frozen until resumed, allowing independent inspection without changing its
+0.3-second playback lifetime. These are calibration-only observations: do not
+reuse their frozen duration as confirmation evidence. Reset/replay after preparing
+truth and capture a fresh continuously playing confirmation run. Photograph
+registration frames remain optional calibration aids and must be disabled for
+confirmation. Source dimensions and browser CSS coordinates do not qualify the
+curved monitor's optical geometry or mechanical reach.
+
+The independent static and selection scenes use a dark `#242424` field. Motion,
+scale, occlusion, departure and negative scenes retain the tuning plain field.
+Reference crosses on the dark field have a light core with a dark outline;
+marker and optical-code identity and geometry are unchanged. This field is part
+of both calibration and future confirmation, not a calibration-only overlay.
+The pilot assumption is that contrast makes photograph edges measurable without
+altering pigeon pixels. Browser checks establish unchanged photograph pixels,
+dark fill and light cross visibility; they do not establish camera qualification
+or detection performance. Preserve the unsuccessful unframed pale-field capture
+and qualify this new presentation independently before any confirmation.
+
+Build the paired dark-field pilot without photograph registration frames:
+
+```sh
+python tools/monitor_stimulus.py --playlist independent \
+  --output outputs/independent-verification-v1-dark/monitor.html \
+  --optical-code --registration-grid --display-scale 0.65 \
+  --target-scale 1.25 --horizontal-position 0.5 --vertical-position 0.5
+```
+
+Use exactly the same page and display settings for its calibration and future
+confirmation. Any changed geometry needs a new frozen manifest and qualification.

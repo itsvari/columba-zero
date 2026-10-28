@@ -48,7 +48,8 @@ window.monitorTestCompletion = (async () => {
   }
   check(ready, "all embedded JPEGs decode with their declared dimensions");
   check(!playing && latestFrame().scene_frame === 0, "presentation opens paused at frame zero");
-  check(photographs.size === 3, "playlist loads two pigeon photographs and a confuser");
+  check(photographs.size === 3,
+    "playlist loads its declared pigeon photographs and confuser");
   const initial = latestFrame();
   const initialTarget = initial.targets[0];
   const region = initial.target_region_screen_css_px;
@@ -109,6 +110,42 @@ window.monitorTestCompletion = (async () => {
     render(true);
   }
 
+  if (manifest.playlist === "independent") {
+    const sampleAtDesignPoint = (horizontalPx, verticalPx, sizePx = 1) => {
+      const bounds = screenRectangle({left_px: horizontalPx, top_px: verticalPx,
+        width_px: sizePx, height_px: sizePx}, layout);
+      return context.getImageData(
+        Math.round((bounds.left_px - layout.bounds.left) * layout.devicePixelRatio),
+        Math.round((bounds.top_px - layout.bounds.top) * layout.devicePixelRatio),
+        Math.max(1, Math.floor(bounds.width_px * layout.devicePixelRatio)),
+        Math.max(1, Math.floor(bounds.height_px * layout.devicePixelRatio))).data;
+    };
+    const photographInterior = () => context.getImageData(
+      Math.ceil((initialTarget.box_screen_css_px.left_px - layout.bounds.left) *
+        layout.devicePixelRatio) + 2,
+      Math.ceil((initialTarget.box_screen_css_px.top_px - layout.bounds.top) *
+        layout.devicePixelRatio) + 2,
+      Math.floor(initialTarget.box_screen_css_px.width_px * layout.devicePixelRatio) - 4,
+      Math.floor(initialTarget.box_screen_css_px.height_px * layout.devicePixelRatio) - 4).data;
+    const darkPhotograph = photographInterior();
+    const background = sampleAtDesignPoint(170, 200);
+    check(background[0] === 36 && background[1] === 36 && background[2] === 36,
+      "independent static background is the dark contrasting field");
+    const point = manifest.registration_points[0];
+    const cross = sampleAtDesignPoint(point.centre_x_px - 4, point.centre_y_px - 4, 8);
+    check([...cross].some((value, index) => index % 4 !== 3 && value > 200),
+      "dark field reference cross contains visible light pixels");
+    manifest.scenes[0].background = "plain";
+    render(true);
+    const plainPhotograph = photographInterior();
+    check(darkPhotograph.every((value, index) => value === plainPhotograph[index]),
+      "dark field does not alter photograph interior pixels");
+    check(sampleAtDesignPoint(170, 200)[0] === 184,
+      "plain comparison restores the original pale field");
+    manifest.scenes[0].background = "dark";
+    render(true);
+  }
+
   document.getElementById("play").click();
   advance(1100);
   const beforePause = sequenceFrame;
@@ -150,19 +187,34 @@ window.monitorTestCompletion = (async () => {
   jumpToScene("scale", 4);
   check(latestFrame().targets[0].box_screen_css_px.width_px > smallWidth,
     "scale scene changes displayed target size");
-  jumpToScene("similar-size", 3);
+  const challengeStartSeconds = manifest.playlist === "independent" ? 12 : 2;
+  jumpToScene("similar-size", challengeStartSeconds + 1);
   const similar = latestFrame().targets;
   const area = target => target.box_screen_css_px.width_px * target.box_screen_css_px.height_px;
   check(similar.every(target => target.visible_fraction === 1) &&
     area(similar[1]) / area(similar[0]) < 1.25, "similar challenger stays below area-switch threshold");
-  jumpToScene("brief-challenger", 2.1);
+  jumpToScene("brief-challenger", challengeStartSeconds + 0.1);
   check(latestFrame().targets[1].present, "brief larger challenger appears");
-  jumpToScene("brief-challenger", 2.4);
+  jumpToScene("brief-challenger", challengeStartSeconds + 0.4);
   check(!latestFrame().targets[1].present, "brief challenger leaves before switch hold");
-  jumpToScene("sustained-challenger", 4);
+  jumpToScene("sustained-challenger", challengeStartSeconds + 2);
   const sustained = latestFrame().targets;
   check(sustained[1].present && area(sustained[1]) / area(sustained[0]) > 1.25,
     "sustained challenger remains sufficiently larger");
+  if (manifest.playlist === "independent") {
+    const pose = document.getElementById("calibration-pose");
+    const option = [...pose.options].find(candidate =>
+      candidate.textContent === "sustained-challenger: frame 360");
+    check(Boolean(option), "selection challenge has a stable calibration pose");
+    pose.value = option.value;
+    document.getElementById("calibration-show").click();
+    check(!playing && latestFrame().scene_frame === 360 &&
+      latestFrame().targets.every(target => target.present),
+      "calibration control freezes both challenge identities without advancing playback");
+    const frozenFrame = sequenceFrame;
+    advance(2000);
+    check(sequenceFrame === frozenFrame, "calibration pose remains static");
+  }
   jumpToScene("partial-occlusion", 3.1);
   check(Math.abs(latestFrame().targets[0].visible_fraction - 0.4) < 0.001,
     "partial occlusion exports remaining photograph fraction");

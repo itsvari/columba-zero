@@ -37,6 +37,49 @@ def scene_named(manifest: Manifest, name: str) -> Scene:
 
 
 class MonitorStimulusTests(unittest.TestCase):
+    def test_independent_selection_freezes_allowances_and_separates_source_ratios(self) -> None:
+        manifest = build_manifest("independent")
+        for scene in manifest.scenes:
+            if scene.name.startswith("static-"):
+                self.assertGreaterEqual(scene.duration_frames, 12 * manifest.frame_rate_hz)
+                self.assertEqual(scene.background, "dark")
+        for name, expected_ratio in (
+            ("similar-size", 0.64),
+            ("brief-challenger", 2.56),
+            ("sustained-challenger", 2.56),
+        ):
+            scene = scene_named(manifest, name)
+            self.assertEqual(scene.background, "dark")
+            incumbent, challenger = scene.targets
+            self.assertEqual(incumbent.asset_id, "tuning-standing-pigeon")
+            self.assertEqual(challenger.asset_id, "tuning-profile-pigeon")
+            self.assertEqual(challenger.present_from_frame, 12 * manifest.frame_rate_hz)
+            first, second = incumbent.keyframes[0], challenger.keyframes[0]
+            self.assertAlmostEqual(
+                second.width_px * second.height_px / (first.width_px * first.height_px),
+                expected_ratio,
+            )
+            self.assertEqual(len(incumbent.keyframes), 1)
+            self.assertEqual(scene.annotations[0].expected_policy, "allowance")
+            self.assertEqual(scene.annotations[-1].end_frame, scene.duration_frames)
+        sustained = scene_named(manifest, "sustained-challenger")
+        self.assertEqual(sustained.annotations[1].expected_policy, "allowance")
+        self.assertEqual(sustained.annotations[-1].selected_identity, "challenger")
+        self.assertEqual(sustained.annotations[-1].start_frame, 15 * manifest.frame_rate_hz)
+
+    def test_independent_contrast_preserves_existing_playlist_backgrounds(self) -> None:
+        for playlist in PLAYLIST_NAMES:
+            expected_background = "plain" if playlist == "tuning" else "textured"
+            self.assertTrue(
+                all(
+                    scene.background == expected_background
+                    for scene in build_manifest(playlist).scenes
+                )
+            )
+        independent = build_manifest("independent")
+        self.assertEqual(scene_named(independent, "stop-reverse").background, "plain")
+        self.assertEqual(scene_named(independent, "confuser").background, "plain")
+
     def test_long_static_scenes_preserve_paths_and_allow_a_declared_settling_window(self) -> None:
         original = build_manifest("tuning")
         longer = build_manifest("tuning", static_duration_s=12)
@@ -290,6 +333,7 @@ class MonitorStimulusTests(unittest.TestCase):
         cases: tuple[tuple[Playlist, float, bool], ...] = (
             ("tuning", 1.0, False),
             ("evaluation", 1.0, False),
+            ("independent", 0.65, False),
             ("tuning", 0.6, False),
             ("evaluation", 0.6, False),
             ("tuning", 0.65, True),

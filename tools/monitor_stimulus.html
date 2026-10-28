@@ -18,6 +18,10 @@
   <button id="replay" disabled>Replay (P)</button>
   <button id="fullscreen">Full screen (F)</button>
   <button id="export">Export JSONL (E)</button>
+  <label id="calibration-control" hidden>Calibration pose
+    <select id="calibration-pose" disabled></select>
+    <button id="calibration-show" disabled>Show paused pose</button>
+  </label>
   <output id="status" role="status">Loading embedded photographs…</output>
 </nav>
 <canvas id="display" aria-label="Monitor stimulus with scene and frame identifier"></canvas>
@@ -250,17 +254,17 @@ function drawOpticalCode() {
   }
 }
 
-function drawReferencePoints() {
+function drawReferencePoints(scene) {
   for (const point of manifest.registration_points) {
     context.beginPath();
     context.moveTo(point.centre_x_px - referenceRadiusPx, point.centre_y_px);
     context.lineTo(point.centre_x_px + referenceRadiusPx, point.centre_y_px);
     context.moveTo(point.centre_x_px, point.centre_y_px - referenceRadiusPx);
     context.lineTo(point.centre_x_px, point.centre_y_px + referenceRadiusPx);
-    context.strokeStyle = "white";
+    context.strokeStyle = scene.background === "dark" ? "black" : "white";
     context.lineWidth = referenceOutlineWidthPx;
     context.stroke();
-    context.strokeStyle = "black";
+    context.strokeStyle = scene.background === "dark" ? "white" : "black";
     context.lineWidth = referenceLineWidthPx;
     context.stroke();
   }
@@ -283,7 +287,7 @@ function referencePointRecords(layout, targets) {
 
 function drawBackground(scene) {
   const region = manifest.target_region;
-  context.fillStyle = "#b8b8b8";
+  context.fillStyle = scene.background === "dark" ? "#242424" : "#b8b8b8";
   context.fillRect(region.left_px, region.top_px, region.width_px, region.height_px);
   if (scene.background !== "textured") return;
   const textureSpacingPx = 32;
@@ -339,7 +343,7 @@ function render(force = false, animationFrameBrowserMs = null) {
   context.rect(region.left_px, region.top_px, region.width_px, region.height_px);
   context.clip();
   drawBackground(current.scene);
-  drawReferencePoints();
+  drawReferencePoints(current.scene);
   const targets = current.scene.targets.map(target => drawTarget(target, current.sceneFrame, layout));
   context.restore();
   manifest.registration_markers.forEach(drawMarker);
@@ -465,6 +469,32 @@ function exportLog() {
   setTimeout(() => URL.revokeObjectURL(url), millisecondsPerSecond);
 }
 
+const calibrationPose = document.getElementById("calibration-pose");
+if (manifest.playlist === "independent") {
+  document.getElementById("calibration-control").hidden = false;
+  let sceneStartFrame = 0;
+  for (const scene of manifest.scenes) {
+    if (scene.name.startsWith("static-") ||
+        ["similar-size", "brief-challenger", "sustained-challenger"].includes(scene.name)) {
+      for (const annotation of scene.annotations) {
+        const option = document.createElement("option");
+        option.value = String(sceneStartFrame + annotation.start_frame);
+        option.textContent = `${scene.name}: frame ${annotation.start_frame}`;
+        calibrationPose.append(option);
+      }
+    }
+    sceneStartFrame += scene.duration_frames;
+  }
+}
+document.getElementById("calibration-show").addEventListener("click", () => {
+  setPlaying(false, "calibration_pose");
+  sequenceFrame = Number(calibrationPose.value);
+  positionMs = sequenceFrame * frameDurationMs;
+  anchorMs = performance.now();
+  event("calibration_pose", {requested_sequence_frame: sequenceFrame});
+  render(true);
+});
+
 document.getElementById("play").addEventListener("click", () => setPlaying(!playing));
 document.getElementById("reset").addEventListener("click", () => restart(false));
 document.getElementById("replay").addEventListener("click", () => restart(true));
@@ -515,7 +545,7 @@ Promise.all(manifest.assets.map(async asset => {
   photographs.set(asset.photograph.asset_id, {...asset, image});
 })).then(() => {
   ready = true;
-  ["play", "reset", "replay"].forEach(identifier => {
+  ["play", "reset", "replay", "calibration-pose", "calibration-show"].forEach(identifier => {
     document.getElementById(identifier).disabled = false;
   });
   event("ready");

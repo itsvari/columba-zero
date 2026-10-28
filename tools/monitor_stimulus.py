@@ -42,8 +42,14 @@ BRIEF_OCCLUSION_S = 0.3
 FULL_OCCLUSION_S = 1.5
 IDENTITY_RETENTION_S = 0.75
 PARTIAL_COVERED_FRACTION = 0.6
-PLAYLISTS = ("tuning", "evaluation")
-Playlist = Literal["tuning", "evaluation"]
+INDEPENDENT_STATIC_DURATION_S = 12.0
+INDEPENDENT_ACQUISITION_S = 12.0
+INDEPENDENT_RESPONSE_S = 3.0
+INDEPENDENT_CHALLENGE_DURATION_S = 24.0
+INDEPENDENT_COMPARABLE_AREA_RATIO = 0.64
+INDEPENDENT_LARGER_AREA_RATIO = 2.56
+PLAYLISTS = ("tuning", "evaluation", "independent")
+Playlist = Literal["tuning", "evaluation", "independent"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +166,7 @@ class Annotation:
     end_frame: int
     selected_identity: str | None
     behaviour: str
+    expected_policy: Literal["required", "allowance"] = "required"
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,7 +175,7 @@ class Scene:
     seed: int
     name: str
     duration_frames: int
-    background: Literal["plain", "textured"]
+    background: Literal["plain", "textured", "dark"]
     targets: tuple[Target, ...]
     annotations: tuple[Annotation, ...]
 
@@ -246,6 +253,8 @@ def build_scenes(
     frame_rate_hz: int,
     static_duration_s: float = DEFAULT_STATIC_DURATION_S,
 ) -> tuple[Scene, ...]:
+    if playlist == "independent":
+        return build_independent_scenes(seed, frame_rate_hz, static_duration_s)
     primary, challenger = (
         ("tuning-standing-pigeon", "tuning-profile-pigeon")
         if playlist == "tuning"
@@ -438,6 +447,96 @@ def build_scenes(
     return tuple(scenes)
 
 
+def build_independent_scenes(
+    seed: int, frame_rate_hz: int, static_duration_s: float
+) -> tuple[Scene, ...]:
+    baseline = build_scenes(
+        "tuning", seed, frame_rate_hz, max(static_duration_s, INDEPENDENT_STATIC_DURATION_S)
+    )
+    primary = "tuning-standing-pigeon"
+    challenger_asset = "tuning-profile-pigeon"
+    primary_crop = photograph_for(primary).crop
+    challenger_crop = photograph_for(challenger_asset).crop
+    aspect_correction = (primary_crop.width_px / primary_crop.height_px) / (
+        challenger_crop.width_px / challenger_crop.height_px
+    )
+    scenes: list[Scene] = []
+    selection_names = {"similar-size", "brief-challenger", "sustained-challenger"}
+    for original in baseline:
+        scene_seed = int.from_bytes(
+            hashlib.sha256(f"independent:{seed}:{original.name}".encode()).digest()[:4], "big"
+        )
+        scene = replace(
+            original,
+            scene_id=f"independent-{original.name}-{scene_seed:08x}",
+            seed=scene_seed,
+            background="dark"
+            if original.name.startswith("static-") or original.name in selection_names
+            else original.background,
+        )
+        if scene.name not in selection_names:
+            scenes.append(scene)
+            continue
+        appearance_frame = frame_at(INDEPENDENT_ACQUISITION_S, frame_rate_hz)
+        response_frame = frame_at(INDEPENDENT_ACQUISITION_S + INDEPENDENT_RESPONSE_S, frame_rate_hz)
+        duration_frames = frame_at(INDEPENDENT_CHALLENGE_DURATION_S, frame_rate_hz)
+        brief = scene.name == "brief-challenger"
+        sustained = scene.name == "sustained-challenger"
+        area_ratio = (
+            INDEPENDENT_COMPARABLE_AREA_RATIO
+            if scene.name == "similar-size"
+            else INDEPENDENT_LARGER_AREA_RATIO
+        )
+        incumbent = Target("incumbent", primary, (pose_at(0, frame_rate_hz, primary, 540),))
+        challenger = Target(
+            "challenger",
+            challenger_asset,
+            (
+                pose_at(
+                    0,
+                    frame_rate_hz,
+                    challenger_asset,
+                    1060,
+                    height_px=BASE_TARGET_HEIGHT_PX * math.sqrt(area_ratio * aspect_correction),
+                ),
+            ),
+            appearance_frame,
+            frame_at(INDEPENDENT_ACQUISITION_S + BRIEF_OCCLUSION_S, frame_rate_hz)
+            if brief
+            else None,
+        )
+        annotations: tuple[Annotation, ...] = (
+            Annotation(
+                0, appearance_frame, None, "incumbent acquisition and settling", "allowance"
+            ),
+            Annotation(
+                appearance_frame,
+                response_frame if sustained else duration_frames,
+                None if sustained else "incumbent",
+                "smoothing and hold response allowance" if sustained else "retain incumbent",
+                "allowance" if sustained else "required",
+            ),
+        )
+        if sustained:
+            annotations += (
+                Annotation(
+                    response_frame,
+                    duration_frames,
+                    "challenger",
+                    "sustained larger challenger selected",
+                ),
+            )
+        scenes.append(
+            replace(
+                scene,
+                duration_frames=duration_frames,
+                targets=(incumbent, challenger),
+                annotations=annotations,
+            )
+        )
+    return tuple(scenes)
+
+
 def build_manifest(
     playlist: Playlist,
     seed: int = DEFAULT_SEED,
@@ -453,7 +552,7 @@ def build_manifest(
     photo_registration_frame: bool = False,
 ) -> Manifest:
     if playlist not in PLAYLISTS:
-        raise ValueError("playlist must be tuning or evaluation")
+        raise ValueError("playlist must be tuning, evaluation or independent")
     if not MINIMUM_FRAME_RATE_HZ <= frame_rate_hz <= MAXIMUM_FRAME_RATE_HZ:
         raise ValueError(f"frame rate must be {MINIMUM_FRAME_RATE_HZ}–{MAXIMUM_FRAME_RATE_HZ} Hz")
     if not 1 <= repeat_count <= MAXIMUM_REPEAT_COUNT:
@@ -589,7 +688,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument("--static-duration-s", type=float, default=DEFAULT_STATIC_DURATION_S)
     parser.add_argument("--target-scale", type=float, default=1.0)
     options = parser.parse_args(arguments)
-    playlist: Playlist = "tuning" if options.playlist == "tuning" else "evaluation"
+    playlist: Playlist = options.playlist
     output = Path(options.output)
     if output.suffix.lower() != ".html":
         parser.error("--output must end in .html")
