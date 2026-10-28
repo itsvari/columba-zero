@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "declared_at_utc": "2026-10-28T07:50:36.490464+00:00",
+  "scope": "one-hour timing/stability demonstration; separate fresh201s confirmatory centring recording",
+  "user_requirements": {
+    "latency_p95_ms": 300,
+    "hot_throughput": "report actual; user accepted roughly10\u201312FPS",
+    "observation_freshness_s": 0.25,
+    "preserve_smooth_control": true
+  },
+  "engineering_gates": {
+    "warmup_s": 120,
+    "window_s": 600,
+    "include_final_partial_window": true,
+    "minimum_final_window_s": 60,
+    "first_use_sensor_age_at_tick_p95_ms_max": 300,
+    "uncensored_tracking_stale_age_p95_ms_max": 300,
+    "sensor_tracking_stale_fraction_max": 0.1,
+    "processed_fps_min": 10,
+    "controller_interval_ms_max": 75,
+    "rss_comparison": "last10min median versus first10min median after warmup; capture only",
+    "rss_median_increase_bytes_max": 33554432,
+    "new_undervoltage_latch_allowed": false,
+    "current_undervoltage_allowed": false,
+    "log_drops_max": 0,
+    "render_drops_max": 0,
+    "record_drops_max": 0,
+    "record_limits_allowed": false,
+    "forced_kill_allowed": false,
+    "term_sent_count": 1,
+    "full_off_both_required": true,
+    "independent_mp4_decode_required": true,
+    "all_playlist_repeats_required": 18
+  },
+  "temperature": "report capture-only range, plateau, measured ARM clock and throttle flags; no independent thermal certification",
+  "centring_confirmation": {
+    "playlist": "fresh201s tuning",
+    "settling_s": 6,
+    "maximum_sample_gap_s": 1,
+    "occupancy_lower_bound_min": 0.8,
+    "qualification_policy": "outputs/validation/monitor-20261027/truth-qualification-policy-profile.json",
+    "source_labels": "deploy/monitor-source-labels.json",
+    "exclude_unknown_time": false
+  },
+  "provenance": "300ms and hot-throughput acceptance are user decisions; duty/cadence/memory/integrity bounds are explicit engineering criteria chosen before this new capture, not previously measured passes"
+}

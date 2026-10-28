@@ -4,11 +4,23 @@
 
 ### Monitor campaign update, 27 October 2026
 
-The user has deferred the one-hour run until another time and requested a wrap-up
-of the current work. Do not start further hardware tests during this wrap-up.
-The endurance actor is prepared only; endurance acceptance remains pending.
-Finish the independent review already underway and record its findings for the
-next session. Both servo outputs were disabled at the end of the completed runs.
+On 28 October the user resumed the campaign, confirmed clear cables and readiness
+to observe, and explicitly permitted movement checks without continuous physical
+supervision. The previous one-hour deferral is superseded by that instruction.
+Keep the tested ±100 µs envelope, reduced speed and independent stop deadlines.
+The tracker fix at `1f518f2` prevents low-confidence partial boxes from overwriting
+learnt size and velocity. A 21-observation regression fails at frame 5040 before
+the fix and passes afterwards; acquisition- and maintenance-confidence walking
+cases also pass. Runtime expiry and 250 ms freshness are unchanged.
+
+The endurance actor's E1–E6 fixes pass 16 offline tests, including real signal
+cleanup. The desktop gate passes 839 tests and 369 subtests; Pi passes 837 tests
+and 375 subtests. Strict desktop mypy, Ruff, Pi CTest and model checks pass.
+The first desktop browser gate failed because its temporary executable was gone;
+the restored pinned browser gate passes and both logs remain. Focused independent
+review, a fresh short confirmatory recording and endurance are still pending.
+The frozen criteria are in `deploy/monitor-endurance-policy.json`; the new
+duty, cadence and memory limits are engineering budgets, not historical results.
 
 The user withdrew the 15 FPS goal and subsequently accepted the earlier hot
 10–12 FPS range near 83–85°C for the steady-state demonstration, provided control
@@ -65,7 +77,7 @@ the Kalman box prediction collapsed to one pixel wide before retention expired.
 The earlier processing-age explanation is superseded. There are no software
 shipping blockers. Centring remains exploratory because the profile qualification
 was added after scoring, and the narrow pass needs a fresh confirmatory recording.
-The prepared hour-long test is deferred at the user's request.
+The hour-long test has not yet run; the user has now resumed that work.
 
 Before a future endurance run, fix the prepared actor's completion race, initial
 browser-record export and inhibitor-wrapper process handling (review E1–E3), then
