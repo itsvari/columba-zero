@@ -40,7 +40,56 @@
     "occupancy_lower_bound_min": 0.8,
     "qualification_policy": "outputs/validation/monitor-20261027/truth-qualification-policy-profile.json",
     "source_labels": "deploy/monitor-source-labels.json",
-    "exclude_unknown_time": false
+    "exclude_unknown_time": false,
+    "frozen_files_sha256": {
+      "outputs/validation/monitor-20261027/truth-qualification-policy-profile.json": "1e2a790defc9021185fb7ade36304321cdc76d269c4560f92aa1cb123617737d",
+      "deploy/monitor-source-labels.json": "243d23bfb4288c6d0500dbde26780a08860b1ef3d50fa722b92cfcbfceae357b",
+      "tools/prepare_monitor_truth.py": "62faf3a0c9ab75d6df434104be4f470463dddb5a108711ce3d106ff0530e8701",
+      "tools/associate_monitor_codes.py": "bafcdcd3e1d0f4db1258c2957ec610201702a1082a1ce63941efdef17a979cd3",
+      "tools/locate_monitor_birds.py": "1a102b18aff2675bd6688611b672dc0209c69ba81cefe8657e0eca5967f75822",
+      "tools/score_monitor_run.py": "c29a31523ec296b5517a0bfd9409b13b5ce221f1b21d9e7556876c4d358cc378",
+      "tools/associate_monitor_frames.py": "e2aed944adc0f4a30d8551f08debb3d38adf148d4599e73baec46ece4456ff15",
+      "tools/register_monitor_frames.py": "fb4be351a01c8ef1108a722eddc905c8361e42db9e1434de617cabcb58340cb5"
+    }
   },
-  "provenance": "300ms and hot-throughput acceptance are user decisions; duty/cadence/memory/integrity bounds are explicit engineering criteria chosen before this new capture, not previously measured passes"
+  "provenance": "300ms and hot-throughput acceptance are user decisions; duty/cadence/memory/integrity bounds are explicit engineering criteria chosen before this new capture, not previously measured passes",
+  "revised_before_capture_utc": "2026-10-28T08:30:35.801712+00:00",
+  "gate_scopes": {
+    "window_clock": "first processed frame captured_at +120s; consecutive half-open600s windows ending at last processed frame",
+    "final_partial_window": "at least60s: evaluate same per-window gates; under60s: report without a window verdict, retain all samples in whole-hot-span and whole-capture gates",
+    "per_window_and_whole_post_warmup": [
+      "first_use_sensor_age_at_tick_p95_ms_max",
+      "uncensored_tracking_stale_age_p95_ms_max",
+      "sensor_tracking_stale_fraction_max",
+      "processed_fps_min"
+    ],
+    "whole_capture": [
+      "controller_interval_ms_max",
+      "new_undervoltage_latch_allowed",
+      "current_undervoltage_allowed"
+    ],
+    "memory": "capture-only samples after first captured frame+120s; compare median of first600s and last600s; incomplete memory windows are inconclusive",
+    "whole_run": [
+      "log_drops_max",
+      "render_drops_max",
+      "record_drops_max",
+      "record_limits_allowed",
+      "forced_kill_allowed",
+      "term_sent_count",
+      "full_off_both_required",
+      "independent_mp4_decode_required",
+      "all_playlist_repeats_required"
+    ],
+    "missing_evidence": "missing/invalid measurements prevent a pass; recording or cleanup failures are not filtered out",
+    "first_use": "deduplicate reconstructed sensor observation timestamp (tick_start-age) with1us tolerance; count the first tracking/stale tick for each new timestamp"
+  },
+  "evidence_completeness": {
+    "telemetry_hot_maximum_gap_interval_multiple": 2,
+    "telemetry_expected_interval_s": 1,
+    "rule": "Missing hot telemetry coverage is inconclusive, not silently accepted; same-boot latch receipts independently cover voltage sampling gaps."
+  },
+  "assessment_tool": {
+    "path": "tools/assess_monitor_endurance.py",
+    "sha256": "4799770b57db91e95f956ecb931bd3a47615e9c18ae1e24bb71881bcf0dbfc8d"
+  }
 }
