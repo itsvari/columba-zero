@@ -62,7 +62,8 @@ def evidence(
             "throttled": "throttled=0x0",
             "process_memory_rss_bytes": 1000000,
             "temperature_millicelsius": 50000,
-            "cpu_frequency_khz": 2000000,
+            "cpu_frequency_khz": 2400000,
+            "cpu_measured_frequency_hz": 1500000000,
         }
         for index in range(duration_s + 1)
     ]
@@ -164,6 +165,57 @@ def test_minute_partial_is_gated() -> None:
     windows = cast(list[dict[str, JsonValue]], report["windows"])
     assert windows[1]["duration_s"] == 60
     assert windows[1]["verdict"] == "pass"
+
+
+def test_measured_clock_and_final_temperature_exclude_export() -> None:
+    data = evidence()
+    for sample in data[1]:
+        if sample.get("kind") != "sample":
+            continue
+        sample["throttled"] = "throttled=0xe0006"
+        if cast(float, sample["monotonic_s"]) < 1170:
+            sample["temperature_millicelsius"] = 90000
+    data[1][-1]["cpu_measured_frequency_hz"] = 500000000
+    data[1][-1]["temperature_millicelsius"] = 30000
+    report = evaluate_fixture(data)
+    telemetry = assessment.mapping(report["telemetry"])
+    assert telemetry["cpu_requested_frequency_khz_range"] == [2400000, 2400000]
+    assert telemetry["cpu_measured_frequency_hz_range"] == [1500000000, 1500000000]
+    assert telemetry["cpu_measured_frequency_hz_median"] == 1500000000
+    assert telemetry["current_thermal_limit_sample_fraction"] == 1
+    assert telemetry["final_temperature_window_complete"] is True
+    assert telemetry["final_window_temperature_median_millicelsius"] == 50000
+
+
+def test_shutdown_frame_thirteen_ms_after_last_tick_has_coverage() -> None:
+    data = evidence()
+    final_tick = next(
+        record for record in reversed(data[0]) if record.get("event") == "controller_state"
+    )
+    final_tick["tick_started_at_monotonic_s"] = (
+        cast(float, final_tick["tick_started_at_monotonic_s"]) - 0.013
+    )
+    report = evaluate_fixture(data)
+    assert report["endurance_verdict"] == "pass"
+    assert assessment.mapping(report["whole_hot"])["tick_coverage"] is True
+
+
+def test_shutdown_gap_over_controller_budget_is_inconclusive() -> None:
+    data = evidence()
+    final_tick_s = max(
+        cast(float, record["tick_started_at_monotonic_s"])
+        for record in data[0]
+        if record.get("event") == "controller_state"
+    )
+    data[0][:] = [
+        record
+        for record in data[0]
+        if record.get("event") != "controller_state"
+        or cast(float, record["tick_started_at_monotonic_s"]) <= final_tick_s - 0.1
+    ]
+    report = evaluate_fixture(data)
+    assert report["endurance_verdict"] == "inconclusive"
+    assert assessment.mapping(report["whole_hot"])["tick_coverage"] is False
 
 
 def test_loss_and_missing_baseline_cannot_pass() -> None:

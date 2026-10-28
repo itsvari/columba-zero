@@ -60,6 +60,8 @@
       "outputs/validation/monitor-20261028/right_grid-sampling-proposals.json": "c729e99d4a1a81a3dba221576a37f0da806611e11431cc69302ff442a0a63f87",
       "outputs/validation/monitor-20261028/right_grid-reproduced-proposals.json": "038788252072ed47052652230f89b1f9d7ecd9a00ed5af0bc371ea04f322c665",
       "outputs/validation/monitor-20261028/build_grid_sampling.py": "badc2b0852553b36fca9195e2f607d4325faa88c9d241c96f9c28ffbe07aa151",
+      "outputs/validation/monitor-20261028/assess_frozen_hour.py": "0e53d11f1caf02bd26e578f6b677f0fafb27e3de1fd3a1fc273984e9872db150",
+      "outputs/validation/monitor-20261028/probe_hour_service.py": "d536ace1251822900d1461d287e001346251d58e024749085d2bb609d1824c5d",
       "outputs/validation/monitor-20261028/rehome-home-browser.jsonl": "bdefbaca2282cef59d4d972aa9d03676a5bfc218022e8157d13ccac80ffaa0c8",
       "outputs/validation/monitor-20261028/rehomed-axis-sweep-20261028/20261028T095142Z-8f71a188/demo/index.jsonl": "c6937f81f5fb1247ef881a5f0115895709f5192cf2c19521647fda7ce86c9eaa",
       "outputs/validation/monitor-20261028/rehomed-axis-sweep-20261028/20261028T095142Z-8f71a188/demo/frame_000000021.jpg": "85e499bbc7ddcb5c37a091240dc4539390fae651f43e9922a23391af345b8002",
@@ -114,7 +116,7 @@
   },
   "assessment_tool": {
     "path": "tools/assess_monitor_endurance.py",
-    "sha256": "93e2e10db8298471629090beb3b3bdc352076bc905b67d8a045e252693b8ef82"
+    "sha256": "1ca46cb3273c62250f4994dc0e63dd2b637beb65a80a8aa6bfb055440ea282a5"
   },
   "hardware_setup": {
     "status": "qualified",
@@ -130,11 +132,11 @@
     "quoted_display_brightness": "350-400 cd/m2 specification only, unmeasured",
     "centres_and_expected_selection_accepted": false
   },
-  "setup_review_updated_at_utc": "2026-10-28T12:11:37.945516+00:00",
+  "setup_review_updated_at_utc": "2026-10-28T12:35:24.432386+00:00",
   "hour_scope_decision": {
     "source": "explicit user reply in this conversation",
     "quote": "Include the hour this session",
-    "recorded_at_utc": "2026-10-28T12:11:37.945525+00:00",
+    "recorded_at_utc": "2026-10-28T12:35:24.432395+00:00",
     "received_timestamp_available": false
   }
 }

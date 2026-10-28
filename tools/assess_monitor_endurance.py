@@ -17,6 +17,7 @@ MAXIMUM_SAMPLE_INTERVAL_MULTIPLIER = 2
 MILLISECONDS_PER_SECOND = 1000.0
 UNDERVOLTAGE_CURRENT = 1
 UNDERVOLTAGE_LATCH = 1 << 16
+CURRENT_THERMAL_LIMIT_FLAGS = 0xE
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -177,8 +178,12 @@ def window_metrics(
         else None,
         "processed_fps": fps >= float(cast(float, limits["processed_fps_min"])),
     }
+    maximum_controller_interval_s = (
+        float(cast(float, limits["controller_interval_ms_max"])) / MILLISECONDS_PER_SECOND
+    )
     tick_coverage = bool(ticks) and (
-        cast(float, ticks[0]["at_s"]) <= start_s and cast(float, ticks[-1]["at_s"]) >= end_s
+        cast(float, ticks[0]["at_s"]) <= start_s
+        and cast(float, ticks[-1]["at_s"]) >= end_s - maximum_controller_interval_s
     )
     if not tick_coverage:
         checks["uncensored_age"] = None
@@ -362,6 +367,12 @@ def telemetry_metrics(
     last_median = statistics.median(cast(list[float], last_rss)) if rss_valid else None
     temperatures = [number(record.get("temperature_millicelsius")) for record, _ in in_capture]
     clocks = [number(record.get("cpu_frequency_khz")) for record, _ in in_capture]
+    measured_clocks = [number(record.get("cpu_measured_frequency_hz")) for record, _ in in_capture]
+    final_temperatures = [
+        number(record.get("temperature_millicelsius"))
+        for record, at_s in in_capture
+        if end_s - window_s <= at_s
+    ]
     return (
         {
             "capture_samples": len(in_capture),
@@ -370,6 +381,7 @@ def telemetry_metrics(
             "requested_interval_s": requested_interval_s,
             "max_hot_sample_gap_s": max_hot_gap_s,
             "baseline_clear": baseline_clear,
+            "baseline_throttled": baseline_flags,
             "same_boot": same_boot,
             "latch_covers_capture": latch_coverage,
             "final_throttled": final_flags,
@@ -386,11 +398,35 @@ def telemetry_metrics(
             ]
             if temperatures and all(x is not None for x in temperatures)
             else None,
-            "cpu_frequency_khz_range": [
+            "final_temperature_window_s": min(window_s, end_s - start_s),
+            "final_temperature_window_complete": end_s - start_s >= window_s,
+            "final_window_temperature_median_millicelsius": statistics.median(
+                cast(list[float], final_temperatures)
+            )
+            if final_temperatures and all(value is not None for value in final_temperatures)
+            else None,
+            "cpu_requested_frequency_khz_range": [
                 min(cast(list[float], clocks)),
                 max(cast(list[float], clocks)),
             ]
             if clocks and all(x is not None for x in clocks)
+            else None,
+            "cpu_measured_frequency_hz_range": [
+                min(cast(list[float], measured_clocks)),
+                max(cast(list[float], measured_clocks)),
+            ]
+            if measured_clocks and all(value is not None for value in measured_clocks)
+            else None,
+            "cpu_measured_frequency_hz_median": statistics.median(
+                cast(list[float], measured_clocks)
+            )
+            if measured_clocks and all(value is not None for value in measured_clocks)
+            else None,
+            "current_thermal_limit_sample_fraction": sum(
+                bool(cast(int, flag) & CURRENT_THERMAL_LIMIT_FLAGS) for flag in flags
+            )
+            / len(flags)
+            if flags and all(flag is not None for flag in flags)
             else None,
             "throttle_values": cast(
                 JsonValue, sorted({flag for flag in flags if flag is not None})

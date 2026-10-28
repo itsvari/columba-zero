@@ -19,11 +19,11 @@ freshness are unchanged.
 The endurance actor now runs its inhibitor in a separate session and ignores
 repeated interruption during cleanup; 24 offline tests pass using the actual
 desktop wrappers. The latest desktop gate, including the offline assessment,
-passes 860 tests and 370 subtests, with six optional skips. Strict desktop mypy
+passes 863 tests and 370 subtests, with six optional skips. Strict desktop mypy
 passes across 132 files, and the canonical Ruff gate passes across 135 files.
 Pi at runtime revision `dc444c5` passes
 847 tests and 375 subtests, with eight optional skips, plus native CTest and
-model checks. The offline assessment's ten focused tests also pass.
+model checks. The offline assessment's 13 focused tests also pass.
 The first desktop browser gate failed because its temporary executable was gone;
 the restored pinned browser gate passes and both logs remain. The Pi rebooted
 with flags `0x0` and outputs disabled. The fresh repeat then stopped at its
@@ -48,11 +48,15 @@ The fresh 201-second following calibration completed with both outputs FULL_OFF,
 one TERM, no KILL and no writer drops. After 120 seconds, processing was 10.597 FPS;
 p95 first-use sensor age was 192.9 ms and uncensored tracking/stale age was
 250.6 ms. The maximum controller interval was 55.906 ms. Temperature peaked at
-87.0°C with thermal throttling; no under-voltage bits were set. Its MP4 decoded
+87.0°C in the app summary and 88.1°C in independent telemetry, with thermal
+throttling and median measured ARM clock 1.5 GHz; no under-voltage bits were set.
+Its MP4 decoded
 independently. These are bounded calibration results, not an hour result.
 
 Independent grid geometry enabled strict optical association for 864 of 1,025
-JPEGs across all 22 scenes. The 161 rejected frames remain unknown. The sampling
+JPEGs across all 22 scenes. The 161 rejected frames remain unknown. An all-grid
+proposal also failed before the right-column grid proposal worked; the typed
+builder later reproduced the successful positions exactly. The sampling
 positions are model predictions, not manually observed marker centres; a separate
 visual check confirms that the reference feature mask excludes the photograph.
 No decoder threshold or CRC requirement changed.
@@ -65,6 +69,14 @@ to this pose. The one-hour timing, recording and stability subgate is explicitly
 authorised and has not started. Both policy copies now qualify only this bounded
 hardware setup for that subgate and retain pending centring status. The actor
 rejects a pending setup, changed frozen inputs or a framed following stimulus.
+The hour uses the new default-off frame runtime with unchanged scene geometry;
+the bounded following calibration used the preceding runtime. Browser tests
+verify the new path, but it has not yet driven a following capture.
+Opus identified an assessor shutdown-edge bug before launch. A 13 ms final-frame
+gap now has coverage within the existing 75 ms controller budget; a 100 ms gap
+remains inconclusive. The assessor also distinguishes measured ARM clock from
+the cpufreq request and reports the final-window temperature median. Both policy
+copies were re-frozen before capture, with no numerical gate changed.
 The frozen criteria are in `deploy/monitor-endurance-policy.json`; the new
 duty, cadence and memory limits are engineering budgets, not historical results.
 

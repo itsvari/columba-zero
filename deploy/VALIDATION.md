@@ -11,7 +11,7 @@ Update after the resumed review: `1f518f2` regressed normal low-confidence motio
 at 10–11 FPS. `dc444c5` narrows protection to size outliers; six regressions fail
 before and pass afterwards, with 82 nearby tests passing. The latest desktop gate,
 including the offline assessment and photograph-frame browser checks, passes
-860 tests and 370 subtests, with six optional skips. Strict mypy passes across
+863 tests and 370 subtests, with six optional skips. Strict mypy passes across
 132 files, and the canonical Ruff gate passes across 135 files. Pi at
 runtime revision `dc444c5` passes 847 tests and 375 subtests, with eight optional
 skips, plus native CTest and model checks. The runner
@@ -19,7 +19,7 @@ now keeps the actor outside the inhibitor's parent-death chain, suppresses later
 cleanup interruptions, and passes 24 tests including the real desktop wrappers.
 Both policy copies pin truth hashes and explicit gate scopes. The assessment
 tool takes its expected policy hash from the frozen run plan, avoiding a circular
-tool/policy checksum; its ten focused tests pass.
+tool/policy checksum; its 13 focused tests pass.
 
 The Pi rebooted to flags `0x0` with both channels FULL_OFF. The first fresh repeat
 (`matrix-20261028T085100Z-0cae671a`) stopped because no positive target appeared
@@ -65,18 +65,23 @@ controller interval was 55.906 ms. After the 120-second warm-up, the remaining
 84.931 seconds processed 900 frames: 10.597 FPS. Hot p95 first-use sensor age was
 192.9 ms, and uncensored tracking/stale age was 250.6 ms, below 300 ms. Full-run
 move age was 229.7 ms at p95 and remains freshness-censored. Temperature peaked
-at 87.0°C; final flags `0xe0008` show thermal history/current soft-temperature
+at 87.0°C in the app summary and 88.1°C in independent telemetry. Median measured
+ARM clock was 1.50 GHz, while the cpufreq request stayed at 2.4 GHz. Final flags
+`0xe0008` show thermal history/current soft-temperature
 limit with no current or historical under-voltage bits. The 205.132-second MP4
 independently decoded without error, versus 205.131130 seconds expected. Evidence
 and decode proof are under `outputs/validation/monitor-20261028/`.
 
 The strict optical decoder associated 864 of 1,025 frames across all 22 scenes.
 The 161 rejects remain in the report. Initial global-marker proposals failed;
-right-column fixed-grid geometry supplied successful sampling proposals without
+an all-grid proposal also failed, before right-column fixed-grid geometry supplied
+successful sampling proposals without
 changing CRC or ambiguity thresholds. These are model-predicted marker positions,
 not confirmed physical marker centroids. Independent masking checks show that
 the reference photograph and its uncertainty envelope contribute no SIFT pixels.
 The geometry, visual checks and rejected candidates remain separately auditable.
+The typed builder is a later reproduction whose positions match the original
+successful proposals exactly.
 
 The new calibration is not a confirmatory centring recording. In the framed
 profile samples, independent visible-bird area ratios have point estimates
@@ -89,6 +94,19 @@ selection remain pending, and the old pose's qualification policy is excluded
 from the current frozen inputs. The actor refuses launch for a pending setup,
 changed frozen inputs or a framed following page. The hour is authorised but has
 not started; its numerical engineering criteria are unchanged.
+The hour's default-off photograph-frame runtime differs from the earlier bounded
+following runtime. Scene geometry is unchanged and browser regressions pass; the
+new runtime has not yet driven a hardware following capture.
+
+The pre-hour Opus review found a shutdown-edge coverage defect in the assessor.
+The final processed frame can arrive just after the controller closes. Coverage
+now accepts an end gap within the existing 75 ms controller-interval budget; the
+13 ms regression passes, while a 100 ms gap stays inconclusive. The assessor now
+also reports measured ARM clock, current thermal-limit fraction and final-window
+temperature median, separately from the requested clock and existing latch bits.
+Both policy copies were re-frozen before capture. Numeric gates did not change.
+The baseline already has historical thermal flags `0xe0000` and clear current and
+historical under-voltage bits. A below-10-FPS hot window remains a real failure.
 The monitor remains the reported 34-inch, 1500R display. The earlier approximately
 38 cm distance predates the move; current distance is unconfirmed. Its
 350–400 cd/m² brightness remains a quoted specification, not a measurement.
