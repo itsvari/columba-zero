@@ -8,17 +8,26 @@ On 28 October the user resumed the campaign, confirmed clear cables and readines
 to observe, and explicitly permitted movement checks without continuous physical
 supervision. The previous one-hour deferral is superseded by that instruction.
 Keep the tested ±100 µs envelope, reduced speed and independent stop deadlines.
-The tracker fix at `1f518f2` prevents low-confidence partial boxes from overwriting
-learnt size and velocity. A 21-observation regression fails at frame 5040 before
-the fix and passes afterwards; acquisition- and maintenance-confidence walking
-cases also pass. Runtime expiry and 250 ms freshness are unchanged.
+The first fix at `1f518f2` was too broad at hot frame rates. The reviewed
+correction at `dc444c5` protects learnt size and velocity only for low-confidence
+size outliers. Six regressions at 10–11 FPS, stopping and growth were reproduced
+before the correction; 82 nearby tests pass afterwards. The original recorded
+partial-occlusion replay still retains its ID. Runtime expiry and 250 ms
+freshness are unchanged.
 
-The endurance actor's E1–E6 fixes pass 16 offline tests, including real signal
-cleanup. The desktop gate passes 839 tests and 369 subtests; Pi passes 837 tests
-and 375 subtests. Strict desktop mypy, Ruff, Pi CTest and model checks pass.
+The endurance actor now runs its inhibitor in a separate session and ignores
+repeated interruption during cleanup; 22 offline tests pass using the actual
+desktop wrappers. The desktop tracker gate passes 849 tests and 369 subtests;
+Pi passes 847 tests and 375 subtests. Strict desktop mypy, Ruff, Pi CTest and
+model checks pass. The offline assessment has ten additional focused tests.
 The first desktop browser gate failed because its temporary executable was gone;
-the restored pinned browser gate passes and both logs remain. Focused independent
-review, a fresh short confirmatory recording and endurance are still pending.
+the restored pinned browser gate passes and both logs remain. The Pi rebooted
+with flags `0x0` and outputs disabled. The fresh repeat then stopped at its
+positive-source guard: the camera did not see the stimulus. It made no tracking
+corrections and ended with one TERM, no KILL, both outputs FULL_OFF and flags `0`.
+The browser renders the page, but a follow-disabled camera check still sees the
+monitor edge and room. Setup/display clarification is pending before further
+movement; confirmatory centring and endurance have not run.
 The frozen criteria are in `deploy/monitor-endurance-policy.json`; the new
 duty, cadence and memory limits are engineering budgets, not historical results.
 

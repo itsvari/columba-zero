@@ -7,6 +7,27 @@ continuous physical supervision. This supersedes the wrap-up deferral below.
 Keep the tested ±100 µs travel, 3 nominal °/s maximum speed and 250 ms freshness.
 No new physical run has started yet.
 
+Update after the resumed review: `1f518f2` regressed normal low-confidence motion
+at 10–11 FPS. `dc444c5` narrows protection to size outliers; six regressions fail
+before and pass afterwards, with 82 nearby tests passing. The full tracker gate
+passes 849 desktop tests and 847 Pi tests, plus their recorded subtests. The runner
+now keeps the actor outside the inhibitor's parent-death chain, suppresses later
+cleanup interruptions, and passes 22 tests including the real desktop wrappers.
+Both policy copies pin truth hashes and explicit gate scopes. The assessment
+tool takes its expected policy hash from the frozen run plan, avoiding a circular
+tool/policy checksum; its ten focused tests pass.
+
+The Pi rebooted to flags `0x0` with both channels FULL_OFF. The first fresh repeat
+(`matrix-20261028T085100Z-0cae671a`) stopped because no positive target appeared
+within the source-confirmation deadline. The application exited 0 after one TERM,
+without KILL; both outputs read FULL_OFF and final flags were 0. It issued home
+but no tracking corrections. The archive SHA-256 was verified. This is a guarded
+failed test setup, not a tracking or centring pass. The actual camera view shows
+the monitor edge and room rather than the rendered stimulus. Raising the test
+browser and a separate follow-disabled camera recording did not resolve visibility.
+Setup/display clarification is pending; no hour run has started. Evidence and
+the display/camera comparison are in `outputs/validation/monitor-20261028/`.
+
 Runtime `1f518f2` prevents low-confidence partial boxes from updating learnt size
 or velocity while still retaining their real positions and observation times.
 The new 21-observation regression reproduces the ID split at frame 5040 before
