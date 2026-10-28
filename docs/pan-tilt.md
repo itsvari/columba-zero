@@ -193,6 +193,13 @@ After processing stops, the application exports `annotated.mp4` in the run direc
 The source JPEGs and `demo/index.jsonl` remain there, with matching detections,
 target and controller snapshots, and presentation timestamps.
 
+For independent camera measurements, set `preview.record_unannotated: true`.
+The recorder then receives a separate JPEG without detection boxes or status
+overlays, while browser viewing remains annotated. This second encode runs in
+the capped output worker. The index records `annotations_included: false` and
+source and recording dimensions. The `unannotated.mp4` export also uses these
+images; it is evidence footage rather than the annotated demonstration export.
+
 Live recordings use delivery-monotonic timestamps. Replay uses source-frame time.
 Dropped samples keep their elapsed gaps. The final frame holds for one preview
 period in live operation or one source-frame period in replay. FFmpeg appends a

@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-10-27T11:52:52.500137+00:00",
+  "review_basis": "User confirmed all five proposed visible-bird boxes shown in source-box-review.html in this conversation. These describe the visible portions only.",
+  "allowance_basis": "Source edges: provisional visual allowance, not a confidence interval. Camera registration: 7 px calibrated from maximum original corner residual 3.7982 px plus the independent annotator's per-axis 2 px allowance (Euclidean upper allowance 2*sqrt(2)), rounded upwards before testing a fresh held-out sample. Original 2 px checks remain failed; scoring propagates the larger uncertainty.",
+  "labels": [
+    {
+      "asset_id": "tuning-standing-pigeon",
+      "source_sha256": "db7980dae72738c52a6e8deb14030e06266bf33b678cb07ef574e9ae85a83655",
+      "crop_xywh_px": [
+        25,
+        777,
+        200,
+        204
+      ],
+      "visible_bbox_xyxy_px": [
+        0,
+        0,
+        200,
+        204
+      ],
+      "edge_allowance_source_px": 10,
+      "registration_allowance_camera_px": 7,
+      "confirmed": true,
+      "reviewer": "user confirmation of all five visible-bird boxes in this conversation"
+    },
+    {
+      "asset_id": "tuning-profile-pigeon",
+      "source_sha256": "7a04a3c5813c01a6dd40f3c2e02e24a5b597a6e9c3dacffd295758aad24f4ae1",
+      "crop_xywh_px": [
+        168,
+        620,
+        121,
+        125
+      ],
+      "visible_bbox_xyxy_px": [
+        0,
+        0,
+        121,
+        125
+      ],
+      "edge_allowance_source_px": 10,
+      "registration_allowance_camera_px": 7,
+      "confirmed": true,
+      "reviewer": "user confirmation of all five visible-bird boxes in this conversation"
+    },
+    {
+      "asset_id": "evaluation-branch-pigeon",
+      "source_sha256": "ad8f3fa6968ff9e0a85be1c69955ac1546258baf1fb5a4567ab233f148dedbf1",
+      "crop_xywh_px": [
+        6,
+        134,
+        110,
+        107
+      ],
+      "visible_bbox_xyxy_px": [
+        0,
+        0,
+        110,
+        107
+      ],
+      "edge_allowance_source_px": 10,
+      "registration_allowance_camera_px": 7,
+      "confirmed": true,
+      "reviewer": "user confirmation of all five visible-bird boxes in this conversation"
+    },
+    {
+      "asset_id": "evaluation-ground-pigeon",
+      "source_sha256": "ad8f3fa6968ff9e0a85be1c69955ac1546258baf1fb5a4567ab233f148dedbf1",
+      "crop_xywh_px": [
+        16,
+        264,
+        96,
+        96
+      ],
+      "visible_bbox_xyxy_px": [
+        0,
+        0,
+        96,
+        96
+      ],
+      "edge_allowance_source_px": 10,
+      "registration_allowance_camera_px": 7,
+      "confirmed": true,
+      "reviewer": "user confirmation of all five visible-bird boxes in this conversation"
+    },
+    {
+      "asset_id": "shorebird-confuser",
+      "source_sha256": "e684e97fd366170db27dc657c6405a557ce21fa79f6b748671aa7ce506769e13",
+      "crop_xywh_px": [
+        614,
+        489,
+        125,
+        86
+      ],
+      "visible_bbox_xyxy_px": [
+        37,
+        0,
+        125,
+        75
+      ],
+      "edge_allowance_source_px": 10,
+      "registration_allowance_camera_px": 7,
+      "confirmed": true,
+      "reviewer": "user confirmation of all five visible-bird boxes in this conversation"
+    }
+  ],
+  "calibration_evidence": "outputs/validation/monitor-20261027/photo-camera-validation/locations.json; camera-corner-checks/annotation-notes.json"
+}

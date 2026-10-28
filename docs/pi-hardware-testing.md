@@ -85,8 +85,11 @@ rpicam-still --nopreview --timeout 2000 --output outputs/setup/camera.jpg
 
 [The camera documentation](https://www.raspberrypi.com/documentation/computers/camera_software.html)
 describes these commands. Check the intended camera index, colour order, field of
-view, focus, image orientation, and box alignment. A picture on a monitor is useful
-for repeatable detection tests. Later tests need real site footage and pigeons.
+view, focus, image orientation, and box alignment. Use the
+[offline monitor stimulus tooling](monitor-stimulus.md) for reproducible displayed
+targets and browser-side evidence. Verify its static positive through live Pi
+preview before running a playlist. Monitor-based acceptance is the current bench
+campaign. Field-accuracy claims need separate site footage and pigeons.
 The camera utilities do not read the application's YAML. For an upside-down
 sensor, add `--rotation 180` to the still command. Verify control directions using
 the application's configured capture image, rather than an independently oriented still.
@@ -175,10 +178,10 @@ additional diagnostic, but does not run this live four-mode test.
 
 | Measurement | Initial target | Evidence |
 |---|---|---|
-| Processing throughput | At least 15 FPS sustained | Live frame windows and run summary, including drops and slow intervals |
+| Processing throughput | Report hot throughput; the user accepted the earlier 10–12 FPS range near 83–85°C, conditional on timing and stability | Live frame windows, run summary, temperature and throttle flags |
 | Controller cadence | 20 Hz | Monotonic worker tick intervals, with log drops and workload recorded |
-| Frame-to-command age | p95 below 200 ms | Observation timestamp through completion of the driver write, with sensor or delivery timing labelled |
-| Centring after settling | Within ±10% on each axis for at least 80% of visible, reachable tracking time | Annotated recording and time-weighted target offsets, with settling and exclusions recorded |
+| Frame-to-command age | p95 below 300 ms, as revised by the user | Observation timestamp through completion of the driver write, with sensor or delivery timing labelled; also report uncensored observation age and stale time |
+| Centring after settling | Within ±10% on each axis for at least 80% of visible, reachable tracking time | Unannotated camera recording, independent target truth and time-weighted offsets, with settling and exclusions recorded |
 | Selection | No repeated switching among similarly sized stationary birds | Target events and matching footage |
 | Preview and recording | Playable, correct elapsed timing, bounded queues | Real browser session, recorder counts, MP4 decode and duration checks |
 | Endurance | At least one hour, stable memory and temperature | Health samples, drops, errors, restart, and Pi throttling before and after |

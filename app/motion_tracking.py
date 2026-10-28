@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import math
 import time
 from collections import deque
@@ -20,6 +21,8 @@ from .tracking import TriggerEvent, box_of, iou_matrix
 Coordinates = NDArray[numpy.float64]
 STATE_POSITION_COUNT = 4
 STATE_SIZE = STATE_POSITION_COUNT * 2
+CENTRE_COORDINATE_COUNT = 2
+PARTIAL_SIZE_CHANGE_FRACTION = 0.25
 MINIMUM_BOX_SIZE_PX = 1.0
 INITIAL_POSITION_VARIANCE_PX2 = 10.0
 INITIAL_VELOCITY_VARIANCE_PX2_S2 = 10_000.0
@@ -38,6 +41,11 @@ FLOW_MINIMUM_POINTS = 6
 FLOW_FORWARD_BACKWARD_ERROR_PX = 1.5
 FLOW_INLIER_DISTANCE_PX = 2.0
 FLOW_MASK_MARGIN_PX = 5
+
+
+def prepare_motion_tracking() -> None:
+    importlib.import_module("cv2")
+    importlib.import_module("scipy.optimize")
 
 
 def _measurement(detection: Detection) -> Coordinates:
@@ -108,13 +116,25 @@ class _MotionTrack:
         self.predicted_at_s = observed_at_s
         self.matched = False
 
-    def observe(self, detection: Detection, observed_at_s: float, hit: bool) -> None:
+    def observe(
+        self,
+        detection: Detection,
+        observed_at_s: float,
+        hit: bool,
+        motion_confident: bool,
+    ) -> None:
         residual = _measurement(detection) - self.state[:STATE_POSITION_COUNT]
         measurement_noise = numpy.eye(STATE_POSITION_COUNT) * MEASUREMENT_VARIANCE_PX2
         innovation = (
             self.covariance[:STATE_POSITION_COUNT, :STATE_POSITION_COUNT] + measurement_noise
         )
         gain = numpy.linalg.solve(innovation, self.covariance[:STATE_POSITION_COUNT, :]).T
+        size_change_px = numpy.abs(residual[CENTRE_COORDINATE_COUNT:])
+        predicted_size_px = self.state[CENTRE_COORDINATE_COUNT:STATE_POSITION_COUNT]
+        partial_size = size_change_px > PARTIAL_SIZE_CHANGE_FRACTION * predicted_size_px
+        if not motion_confident and bool(partial_size.any()):
+            # partial maintenance boxes must not overwrite learnt size or velocity.
+            gain[CENTRE_COORDINATE_COUNT:, :] = 0
         self.state = self.state + gain @ residual
         correction = numpy.eye(STATE_SIZE)
         correction[:, :STATE_POSITION_COUNT] -= gain
@@ -339,7 +359,12 @@ class MotionTracker:
             hit = detection.confidence >= self.acquisition_confidence and (
                 detection.label in self.trigger_classes
             )
-            track.observe(detection, observed_at_s, hit)
+            track.observe(
+                detection,
+                observed_at_s,
+                hit,
+                motion_confident=detection.confidence >= self.acquisition_confidence,
+            )
             assigned[index] = track.detection
         for track in self._tracks:
             if not track.matched:

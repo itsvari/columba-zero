@@ -108,6 +108,13 @@ class FollowConfigTests(unittest.TestCase):
         self.assertTrue(configuration.preview.record)
         self.assertEqual(configuration.preview.port, 0)
 
+    def test_unannotated_recording_is_explicit_and_field_checked(self) -> None:
+        self.assertFalse(self.load({}).preview.record_unannotated)
+        configuration = self.load({"preview": {"record": True, "record_unannotated": True}})
+        self.assertTrue(configuration.preview.record_unannotated)
+        with self.assertRaisesRegex(ConfigError, "preview.record_unannotated"):
+            self.load({"preview": {"record_unannotated": "yes"}})
+
     def test_new_sections_reject_unknown_fields_and_malformed_sections(self) -> None:
         invalid_configurations: tuple[dict[str, JsonValue], ...] = (
             {"pan_tilt": []},

@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en-GB">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Columba monitor stimulus</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100dvh; display: flex; flex-direction: column;
+    overflow: hidden; background: #121212; color: white; font: 15px system-ui, sans-serif; }
+  nav { display: flex; align-items: center; gap: 8px; padding: 8px; flex-wrap: wrap; }
+  button { padding: 6px 12px; font: inherit; cursor: pointer; }
+  output { margin-left: 8px; }
+  canvas { display: block; width: 100%; flex: 1; min-height: 0; }
+</style>
+<nav aria-label="Presentation controls">
+  <button id="play" disabled>Play / pause (Space)</button>
+  <button id="reset" disabled>Reset (R)</button>
+  <button id="replay" disabled>Replay (P)</button>
+  <button id="fullscreen">Full screen (F)</button>
+  <button id="export">Export JSONL (E)</button>
+  <output id="status" role="status">Loading embedded photographs…</output>
+</nav>
+<canvas id="display" aria-label="Monitor stimulus with scene and frame identifier"></canvas>
+<script id="manifest" type="application/json">__STIMULUS_MANIFEST__</script>
+<script>
+"use strict";
+const manifest = JSON.parse(document.getElementById("manifest").textContent);
+const canvas = document.getElementById("display");
+const context = canvas.getContext("2d");
+const status = document.getElementById("status");
+const millisecondsPerSecond = 1000;
+const frameDurationMs = millisecondsPerSecond / manifest.frame_rate_hz;
+const cycleFrames = manifest.scenes.reduce((total, scene) => total + scene.duration_frames, 0);
+const totalFrames = cycleFrames * manifest.repeat_count;
+const durationMs = totalFrames * frameDurationMs;
+const logReserveRecords = 10;
+const visibilityToleranceFraction = 1e-9;
+const referenceRadiusPx = 14;
+const referenceOutlineWidthPx = 7;
+const photographFrameInnerPaddingPx = 8;
+const photographFrameOuterPaddingPx = 12;
+const referenceLineWidthPx = 3;
+const photographs = new Map();
+const records = [];
+const opticalSession = manifest.optical_code ? Array.from(crypto.getRandomValues(new Uint8Array(8)),
+  byte => byte.toString(16).padStart(2, "0")).join("") : null;
+const opticalBounds = {left_px: 1056, top_px: 740, width_px: 384, height_px: 72};
+const opticalCheckBounds = {left_px: 1056, top_px: 96, width_px: 384, height_px: 72};
+let ready = false;
+let playing = false;
+let logFull = false;
+let positionMs = 0;
+let anchorMs = 0;
+let sequenceFrame = 0;
+let runNumber = 1;
+let renderNumber = 0;
+let lastSequenceFrame = null;
+let lastSceneKey = null;
+let lastScene = null;
+let lastSceneRepeatIndex = null;
+let lastSceneRunNumber = null;
+let lastVisibility = new Map();
+
+function locateFrame(frame) {
+  const repeatIndex = Math.floor(frame / cycleFrames);
+  let sceneFrame = frame % cycleFrames;
+  for (const scene of manifest.scenes) {
+    if (sceneFrame < scene.duration_frames) return {scene, sceneFrame, repeatIndex};
+    sceneFrame -= scene.duration_frames;
+  }
+  throw new Error("Frame outside playlist");
+}
+
+function record(kind, details = {}) {
+  if (logFull) return;
+  if (records.length >= manifest.maximum_log_records - 1 && details.event !== "log_limit") {
+    stopAtLogLimit();
+    return;
+  }
+  const current = locateFrame(sequenceFrame);
+  records.push(JSON.stringify({
+    schema_version: manifest.schema_version,
+    kind,
+    browser_monotonic_ms: performance.now(),
+    presentation_id: manifest.presentation_id,
+    playlist: manifest.playlist,
+    seed: manifest.seed,
+    run_number: runNumber,
+    sequence_frame: sequenceFrame,
+    scene_id: current.scene.scene_id,
+    scene_frame: current.sceneFrame,
+    repeat_index: current.repeatIndex,
+    ...details
+  }));
+}
+
+function event(name, details = {}) {
+  record("event", {event: name, ...details});
+}
+
+function endScene(reason) {
+  if (lastScene === null) return;
+  event("scene_end", {ended_scene_id: lastScene.scene_id,
+    ended_repeat_index: lastSceneRepeatIndex, ended_run_number: lastSceneRunNumber, reason});
+  lastScene = null;
+}
+
+function geometry() {
+  const bounds = canvas.getBoundingClientRect();
+  const scale = manifest.display_scale * Math.min(bounds.width / manifest.design_width_px,
+    bounds.height / manifest.design_height_px);
+  return {
+    scale,
+    offsetX: (bounds.width - manifest.design_width_px * scale) *
+      manifest.horizontal_position_fraction,
+    offsetY: (bounds.height - manifest.design_height_px * scale) *
+      manifest.vertical_position_fraction,
+    bounds,
+    devicePixelRatio: window.devicePixelRatio || 1
+  };
+}
+
+function screenRectangle(rectangle, layout) {
+  return {
+    left_px: layout.bounds.left + layout.offsetX + rectangle.left_px * layout.scale,
+    top_px: layout.bounds.top + layout.offsetY + rectangle.top_px * layout.scale,
+    width_px: rectangle.width_px * layout.scale,
+    height_px: rectangle.height_px * layout.scale
+  };
+}
+
+function interpolatePose(target, frame) {
+  const following = target.keyframes.findIndex(pose => pose.frame > frame);
+  if (following === -1) return target.keyframes[target.keyframes.length - 1];
+  if (following === 0) return target.keyframes[0];
+  const start = target.keyframes[following - 1];
+  const end = target.keyframes[following];
+  const fraction = (frame - start.frame) / (end.frame - start.frame);
+  return Object.fromEntries(Object.keys(start).map(key =>
+    [key, start[key] + (end[key] - start[key]) * fraction]));
+}
+
+function intersectionArea(first, second) {
+  const widthPx = Math.max(0, Math.min(first.left_px + first.width_px,
+    second.left_px + second.width_px) - Math.max(first.left_px, second.left_px));
+  const heightPx = Math.max(0, Math.min(first.top_px + first.height_px,
+    second.top_px + second.height_px) - Math.max(first.top_px, second.top_px));
+  return widthPx * heightPx;
+}
+
+function drawPhotographFrame(rectangle) {
+  for (const [paddingPx, colour] of [
+    [photographFrameOuterPaddingPx, "white"], [photographFrameInnerPaddingPx, "black"]
+  ]) {
+    context.fillStyle = colour;
+    context.fillRect(rectangle.left_px - paddingPx, rectangle.top_px - paddingPx,
+      rectangle.width_px + 2 * paddingPx, rectangle.height_px + 2 * paddingPx);
+  }
+}
+
+function drawTarget(target, frame, layout) {
+  const asset = photographs.get(target.asset_id);
+  const pose = interpolatePose(target, frame);
+  const rectangle = {left_px: pose.centre_x_px - pose.width_px / 2,
+    top_px: pose.centre_y_px - pose.height_px / 2,
+    width_px: pose.width_px, height_px: pose.height_px};
+  const present = frame >= target.present_from_frame &&
+    (target.present_until_frame === null || frame < target.present_until_frame);
+  const occlusion = target.occlusions.find(interval =>
+    frame >= interval.start_frame && frame < interval.end_frame);
+  const coveredFraction = occlusion ? occlusion.covered_fraction : 0;
+  const covered = {...rectangle, width_px: rectangle.width_px * coveredFraction};
+  const areaPx = rectangle.width_px * rectangle.height_px;
+  const unclampedVisibleFraction = present ? Math.max(0,
+    (intersectionArea(rectangle, manifest.target_region) -
+      intersectionArea(covered, manifest.target_region)) / areaPx) : 0;
+  const visibleFraction = unclampedVisibleFraction > 1 - visibilityToleranceFraction ? 1 :
+    unclampedVisibleFraction < visibilityToleranceFraction ? 0 : unclampedVisibleFraction;
+  let visibility = "visible";
+  if (!present) visibility = "absent";
+  else if (intersectionArea(rectangle, manifest.target_region) === 0) visibility = "outside_target_region";
+  else if (coveredFraction === 1) visibility = "occluded";
+  else if (visibleFraction < 1) visibility = "partial";
+  const photographFrameDrawn = manifest.photo_registration_frame === true && visibility === "visible";
+  if (present) {
+    if (photographFrameDrawn) drawPhotographFrame(rectangle);
+    const crop = asset.photograph.crop;
+    context.drawImage(asset.image, crop.left_px, crop.top_px, crop.width_px, crop.height_px,
+      rectangle.left_px, rectangle.top_px, rectangle.width_px, rectangle.height_px);
+    if (coveredFraction > 0) {
+      context.fillStyle = "#686868";
+      context.fillRect(covered.left_px, covered.top_px, covered.width_px, covered.height_px);
+    }
+  }
+  return {
+    intended_identity: target.identity,
+    asset_id: target.asset_id,
+    subject: asset.photograph.subject,
+    box_screen_css_px: screenRectangle(rectangle, layout),
+    present,
+    visibility,
+    visible_fraction: visibleFraction,
+    photo_registration_frame_drawn: photographFrameDrawn,
+    covered_fraction: coveredFraction
+  };
+}
+
+function drawMarker(marker) {
+  const bounds = marker.bounds;
+  const quietZonePx = 8;
+  const cellWidthPx = (bounds.width_px - quietZonePx * 2) / marker.pattern.length;
+  context.fillStyle = "white";
+  context.fillRect(bounds.left_px, bounds.top_px, bounds.width_px, bounds.height_px);
+  context.fillStyle = "black";
+  marker.pattern.forEach((row, rowIndex) => {
+    [...row].forEach((cell, columnIndex) => {
+      if (cell === "1") context.fillRect(bounds.left_px + quietZonePx + columnIndex * cellWidthPx,
+        bounds.top_px + quietZonePx + rowIndex * cellWidthPx, cellWidthPx, cellWidthPx);
+    });
+  });
+}
+
+function opticalBytes() {
+  if (runNumber > 65535 || renderNumber > 4294967295) throw new Error("Optical identity exhausted");
+  const hexadecimal = manifest.presentation_id.slice(0, 4) + opticalSession +
+    runNumber.toString(16).padStart(4, "0") + renderNumber.toString(16).padStart(8, "0");
+  const bytes = hexadecimal.match(/../g).map(value => parseInt(value, 16));
+  let checksum = 0n;
+  for (const byte of bytes) {
+    checksum ^= BigInt(byte) << 56n;
+    for (let bit = 0; bit < 8; bit++) {
+      checksum = ((checksum << 1n) ^ ((checksum & (1n << 63n)) ? 0x42f0e1eba9ea3693n : 0n)) &
+        0xffffffffffffffffn;
+    }
+  }
+  const checkBytes = checksum.toString(16).padStart(16, "0").match(/../g)
+    .map(value => parseInt(value, 16));
+  return [...bytes, ...checkBytes];
+}
+
+function drawOpticalCode() {
+  const bytes = opticalBytes();
+  for (const bounds of [opticalBounds, opticalCheckBounds]) {
+    for (let index = 0; index < 192; index++) {
+      const bit = (bytes[Math.floor(index / 8)] >>> (7 - index % 8)) & 1;
+      context.fillStyle = bit ? "black" : "white";
+      context.fillRect(bounds.left_px + (index % 32) * 12,
+        bounds.top_px + Math.floor(index / 32) * 12, 12, 12);
+    }
+  }
+}
+
+function drawReferencePoints() {
+  for (const point of manifest.registration_points) {
+    context.beginPath();
+    context.moveTo(point.centre_x_px - referenceRadiusPx, point.centre_y_px);
+    context.lineTo(point.centre_x_px + referenceRadiusPx, point.centre_y_px);
+    context.moveTo(point.centre_x_px, point.centre_y_px - referenceRadiusPx);
+    context.lineTo(point.centre_x_px, point.centre_y_px + referenceRadiusPx);
+    context.strokeStyle = "white";
+    context.lineWidth = referenceOutlineWidthPx;
+    context.stroke();
+    context.strokeStyle = "black";
+    context.lineWidth = referenceLineWidthPx;
+    context.stroke();
+  }
+}
+
+function referencePointRecords(layout, targets) {
+  const radiusPx = referenceRadiusPx + referenceOutlineWidthPx / 2;
+  return manifest.registration_points.map(point => {
+    const bounds = screenRectangle({left_px: point.centre_x_px - radiusPx,
+      top_px: point.centre_y_px - radiusPx, width_px: radiusPx * 2,
+      height_px: radiusPx * 2}, layout);
+    return {
+      point_id: point.point_id,
+      screen_css_px: [bounds.left_px + bounds.width_px / 2, bounds.top_px + bounds.height_px / 2],
+      visible: targets.every(target => !target.present ||
+        intersectionArea(bounds, target.box_screen_css_px) === 0)
+    };
+  });
+}
+
+function drawBackground(scene) {
+  const region = manifest.target_region;
+  context.fillStyle = "#b8b8b8";
+  context.fillRect(region.left_px, region.top_px, region.width_px, region.height_px);
+  if (scene.background !== "textured") return;
+  const textureSpacingPx = 32;
+  const textureRadiusPx = 2;
+  context.fillStyle = "#a0a0a0";
+  for (let horizontalPx = region.left_px; horizontalPx < region.left_px + region.width_px;
+    horizontalPx += textureSpacingPx) {
+    for (let verticalPx = region.top_px; verticalPx < region.top_px + region.height_px;
+      verticalPx += textureSpacingPx) {
+      context.fillRect(horizontalPx, verticalPx, textureRadiusPx, textureRadiusPx);
+    }
+  }
+}
+
+function stopAtLogLimit() {
+  if (logFull) return;
+  playing = false;
+  event("log_limit", {maximum_log_records: manifest.maximum_log_records});
+  logFull = true;
+  status.textContent = "Log limit reached. Export JSONL, then reload to start a new session.";
+}
+
+function render(force = false, animationFrameBrowserMs = null) {
+  if (!ready || logFull || (!force && sequenceFrame === lastSequenceFrame)) return;
+  if (records.length + logReserveRecords >= manifest.maximum_log_records) {
+    stopAtLogLimit();
+    return;
+  }
+  const current = locateFrame(sequenceFrame);
+  const sceneKey = `${runNumber}:${current.repeatIndex}:${current.scene.scene_id}`;
+  if (lastSequenceFrame !== null && sequenceFrame > lastSequenceFrame + 1) {
+    event("logical_frames_skipped", {count: sequenceFrame - lastSequenceFrame - 1});
+  }
+  if (sceneKey !== lastSceneKey) {
+    endScene("advance");
+    event("scene_start", {scene_seed: current.scene.seed});
+    lastScene = current.scene;
+    lastSceneRepeatIndex = current.repeatIndex;
+    lastSceneRunNumber = runNumber;
+    lastVisibility = new Map();
+  }
+  const layout = geometry();
+  canvas.width = Math.max(1, Math.round(layout.bounds.width * layout.devicePixelRatio));
+  canvas.height = Math.max(1, Math.round(layout.bounds.height * layout.devicePixelRatio));
+  context.setTransform(layout.devicePixelRatio, 0, 0, layout.devicePixelRatio, 0, 0);
+  context.fillStyle = "#121212";
+  context.fillRect(0, 0, layout.bounds.width, layout.bounds.height);
+  context.translate(layout.offsetX, layout.offsetY);
+  context.scale(layout.scale, layout.scale);
+  context.save();
+  const region = manifest.target_region;
+  context.beginPath();
+  context.rect(region.left_px, region.top_px, region.width_px, region.height_px);
+  context.clip();
+  drawBackground(current.scene);
+  drawReferencePoints();
+  const targets = current.scene.targets.map(target => drawTarget(target, current.sceneFrame, layout));
+  context.restore();
+  manifest.registration_markers.forEach(drawMarker);
+  renderNumber += 1;
+  const identifier = `${current.scene.scene_id} / frame ${current.sceneFrame}`;
+  context.fillStyle = "white";
+  context.font = "26px monospace";
+  context.fillText(identifier, 160, 110);
+  context.fillText(manifest.optical_code ?
+    `run ${runNumber} / render ${renderNumber} / ${playing ? "PLAYING" : "PAUSED"}` :
+    `run ${runNumber} / repeat ${current.repeatIndex + 1} / render ${renderNumber}` +
+    ` / seed ${manifest.seed} / ${playing ? "PLAYING" : "PAUSED"}`, 160, 780);
+  if (manifest.optical_code) drawOpticalCode();
+  status.textContent = `${manifest.playlist} · ${playing ? "Playing" : "Paused"} · ` +
+    `${current.scene.name} · ${sequenceFrame + 1}/${totalFrames}`;
+  for (const target of targets) {
+    const visibilityKey = `${target.visibility}:${target.covered_fraction}`;
+    if (lastVisibility.get(target.intended_identity) !== visibilityKey) {
+      event("target_visibility", {intended_identity: target.intended_identity,
+        visibility: target.visibility, covered_fraction: target.covered_fraction});
+    }
+    lastVisibility.set(target.intended_identity, visibilityKey);
+  }
+  record("frame", {
+    render_number: renderNumber,
+    ...(manifest.optical_code ? {optical_session: opticalSession,
+      optical_code_screen_css_px: screenRectangle(opticalBounds, layout),
+      optical_check_screen_css_px: screenRectangle(opticalCheckBounds, layout)} : {}),
+    identifier,
+    playing,
+    animation_frame_browser_ms: animationFrameBrowserMs,
+    coordinate_system: manifest.coordinate_system,
+    viewport_width_css_px: window.innerWidth,
+    viewport_height_css_px: window.innerHeight,
+    device_pixel_ratio: layout.devicePixelRatio,
+    display_scale: manifest.display_scale,
+    photo_registration_frame: manifest.photo_registration_frame === true,
+    horizontal_position_fraction: manifest.horizontal_position_fraction,
+    vertical_position_fraction: manifest.vertical_position_fraction,
+    fullscreen: document.fullscreenElement !== null,
+    page_visible: !document.hidden,
+    target_region_screen_css_px: screenRectangle(region, layout),
+    registration_markers: manifest.registration_markers.map(marker => ({
+      marker_id: marker.marker_id, box_screen_css_px: screenRectangle(marker.bounds, layout)
+    })),
+    registration_points: referencePointRecords(layout, targets),
+    targets
+  });
+  lastSequenceFrame = sequenceFrame;
+  lastSceneKey = sceneKey;
+}
+
+function elapsedMs(nowMs) {
+  return playing ? positionMs + Math.max(0, nowMs - anchorMs) : positionMs;
+}
+
+function setPlaying(requestedPlaying, reason = "control") {
+  if (!ready || logFull || (requestedPlaying && document.hidden)) return;
+  const nowMs = performance.now();
+  positionMs = Math.min(durationMs, elapsedMs(nowMs));
+  sequenceFrame = Math.min(totalFrames - 1, Math.floor(positionMs / frameDurationMs));
+  anchorMs = nowMs;
+  playing = requestedPlaying;
+  if (playing && positionMs >= durationMs) {
+    restart(true);
+    return;
+  }
+  event(playing ? "resume" : "pause", {reason});
+  render(true);
+}
+
+function restart(startPlaying) {
+  if (!ready || logFull) return;
+  event(startPlaying ? "replay" : "reset");
+  endScene("restart");
+  runNumber += 1;
+  positionMs = 0;
+  sequenceFrame = 0;
+  anchorMs = performance.now();
+  playing = startPlaying && !document.hidden;
+  lastSequenceFrame = null;
+  lastSceneKey = null;
+  lastScene = null;
+  event("run_start");
+  render(true);
+}
+
+function tick(nowMs) {
+  if (playing) {
+    const elapsed = elapsedMs(nowMs);
+    sequenceFrame = Math.min(totalFrames - 1, Math.floor(elapsed / frameDurationMs));
+    render(false, nowMs);
+    if (elapsed >= durationMs && playing) {
+      playing = false;
+      positionMs = durationMs;
+      endScene("complete");
+      event("complete");
+      render(true, nowMs);
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch (error) {
+    event("fullscreen_error", {message: String(error)});
+    status.textContent = "Full screen was refused. Use the browser's full-screen command.";
+  }
+}
+
+function exportLog() {
+  event("export");
+  const url = URL.createObjectURL(new Blob([records.join("\n") + "\n"],
+    {type: "application/x-ndjson"}));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `monitor-${manifest.playlist}-${manifest.presentation_id.slice(0, 12)}-` +
+    `${Math.floor(performance.timeOrigin)}.jsonl`;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), millisecondsPerSecond);
+}
+
+document.getElementById("play").addEventListener("click", () => setPlaying(!playing));
+document.getElementById("reset").addEventListener("click", () => restart(false));
+document.getElementById("replay").addEventListener("click", () => restart(true));
+document.getElementById("fullscreen").addEventListener("click", toggleFullscreen);
+document.getElementById("export").addEventListener("click", exportLog);
+document.addEventListener("keydown", keyboard => {
+  if (keyboard.repeat || keyboard.altKey || keyboard.ctrlKey || keyboard.metaKey) return;
+  const actions = {" ": () => setPlaying(!playing), r: () => restart(false),
+    p: () => restart(true), f: toggleFullscreen, e: exportLog};
+  const action = actions[keyboard.key.toLowerCase()];
+  if (action) {
+    keyboard.preventDefault();
+    action();
+  }
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && playing) setPlaying(false, "page_hidden");
+  event("page_visibility", {visible: !document.hidden});
+});
+window.addEventListener("resize", () => {
+  if (playing) setPlaying(false, "viewport_changed");
+  event("viewport_changed");
+  render(true);
+});
+document.addEventListener("fullscreenchange", () => {
+  event("fullscreen_changed", {fullscreen: document.fullscreenElement !== null});
+  render(true);
+});
+
+record("session", {
+  ...(manifest.optical_code ? {optical_session: opticalSession} : {}),
+  browser_time_origin_unix_ms: performance.timeOrigin,
+  clock_domain: manifest.clock_domain,
+  coordinate_system: manifest.coordinate_system,
+  browser_user_agent: navigator.userAgent,
+  manifest: {...manifest, assets: manifest.assets.map(asset => ({
+    photograph: asset.photograph, source_sha256: asset.source_sha256
+  }))}
+});
+Promise.all(manifest.assets.map(async asset => {
+  const image = new Image();
+  image.src = asset.data_url;
+  await image.decode();
+  if (image.naturalWidth !== asset.photograph.source_width_px ||
+    image.naturalHeight !== asset.photograph.source_height_px) {
+    throw new Error(`Unexpected source dimensions: ${asset.photograph.source}`);
+  }
+  photographs.set(asset.photograph.asset_id, {...asset, image});
+})).then(() => {
+  ready = true;
+  ["play", "reset", "replay"].forEach(identifier => {
+    document.getElementById(identifier).disabled = false;
+  });
+  event("ready");
+  event("run_start");
+  render(true);
+  requestAnimationFrame(tick);
+}).catch(error => {
+  event("asset_error", {message: String(error)});
+  status.textContent = `Cannot present photographs: ${String(error)}`;
+});
+</script>
+</html>

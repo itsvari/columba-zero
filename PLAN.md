@@ -2,6 +2,192 @@
 
 ## 1. Delivery status and next-session handover
 
+### Monitor campaign update, 28 October 2026
+
+**User disposition:** after reviewing the result, the user stated “I'm fine with
+this result.” The measured demonstration is accepted for its current scope;
+further throughput and recorder tuning is optional. The original frozen verdict
+below remains unchanged. Independent centring and expected-selection verification
+are still incomplete, and the fixed-zone stretch goal remains deferred. Changes
+are retained on `feat/monitor-hardware-validation` for the Git handover.
+
+**The authorised hour completed and failed the frozen engineering gates.** The
+60.4-minute capture ran all 18 playlist repeats. Whole-hot processing was
+9.775 FPS; five of six windows fell below the 10 FPS floor. The recorder rejected
+three frames because its queue was full. Neither failure is waived.
+
+Timing and memory gates passed: hot first-use age was 201.2 ms at p95,
+uncensored tracking/stale age was 261.9 ms, maximum controller interval was
+57.171 ms, and RSS median increase was 0.172 MiB. Independent telemetry peaked
+at 88.65°C with final ten-minute median 85.35°C; median measured ARM clock was
+1.50 GHz and thermal-limit bits were current in 99.6% of capture samples.
+There was no new or current under-voltage. One TERM, no KILL and both FULL_OFF
+were recorded; an additional read-only check confirms no remaining camera owner
+and both outputs disabled. The MP4 decoded independently and the archive hash
+matched. These results establish the measured subgates, not physical smoothness.
+
+A browser clock-ordering bug briefly rendered frame/repeat −1 immediately after
+Replay, so the unchanged runner and assessor also rejected playlist integrity
+despite every real repeat and the final completion being present. The generator
+is repaired for future runs, with a real-browser regression that fails before
+and passes after the fix. The recorded page, raw evidence, frozen policy and
+failed assessment are unchanged. A preserved source snapshot reproduces the
+original assessment byte-for-byte. The current template differs from the frozen
+launch inputs: regenerate pages and freeze a new policy before any further run.
+
+The hour is finished; no repeat is running. Independent centring and expected
+selection remain pending. Next work is recorder-stall instrumentation, a decision
+about cooling or a smaller processing load, and a new-pose selection fixture with
+independent apparent-area truth. Do not infer a centring or global acceptance
+pass from this hour. Details are in `deploy/VALIDATION.md` and the retained
+`outputs/validation/monitor-20261028/hour-observer-report.md`.
+
+The following records the preparation and bounded checks before the hour.
+
+On 28 October the user resumed the campaign, stated readiness
+to observe, and explicitly permitted movement checks without continuous physical
+supervision. The later explicit reply, “Include the hour this session”, supersedes
+the previous one-hour deferral.
+Keep the tested ±100 µs envelope, reduced speed and independent stop deadlines.
+The first fix at `1f518f2` was too broad at hot frame rates. The reviewed
+correction at `dc444c5` protects learnt size and velocity only for low-confidence
+size outliers. Six regressions at 10–11 FPS, stopping and growth were reproduced
+before the correction; 82 nearby tests pass afterwards. The original recorded
+partial-occlusion replay still retains its ID. Runtime expiry and 250 ms
+freshness are unchanged.
+
+The endurance actor now runs its inhibitor in a separate session and ignores
+repeated interruption during cleanup; 24 offline tests pass using the actual
+desktop wrappers. The latest desktop gate, including the offline assessment,
+passes 863 tests and 370 subtests, with six optional skips. Strict desktop mypy
+passes across 132 files, and the canonical Ruff gate passes across 135 files.
+Pi at runtime revision `dc444c5` passes
+847 tests and 375 subtests, with eight optional skips, plus native CTest and
+model checks. The offline assessment's 13 focused tests also pass.
+The first desktop browser gate failed because its temporary executable was gone;
+the restored pinned browser gate passes and both logs remain. The Pi rebooted
+with flags `0x0` and outputs disabled. The fresh repeat then stopped at its
+positive-source guard: the camera did not see the stimulus. It made no tracking
+corrections and ended with one TERM, no KILL, both outputs FULL_OFF and flags `0`.
+The user then confirmed that the Pi/base had moved. Slow, bounded servo ramps
+established a new home at pan 80.1 and tilt 89.1 nominal degrees, or 1390 and
+1490 µs. The new profile retains home ±100 µs on both axes. A slow sweep completed
+both ends and returns on both axes, with FULL_OFF read back after all eight steps.
+The presentation is now left-aligned at display scale 0.65 and target scale 1.25.
+Its scenes exactly match the original tuning playlist. Diagnostic target-scale-2
+variants were rejected because six stationary scenes clipped their photographs.
+
+The final home view has all four markers and reliable detection. Terra independently
+checked photograph corners before local fitting in two home images and eight
+powered sweep holds. All sampled standing-pigeon fits pass the unchanged 7 px
+budget, including the declared manual uncertainty. Additional shorebird checks
+and a separate follow-disabled, framed profile calibration also pass on their
+sampled images. This does not qualify unobserved poses or target selection.
+
+The fresh 201-second following calibration completed with both outputs FULL_OFF,
+one TERM, no KILL and no writer drops. After 120 seconds, processing was 10.597 FPS;
+p95 first-use sensor age was 192.9 ms and uncensored tracking/stale age was
+250.6 ms. The maximum controller interval was 55.906 ms. Temperature peaked at
+87.0°C in the app summary and 88.1°C in independent telemetry, with thermal
+throttling and median measured ARM clock 1.5 GHz; no under-voltage bits were set.
+Its MP4 decoded
+independently. These are bounded calibration results, not an hour result.
+
+Independent grid geometry enabled strict optical association for 864 of 1,025
+JPEGs across all 22 scenes. The 161 rejected frames remain unknown. An all-grid
+proposal also failed before the right-column grid proposal worked; the typed
+builder later reproduced the successful positions exactly. The sampling
+positions are model predictions, not manually observed marker centres; a separate
+visual check confirms that the reference feature mask excludes the photograph.
+No decoder threshold or CRC requirement changed.
+
+The opt-in photograph frame is calibration-only and following was disabled for
+that capture. Manual apparent-area intervals are too wide to qualify the
+similar-size target-selection scene in the new camera view. Centring and
+selection therefore remain pending; the old exploratory pass is not transferred
+to this pose. The one-hour timing, recording and stability subgate is explicitly
+authorised and was pending at that preparation checkpoint. Both policy copies qualify only this bounded
+hardware setup for that subgate and retain pending centring status. The actor
+rejects a pending setup, changed frozen inputs or a framed following stimulus.
+The hour uses the new default-off frame runtime with unchanged scene geometry;
+the bounded following calibration used the preceding runtime. Browser tests
+verified the new path before it drove the hour's following capture.
+Opus identified an assessor shutdown-edge bug before launch. A 13 ms final-frame
+gap now has coverage within the existing 75 ms controller budget; a 100 ms gap
+remains inconclusive. The assessor also distinguishes measured ARM clock from
+the cpufreq request and reports the final-window temperature median. Both policy
+copies were re-frozen before capture, with no numerical gate changed.
+The frozen criteria are in `deploy/monitor-endurance-policy.json`; the new
+duty, cadence and memory limits are engineering budgets, not historical results.
+
+The user withdrew the 15 FPS goal and subsequently accepted the earlier hot
+10–12 FPS range near 83–85°C for the steady-state demonstration, provided control
+timing and stability pass. Record and report the actual hot throughput, temperature
+and throttling state. Continue measuring command age, centring, recovery and
+stability. The historical handover below retains its original measurements and
+targets; the acceptance section now reflects this decision. The user later relaxed
+the demonstration latency goal to **300 ms at p95**, retaining smooth control.
+
+On 27 October the user authorised wider movement and reported smooth movement with cable
+clearance during the completed slow sweep through both ends of both axes. The first
+expanded profile permits home ±100 µs at the existing reduced speed. A 30-second
+run issued 160 timed hardware tracking moves, with 198.0 ms sensor-to-driver-return
+age at p95, then returned home and disabled both channels. This is one short run,
+not full acceptance or proof that the entire expanded envelope has been checked.
+The initial ±50 µs run only acquired home and made no tracking corrections.
+
+The test monitor is a 34-inch, 1500R curved ultrawide. The camera was approximately
+38 cm away on 27 October; distance after the 28 October base move is unconfirmed.
+The quoted 350–400 cd/m² brightness is a specification, not a measurement.
+Reduced, repositioned stimuli put all four markers within view.
+A global planar homography needs independent validation on this curved surface.
+The powered home view differs substantially from the earlier unpowered view;
+establish framing at powered home before interpreting following results.
+
+Monitor tooling and its usage are in [docs/monitor-stimulus.md](docs/monitor-stimulus.md).
+Measurements and outstanding gates are in [deploy/VALIDATION.md](deploy/VALIDATION.md).
+Source revision `6fcf7e4` prepares tracking dependencies before camera and mount
+startup. Its live repeat recorded a maximum controller interval of 52.533 ms,
+158 timed tracking moves, and 193.9 ms sensor command age at p95. These short-run
+figures do not represent sustained timing: three full 201-second tuning runs
+recorded 221.3, 221.8 and 221.6 ms p95 command age, failing the 200 ms latency
+goal. Their hot throughput was approximately 11.2 FPS at median 84.8°C with active
+throttling and peaks up to 87.55°C. A 190 ms observation-timeout experiment capped
+move-age statistics while causing frequent stop-start corrections; it is not
+adopted. The user initially retained the 200 ms p95 latency goal, then explicitly
+relaxed it to 300 ms after reviewing the hot measurements and cooling arrangement.
+The official active cooler has slightly restricted airflow beneath the HAT.
+Keep the original 250 ms freshness policy and preserve smooth control.
+Four full tuning-playlist runs cover tracking alone, preview alone, recording
+alone and both outputs. Command-age p95 was 211.1–234.0 ms and uncensored
+tracking/stale observation-age p95 was 226.8–249.4 ms, within the revised goal.
+Hot processing throughput was 10.67–11.69 FPS after 120 seconds; current thermal
+throttling occurred and capture-period CPU temperature peaked at 88.1°C. These
+are single sequential runs, not a performance ranking or endurance result.
+Pause/home/resume, an unread preview client, recording-write failure and an
+injected camera stall/read failure have hardware evidence. Independent centring,
+selection and endurance remain open for overall acceptance. The offline scorer
+now gives an exploratory 80.957% conservative centring lower bound for the retained
+passive recording, with empirical uncertainty and unknown time included. The
+similar-size and brief-challenger scenes did not switch; a sustained larger
+challenger caused the sole switch. Independent Opus review reproduced the scoped
+score but found that the partial-occlusion ID reset was an association failure:
+the Kalman box prediction collapsed to one pixel wide before retention expired.
+The earlier processing-age explanation is superseded. There are no software
+shipping blockers. Centring remains exploratory because the profile qualification
+was added after scoring, and the narrow pass needs a fresh confirmatory recording.
+The hour's failed result is recorded at the top of this handover.
+
+Review E1–E6 and the subsequent T1, R1 and P1 findings are addressed by the
+current tracker, runner and frozen policy. The post-reboot voltage baseline is
+clear. Visibility, bounded following and sampled geometry have fresh evidence.
+Independent centring and selection remain separate from the authorised hour.
+The 300 ms latency gates use uncensored
+observation age and first-use age; move age remains descriptive because the
+250 ms freshness cutoff bounds it. Reviews, superseded versions and verification
+logs remain under `outputs/validation/monitor-20261027/` and
+`outputs/validation/monitor-20261028/`.
+
 Use this plan to implement the demonstration on the current application architecture,
 reusing the useful hardware and controller work from
 [PR #2](https://github.com/itsvari/columba-zero/pull/2). This document revises the
@@ -566,8 +752,14 @@ establish field accuracy.
 
 Initial acceptance targets:
 
-- At least **15 processed frames/s** sustained on the Pi, with control running at 20 Hz.
-- Frame-to-command age below **200 ms at p95** during normal operation.
+- Record sustained hot processing throughput, temperature and throttling state,
+  with control running at 20 Hz. The user accepted the earlier **10–12 FPS** hot
+  range near **83–85°C**, conditional on control timing and stability, and withdrew
+  the earlier 15 FPS requirement on 27 October 2026. The short approximately
+  12.5 FPS result was measured while the device was warming up.
+- Sensor-to-driver-return command age below **300 ms at p95** during normal
+  operation. Report uncensored observation age and stale time alongside it. The
+  user relaxed the earlier 200 ms demonstration goal on 27 October 2026.
 - After settling, the target centre stays within the central **20% of image width and height for at least 80%** of visible tracking time, within mechanical reach.
 - No repeated switching between similarly sized stationary displayed pigeons.
 - Brief occlusion, target departure, camera failure, slow browser clients, and recording errors produce predictable recovery.

@@ -52,6 +52,7 @@ pan_tilt:
 preview:
   enabled: false
   record: false
+  record_unannotated: false
 zone:
   enabled: false
 # Day/night switching is off unless a cameras list is given: exactly one day and

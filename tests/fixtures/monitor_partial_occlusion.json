@@ -1,0 +1,283 @@
+{
+  "source_sha256": "a45fcda74c8099eced8513d046ad221880a872b407ea64443c498012498dd026",
+  "scope": "numeric detector observations from stationary-camera partial-occlusion scene; timestamps relative to first observation; original assigned IDs excluded",
+  "processing_time_method": "sensor time + delivery_ms + decision_ms - stage_ms.track; zero camera shift during deadband hold",
+  "observations": [
+    {
+      "sequence": 4992,
+      "observed_at_s": 0.0,
+      "processed_at_s": 0.11350163700080884,
+      "detections": [
+        {
+          "confidence": 0.8857421875,
+          "bounds_px": [
+            353.6432189941406,
+            198.88392639160156,
+            405.1507568359375,
+            248.85601806640625
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 4994,
+      "observed_at_s": 0.06665205955505371,
+      "processed_at_s": 0.19464618655547383,
+      "detections": [
+        {
+          "confidence": 0.8896484375,
+          "bounds_px": [
+            353.6432189941406,
+            198.88392639160156,
+            405.1507568359375,
+            248.85601806640625
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 4997,
+      "observed_at_s": 0.16660547256469727,
+      "processed_at_s": 0.28367947256265325,
+      "detections": [
+        {
+          "confidence": 0.88818359375,
+          "bounds_px": [
+            353.6432189941406,
+            199.072265625,
+            405.1507568359375,
+            248.91879272460938
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5000,
+      "observed_at_s": 0.26657581329345703,
+      "processed_at_s": 0.37301037129327597,
+      "detections": [
+        {
+          "confidence": 0.888671875,
+          "bounds_px": [
+            353.6432189941406,
+            199.072265625,
+            405.1507568359375,
+            248.91879272460938
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5002,
+      "observed_at_s": 0.33321571350097656,
+      "processed_at_s": 0.4642429715004255,
+      "detections": [
+        {
+          "confidence": 0.8857421875,
+          "bounds_px": [
+            353.6432189941406,
+            198.88392639160156,
+            405.1507568359375,
+            248.85601806640625
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5005,
+      "observed_at_s": 0.4331839084625244,
+      "processed_at_s": 0.5491106464633049,
+      "detections": [
+        {
+          "confidence": 0.8896484375,
+          "bounds_px": [
+            353.6432189941406,
+            198.88392639160156,
+            405.1507568359375,
+            248.85601806640625
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5008,
+      "observed_at_s": 0.5331509113311768,
+      "processed_at_s": 0.6308846183310379,
+      "detections": [
+        {
+          "confidence": 0.88525390625,
+          "bounds_px": [
+            353.6432189941406,
+            198.88392639160156,
+            405.1507568359375,
+            248.85601806640625
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5010,
+      "observed_at_s": 0.599799633026123,
+      "processed_at_s": 0.7242189970256732,
+      "detections": [
+        {
+          "confidence": 0.88818359375,
+          "bounds_px": [
+            353.6432189941406,
+            199.0094757080078,
+            405.1507568359375,
+            248.73046875
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5013,
+      "observed_at_s": 0.6997470855712891,
+      "processed_at_s": 0.8039419245706085,
+      "detections": [
+        {
+          "confidence": 0.890625,
+          "bounds_px": [
+            353.3919677734375,
+            199.072265625,
+            405.4020080566406,
+            248.91879272460938
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5015,
+      "observed_at_s": 0.7663884162902832,
+      "processed_at_s": 0.9057947752899054,
+      "detections": [
+        {
+          "confidence": 0.890625,
+          "bounds_px": [
+            353.517578125,
+            199.072265625,
+            405.2763671875,
+            248.91879272460938
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5018,
+      "observed_at_s": 0.8663556575775146,
+      "processed_at_s": 1.005973392579108,
+      "detections": [
+        {
+          "confidence": 0.888671875,
+          "bounds_px": [
+            353.517578125,
+            199.072265625,
+            405.2763671875,
+            248.91879272460938
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5021,
+      "observed_at_s": 0.966346025466919,
+      "processed_at_s": 1.0860773834683641,
+      "detections": [
+        {
+          "confidence": 0.23974609375,
+          "bounds_px": [
+            381.7839050292969,
+            199.072265625,
+            405.1507568359375,
+            247.412109375
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5024,
+      "observed_at_s": 1.066291093826294,
+      "processed_at_s": 1.1751106008268835,
+      "detections": []
+    },
+    {
+      "sequence": 5026,
+      "observed_at_s": 1.1329476833343506,
+      "processed_at_s": 1.260712406334278,
+      "detections": []
+    },
+    {
+      "sequence": 5029,
+      "observed_at_s": 1.2328977584838867,
+      "processed_at_s": 1.3465841394827294,
+      "detections": []
+    },
+    {
+      "sequence": 5032,
+      "observed_at_s": 1.3328642845153809,
+      "processed_at_s": 1.444097697514735,
+      "detections": []
+    },
+    {
+      "sequence": 5034,
+      "observed_at_s": 1.3995020389556885,
+      "processed_at_s": 1.5380612329536234,
+      "detections": []
+    },
+    {
+      "sequence": 5037,
+      "observed_at_s": 1.4994785785675049,
+      "processed_at_s": 1.630869002567124,
+      "detections": []
+    },
+    {
+      "sequence": 5040,
+      "observed_at_s": 1.599466323852539,
+      "processed_at_s": 1.709168874853276,
+      "detections": [
+        {
+          "confidence": 0.8857421875,
+          "bounds_px": [
+            353.6432189941406,
+            199.072265625,
+            405.1507568359375,
+            248.91879272460938
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5042,
+      "observed_at_s": 1.666069507598877,
+      "processed_at_s": 1.8025638055987656,
+      "detections": [
+        {
+          "confidence": 0.89111328125,
+          "bounds_px": [
+            353.6432189941406,
+            198.88392639160156,
+            405.1507568359375,
+            248.85601806640625
+          ]
+        }
+      ]
+    },
+    {
+      "sequence": 5045,
+      "observed_at_s": 1.766038417816162,
+      "processed_at_s": 1.9055193758158566,
+      "detections": [
+        {
+          "confidence": 0.88720703125,
+          "bounds_px": [
+            353.6432189941406,
+            199.0094757080078,
+            405.1507568359375,
+            248.73046875
+          ]
+        }
+      ]
+    }
+  ]
+}

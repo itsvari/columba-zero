@@ -81,6 +81,7 @@ class PreviewOverrides(TypedDict, total=False):
     height_px: int
     jpeg_quality: int
     record: bool
+    record_unannotated: bool
 
 
 class JobOverrides(TypedDict, total=False):
@@ -261,6 +262,55 @@ def read_stream_part(reader: BinaryIO) -> bytes:
 
 
 class TestFrameEncoding:
+    def test_unannotated_encode_failure_keeps_preview_advancing(self, harness: Harness) -> None:
+        recorder = RecorderDouble(harness.tmp_path, harness.events)
+        encoder = preview_module.encode_jpeg
+        calls = 0
+
+        def fail_clean_copy(image: Frame, quality: int) -> bytes:
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("clean recording failed")
+            return encoder(image, quality)
+
+        service = harness.start(preview_config(record=True, record_unannotated=True), recorder)
+        with patch("app.preview.encode_jpeg", side_effect=fail_clean_copy):
+            service.publish(make_job(1))
+            wait_until(lambda: encoded_frames(service) == 1)
+            service.publish(make_job(2))
+            wait_until(lambda: encoded_frames(service) == 2)
+        status, image, _ = harness.request(service, "GET", "/snapshot.jpg")
+        assert status == 200 and decode_jpeg(image).size > 0
+        assert recorder.frames == []
+        assert service.failure is not None and "clean recording failed" in service.failure
+
+    @pytest.mark.parametrize("enabled", (False, True))
+    def test_unannotated_recording_preserves_camera_pixels(
+        self, harness: Harness, enabled: bool
+    ) -> None:
+        recorder = RecorderDouble(harness.tmp_path, harness.events)
+        config = preview_config(
+            enabled=enabled,
+            record=True,
+            record_unannotated=True,
+            width_px=FRAME_WIDTH_PX,
+            height_px=FRAME_HEIGHT_PX,
+        )
+        service = harness.start(config, recorder)
+        source = make_frame()
+        service.publish(make_job(frame=source))
+        wait_until(lambda: len(recorder.frames) == 1)
+        recorded = recorder.frames[0]
+        assert numpy.array_equal(decode_jpeg(recorded.jpeg), source)
+        assert recorded.metadata["annotations_included"] is False
+        assert recorded.sequence == 1
+        assert recorded.monotonic_s == 501.0
+        if enabled:
+            status, preview, _ = harness.request(service, "GET", "/snapshot.jpg")
+            assert status == 200
+            assert not numpy.array_equal(decode_jpeg(preview), source)
+
     def test_letterboxes_to_the_configured_size_with_black_bars(self, harness: Harness) -> None:
         recorder = RecorderDouble(harness.tmp_path, harness.events)
         service = harness.start(preview_config(width_px=320, height_px=240), recorder)

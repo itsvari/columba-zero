@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "declared_at_utc": "2026-10-28T07:50:36.490464+00:00",
+  "scope": "one-hour timing/stability demonstration; separate fresh201s confirmatory centring recording",
+  "user_requirements": {
+    "latency_p95_ms": 300,
+    "hot_throughput": "report actual; user accepted roughly10\u201312FPS",
+    "observation_freshness_s": 0.25,
+    "preserve_smooth_control": true
+  },
+  "engineering_gates": {
+    "warmup_s": 120,
+    "window_s": 600,
+    "include_final_partial_window": true,
+    "minimum_final_window_s": 60,
+    "first_use_sensor_age_at_tick_p95_ms_max": 300,
+    "uncensored_tracking_stale_age_p95_ms_max": 300,
+    "sensor_tracking_stale_fraction_max": 0.1,
+    "processed_fps_min": 10,
+    "controller_interval_ms_max": 75,
+    "rss_comparison": "last10min median versus first10min median after warmup; capture only",
+    "rss_median_increase_bytes_max": 33554432,
+    "new_undervoltage_latch_allowed": false,
+    "current_undervoltage_allowed": false,
+    "log_drops_max": 0,
+    "render_drops_max": 0,
+    "record_drops_max": 0,
+    "record_limits_allowed": false,
+    "forced_kill_allowed": false,
+    "term_sent_count": 1,
+    "full_off_both_required": true,
+    "independent_mp4_decode_required": true,
+    "all_playlist_repeats_required": 18
+  },
+  "temperature": "report capture-only range, plateau, measured ARM clock and throttle flags; no independent thermal certification",
+  "centring_confirmation": {
+    "playlist": "fresh201s tuning",
+    "settling_s": 6,
+    "maximum_sample_gap_s": 1,
+    "occupancy_lower_bound_min": 0.8,
+    "qualification_policy": null,
+    "source_labels": "deploy/monitor-source-labels.json",
+    "exclude_unknown_time": false,
+    "frozen_files_sha256": {
+      "deploy/monitor-source-labels.json": "243d23bfb4288c6d0500dbde26780a08860b1ef3d50fa722b92cfcbfceae357b",
+      "tools/prepare_monitor_truth.py": "62faf3a0c9ab75d6df434104be4f470463dddb5a108711ce3d106ff0530e8701",
+      "tools/associate_monitor_codes.py": "bafcdcd3e1d0f4db1258c2957ec610201702a1082a1ce63941efdef17a979cd3",
+      "tools/locate_monitor_birds.py": "1a102b18aff2675bd6688611b672dc0209c69ba81cefe8657e0eca5967f75822",
+      "tools/score_monitor_run.py": "c29a31523ec296b5517a0bfd9409b13b5ce221f1b21d9e7556876c4d358cc378",
+      "tools/associate_monitor_frames.py": "e2aed944adc0f4a30d8551f08debb3d38adf148d4599e73baec46ece4456ff15",
+      "tools/register_monitor_frames.py": "fb4be351a01c8ef1108a722eddc905c8361e42db9e1434de617cabcb58340cb5",
+      "outputs/setup/calibration-monitor-rehomed-20261028.local.yaml": "a78b6133f1379ca4c0838af5aea2b179624cfa1684810df308a7c0acfb0468aa",
+      "outputs/validation/monitor-20261028/hardware-rehomed.yaml": "97bd252605188925fb5f2392c953a975fba68d639af0e65ef253d04f4828b50f",
+      "outputs/monitor/rehomed-confirmation-20261028.html": "f13eb6244298add06a55b5080445accf456089c55b08f9b731a975cca785a377",
+      "outputs/monitor/rehomed-confirmation-20261028.manifest.json": "835735fecb8b05e09abac4d30ecf7d68bef923bc8859a000a46f028c5bb73d73",
+      "tools/monitor_stimulus.py": "bac0fe85e51a8deb53f089ebbeb943bf17217ad8bf5d2bc2e2dc31a8c10fb647",
+      "tools/monitor_stimulus.html": "8e9c928c68698d78de3c7b3de063910908af8e9492bd443d3fae081f4e1cd720",
+      "outputs/validation/monitor-20261027/run_endurance.py": "f8676de1c245298c2c1a03bc3838c567886ffbc511de6cd0e0ac3eeddc59cedb",
+      "outputs/validation/monitor-20261027/run_output_matrix.py": "fde579d998613f08d205b76826535d2cfb88e6c470e9a73c0add2bcffee8a859",
+      "outputs/validation/monitor-20261028/right_grid-sampling-proposals.json": "c729e99d4a1a81a3dba221576a37f0da806611e11431cc69302ff442a0a63f87",
+      "outputs/validation/monitor-20261028/right_grid-reproduced-proposals.json": "038788252072ed47052652230f89b1f9d7ecd9a00ed5af0bc371ea04f322c665",
+      "outputs/validation/monitor-20261028/build_grid_sampling.py": "badc2b0852553b36fca9195e2f607d4325faa88c9d241c96f9c28ffbe07aa151",
+      "outputs/validation/monitor-20261028/assess_frozen_hour.py": "0e53d11f1caf02bd26e578f6b677f0fafb27e3de1fd3a1fc273984e9872db150",
+      "outputs/validation/monitor-20261028/probe_hour_service.py": "d536ace1251822900d1461d287e001346251d58e024749085d2bb609d1824c5d",
+      "outputs/validation/monitor-20261028/rehome-home-browser.jsonl": "bdefbaca2282cef59d4d972aa9d03676a5bfc218022e8157d13ccac80ffaa0c8",
+      "outputs/validation/monitor-20261028/rehomed-axis-sweep-20261028/20261028T095142Z-8f71a188/demo/index.jsonl": "c6937f81f5fb1247ef881a5f0115895709f5192cf2c19521647fda7ce86c9eaa",
+      "outputs/validation/monitor-20261028/rehomed-axis-sweep-20261028/20261028T095142Z-8f71a188/demo/frame_000000021.jpg": "85e499bbc7ddcb5c37a091240dc4539390fae651f43e9922a23391af345b8002",
+      "outputs/validation/monitor-20261028/rehomed-axis-analysis/report.json": "7fe73bd09622cca1a57f701abf8a38f44bdeae89760f78a3bb0f51878aac8eaa",
+      "outputs/validation/monitor-20261028/rehomed-camera-truth/grid-reference-mask/report.md": "38a9b30a8441327656f3e8dd7d29835ae71c144d66d46cd9b610b2daea4148eb",
+      "outputs/validation/monitor-20261028/rehomed-camera-truth/grid-reference-mask/verify_mask.py": "a42737be8c0c0bf7caea34e1eb3a98cdcae865773edd9402794d0200dfe56825",
+      "outputs/validation/monitor-20261028/rehomed-camera-truth/axis-sweep/locations/locations.json": "2065b5759dd3279e69874a462e774a49e183207829acb4a0d9a0344510c0def4",
+      "outputs/validation/monitor-20261028/rehomed-camera-truth/calibration-assets/locations/locations.json": "0b65a38bd5e5421d5e020a8dfc1b7bc78aa21b93f5c48006135514dff2ad07c0",
+      "outputs/validation/monitor-20261028/rehomed-camera-truth/guided-profile/locations/locations.json": "b6744c012ff4091492b9afce3b41a4f7e18eb1e8bb60426864bd72129c5bf6f1",
+      "outputs/validation/monitor-20261028/rehomed-camera-truth/guided-profile/camera-checks.json": "ad1c1e6fe11ff810e101a71688cf8f1ba16ada1726f0979ffe1fa70359beaffe",
+      "outputs/validation/monitor-20261028/rehomed-camera-truth/guided-profile/visible-bird-checks.json": "6e954e60280040b80a12cdd2676c80524b6fe70857ba1e1747f75d00f4b6df2d",
+      "outputs/validation/monitor-20261028/rehomed-camera-truth/guided-profile/area-ratios.json": "744eb2689ced6462bdc168916d64924f39e46bfdaa7dfec7bf90cf14f4691287"
+    },
+    "status": "pending_independent_expected_selection_truth",
+    "reason": "sampled photo geometry passes; camera-area intervals do not qualify the comparable-size scene; no centring acceptance is authorised"
+  },
+  "provenance": "300ms and hot-throughput acceptance are user decisions; duty/cadence/memory/integrity bounds are explicit engineering criteria chosen before this new capture, not previously measured passes",
+  "revised_before_capture_utc": "2026-10-28T08:30:35.801712+00:00",
+  "gate_scopes": {
+    "window_clock": "first processed frame captured_at +120s; consecutive half-open600s windows ending at last processed frame",
+    "final_partial_window": "at least60s: evaluate same per-window gates; under60s: report without a window verdict, retain all samples in whole-hot-span and whole-capture gates",
+    "per_window_and_whole_post_warmup": [
+      "first_use_sensor_age_at_tick_p95_ms_max",
+      "uncensored_tracking_stale_age_p95_ms_max",
+      "sensor_tracking_stale_fraction_max",
+      "processed_fps_min"
+    ],
+    "whole_capture": [
+      "controller_interval_ms_max",
+      "new_undervoltage_latch_allowed",
+      "current_undervoltage_allowed"
+    ],
+    "memory": "capture-only samples after first captured frame+120s; compare median of first600s and last600s; incomplete memory windows are inconclusive",
+    "whole_run": [
+      "log_drops_max",
+      "render_drops_max",
+      "record_drops_max",
+      "record_limits_allowed",
+      "forced_kill_allowed",
+      "term_sent_count",
+      "full_off_both_required",
+      "independent_mp4_decode_required",
+      "all_playlist_repeats_required"
+    ],
+    "missing_evidence": "missing/invalid measurements prevent a pass; recording or cleanup failures are not filtered out",
+    "first_use": "deduplicate reconstructed sensor observation timestamp (tick_start-age) with1us tolerance; count the first tracking/stale tick for each new timestamp"
+  },
+  "evidence_completeness": {
+    "telemetry_hot_maximum_gap_interval_multiple": 2,
+    "telemetry_expected_interval_s": 1,
+    "rule": "Missing hot telemetry coverage is inconclusive, not silently accepted; same-boot latch receipts independently cover voltage sampling gaps."
+  },
+  "assessment_tool": {
+    "path": "tools/assess_monitor_endurance.py",
+    "sha256": "1ca46cb3273c62250f4994dc0e63dd2b637beb65a80a8aa6bfb055440ea282a5"
+  },
+  "hardware_setup": {
+    "status": "qualified",
+    "scope": "current home, checked bounded travel and camera visibility for endurance timing/stability only; no centring or selection acceptance",
+    "calibration": "outputs/setup/calibration-monitor-rehomed-20261028.local.yaml",
+    "calibration_sha256": "a78b6133f1379ca4c0838af5aea2b179624cfa1684810df308a7c0acfb0468aa",
+    "profile": "outputs/validation/monitor-20261028/hardware-rehomed.yaml",
+    "profile_sha256": "97bd252605188925fb5f2392c953a975fba68d639af0e65ef253d04f4828b50f",
+    "stimulus_manifest": "outputs/monitor/rehomed-confirmation-20261028.manifest.json",
+    "stimulus_manifest_sha256": "835735fecb8b05e09abac4d30ecf7d68bef923bc8859a000a46f028c5bb73d73",
+    "operator_sweep_observation": "user did not observe; no new smoothness or cable-clearance claim",
+    "current_distance": "unconfirmed after base relocation",
+    "quoted_display_brightness": "350-400 cd/m2 specification only, unmeasured",
+    "centres_and_expected_selection_accepted": false
+  },
+  "setup_review_updated_at_utc": "2026-10-28T12:35:24.432386+00:00",
+  "hour_scope_decision": {
+    "source": "explicit user reply in this conversation",
+    "quote": "Include the hour this session",
+    "recorded_at_utc": "2026-10-28T12:35:24.432395+00:00",
+    "received_timestamp_available": false
+  }
+}
