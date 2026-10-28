@@ -1,5 +1,31 @@
 # Validation status
 
+## Resumed campaign, 28 October 2026
+
+The user resumed the work and explicitly permits movement checks without
+continuous physical supervision. This supersedes the wrap-up deferral below.
+Keep the tested ±100 µs travel, 3 nominal °/s maximum speed and 250 ms freshness.
+No new physical run has started yet.
+
+Runtime `1f518f2` prevents low-confidence partial boxes from updating learnt size
+or velocity while still retaining their real positions and observation times.
+The new 21-observation regression reproduces the ID split at frame 5040 before
+the fix and preserves the identity afterwards. Seventy-two nearby tests and two
+subtests pass, including walking with maintenance-confidence detections. Full
+desktop verification passes 839 tests and 369 subtests; Pi verification passes
+837 tests and 375 subtests. Ruff, strict desktop mypy, Pi native CTest, model
+verification and Git integrity checks pass. The initial desktop browser failures
+were caused by the removed temporary executable; the pinned replacement and both
+gate logs are retained in `outputs/validation/monitor-20261028/`.
+
+The repaired private endurance actor/helper pass 16 offline tests, including
+real SIGINT/SIGTERM cleanup. E1–E6 are implemented and original scripts remain in
+`pre-resume/endurance-runner/` beneath the earlier evidence directory. A fresh
+short recording will provide confirmatory centring evidence under the frozen
+truth policy; the hour will assess timing and stability. Criteria are frozen in
+`deploy/monitor-endurance-policy.json`. Focused independent review and physical
+verification of the new code remain pending.
+
 ## Monitor campaign, 27 October 2026, in progress
 
 The user withdrew the 15 FPS goal and accepted the earlier hot 10–12 FPS range
