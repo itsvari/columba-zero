@@ -2,6 +2,12 @@
 
 ## One-hour result, 28 October 2026: failed
 
+After reviewing the outcome, the user stated “I'm fine with this result” and
+accepted the measured demonstration for its current scope. Further throughput
+and recorder tuning is optional. This disposition does not rewrite the frozen
+assessment or establish the still-unverified centring and expected-selection
+claims below.
+
 The user explicitly included the hour in this session. The persistent actor ran
 from 12:37:38Z to 13:41:38Z (20:37–21:41 Singapore time), including export and
 archiving. Capture lasted 3,624.549 seconds, with 3,504.549 seconds after the

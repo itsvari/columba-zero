@@ -4,6 +4,13 @@
 
 ### Monitor campaign update, 28 October 2026
 
+**User disposition:** after reviewing the result, the user stated “I'm fine with
+this result.” The measured demonstration is accepted for its current scope;
+further throughput and recorder tuning is optional. The original frozen verdict
+below remains unchanged. Independent centring and expected-selection verification
+are still incomplete, and the fixed-zone stretch goal remains deferred. Changes
+are retained on `feat/monitor-hardware-validation` for the Git handover.
+
 **The authorised hour completed and failed the frozen engineering gates.** The
 60.4-minute capture ran all 18 playlist repeats. Whole-hot processing was
 9.775 FPS; five of six windows fell below the 10 FPS floor. The recorder rejected
