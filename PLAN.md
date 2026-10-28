@@ -1,14 +1,29 @@
 # Columba Zero: pan-tilt integration and demonstration video
 
-## Next work: planned, not started
+## Next work: resumed, independent verification in progress
 
 The monitor-validation changes are merged into `main` through
 [PR #3](https://github.com/itsvari/columba-zero/pull/3), merge `577cf48`.
 The user requested a follow-up plan for independent centring and target-selection
 verification, followed by the fixed-zone feature. The plan is in
 [Independent verification and zone plan](docs/independent-verification-and-zone-plan.md).
-No implementation, new capture or physical movement is authorised by this
-planning step; wait for the user to resume the work.
+The user has now resumed autonomous work. Independent fixture and truth-tool
+changes and isolated zone geometry are in progress on
+`feat/independent-verification-and-zone`. A camera-only pilot has fresh raw
+evidence; no new physical-following or zone-activation result is claimed.
+
+The independent fixture, unresolved-selection handling and nested-evidence
+freeze are implemented. Three camera-only pilots retain all raw frames and
+rejections. Dark field improves photo-boundary visibility but needs controlled
+exposure; the optional camera setting leaves the default unchanged. At −1.5 EV,
+247 of 250 frames have strict optical identity, and the blind corner criterion
+passes 15/16 standing and 3/4 profile samples. These are rest-pose checks, not
+qualification of propagated source uncertainty, centring or moving-camera scope.
+Offline zone geometry, reference artefacts and registration candidates have
+54 focused tests and remain disconnected from runtime activation. Current full
+checks pass 936 desktop tests/387 subtests and 934 Pi tests/391 subtests, with
+six/eight optional skips respectively. Desktop strict mypy covers 138 files and
+Ruff covers 141. The Pi runs clean revision `b0d891e`; its calibration is preserved.
 
 ## 1. Delivery status and next-session handover
 

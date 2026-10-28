@@ -1,9 +1,9 @@
 # Plan independent following verification and a fixed zone
 
-Status: **planned; implementation and hardware work have not started**.
+Status: **resumed on 28 October 2026; V1 in progress**.
 The user requested this plan after accepting the measured demonstration and
-authorising its merge into `main` on 28 October 2026. Start the work only when
-the user resumes it.
+authorising its merge into `main` on 28 October 2026. The user subsequently
+resumed the work and requested autonomous progress, including delegation.
 
 ## Scope and starting point
 
@@ -12,7 +12,9 @@ remains a failed assessment against its frozen criteria; this plan does not
 reopen throughput tuning or require another hour. Independent centring and
 expected-selection claims remain unverified.
 
-Complete independent following verification first. Then implement an opt-in zone
+Complete independent following verification before runtime zone integration.
+Isolated zone foundations and offline tests may progress in parallel; they do not
+enable the feature. Then implement an opt-in zone
 fixed to a physical plane. The zone makes pigeons inside the polygon eligible
 for following and excludes pigeons outside it. It is a selection region, not a
 guarantee that a bird or camera cannot cross a physical boundary.
@@ -207,9 +209,9 @@ run is a separately planned follow-up, not part of starting this feature.
 
 | Unit | Deliverable | Status |
 |---|---|---|
-| V1 | Qualified camera truth, redesigned ambiguous scenes and frozen confirmation policy | Not started |
+| V1 | Qualified camera truth, redesigned ambiguous scenes and frozen confirmation policy | In progress; fixture and tooling implemented, optical pilot retained, qualification incomplete |
 | V2 | Independent centring and selection confirmation reports | Not started |
-| Z1 | Zone reference, registration and membership domain logic with offline tests | Not started |
+| Z1 | Zone reference, registration and membership domain logic with offline tests | Offline geometry, reference files and registration candidates implemented; independent qualification pending |
 | Z2 | Browser workflow, selector/controller integration and simulation | Not started |
 | Z3 | Independent planar-zone hardware validation and operating guide | Not started |
 
