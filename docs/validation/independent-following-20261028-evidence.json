@@ -1,5 +1,5 @@
 {
-  "status": "paused at user request; incomplete and not independently reviewed",
+  "status": "paused at user request; offline independent review complete within its stated scope; no new verification pass",
   "branch": "feat/independent-verification-and-zone",
   "tested_runtime_revision": "b0d891e",
   "desktop_tests": 936,
@@ -54,5 +54,23 @@
     "outputs/validation/independent-following-20261028/pre-review-manifest.json": "9a041a828e751a70ffc59c4332fc080160cb21784cd762dbe88d0966753cb51f"
   },
   "raw_media": "retained locally under outputs; deliberately not committed",
-  "review": "pending Opus task cancelled during immediate wrap-up"
+  "review": "Completed offline on 29 October; implementation remains paused",
+  "independent_review": {
+    "report": "docs/validation/independent-following-20261028-review.md",
+    "sha256": "f2c7f7e8bc89e774086a130de04bae5e29de999ec68ce101f23a41e23394501e",
+    "model": "Claude Opus 5.5",
+    "reviewed_revision": "bd6d8a53fef943cdde10ae908f0c6736c635a2cb",
+    "code_revision": "b0d891eac4b94d87dcb2de3e1fd536775e8cd0ef",
+    "offline_tests_passed": 226,
+    "offline_subtests_passed": 37,
+    "constraints": "No Pi or network-device access, GUI, browser, image viewing or source edits",
+    "result": "No correctness defect in inspected code paths; V1 blocked by fixture and qualification findings A1-A3 and B1-B5",
+    "scope_limits": [
+      "Raw image correctness not inspected",
+      "Browser source changes and browser tests not inspected in this review",
+      "Some zone-reference and zone-registration internals not reviewed in detail",
+      "Live Pi state not checked",
+      "Full suite, Ruff and mypy not rerun; saved logs checked"
+    ]
+  }
 }

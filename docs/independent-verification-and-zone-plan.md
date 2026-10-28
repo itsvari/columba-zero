@@ -1,8 +1,10 @@
 # Plan independent following verification and a fixed zone
 
 Status: **paused at the user's request on 29 October 2026**.
-Save and push the current results; resume only when instructed. Independent Opus
-review was cancelled during wrap-up and is not a completed review of this work.
+Save and push the current results; resume only when instructed. The first Opus
+review was cancelled during wrap-up; the subsequent
+[offline review](validation/independent-following-20261028-review.md) is complete.
+Only the review and documentation resumed; implementation remains paused.
 The user requested this plan after accepting the measured demonstration and
 authorising its merge into `main` on 28 October 2026. The user subsequently
 resumed the work and requested autonomous progress, including delegation.
@@ -40,6 +42,31 @@ Relevant starting points:
   There is no implemented zone registration or drawing workflow to enable.
 
 ## Phase 1: qualify independent camera truth
+
+### Review findings to close before confirmation
+
+The offline review found no correctness defect in the inspected code paths, but
+identified these blockers. They are follow-up work, not completed fixes:
+
+| Finding | Required follow-up |
+|---|---|
+| A1: scene-area qualification unenforced | Require recorded comparable/larger area evidence before assigning a definite expected selection; otherwise retain unknown time. |
+| A2: excessive acquisition allowances | Reconsider the three 0–12 s allowances: the incumbent is alone, unlike the same situation in static scenes. Freeze corrected labels before capture. |
+| A3: events hidden by settling | Extend or separately assess occlusion, departure and empty/confuser cases; their events currently occur within the six-second settling window. |
+| B1: reach layout mismatch | Obtain reach evidence for the actual 0.65-scale, 0/1 layout after hardware work resumes. The old 0.4-scale policy cannot support it. |
+| B2: comparable-size interval crosses 1.25 | Redesign the scene or assess it separately. Do not tighten uncertainty to manufacture qualification. |
+| B3/B4: incomplete visual scope | Qualify pale scenes and actual moving-camera views; reused rest-pose annotations are not independent repeats. |
+| B5: no frozen confirmation policy | Pin the exact page, exposure configuration, truth/uncertainty method, reach, timing windows, scored scope and annotation blinding before capture. |
+
+Prefer the existing per-frame `manual_pixels` route before building a new scoped
+calibration subsystem. The review proposes independently annotated crop corners,
+their diagonal intersection for the approved crop-box centre, and explicit
+per-axis uncertainty including source-edge allowance. Establish repeat-annotation
+uncertainty offline and validate the centre/curvature assumptions; do not omit
+uncertainty or infer it from feature-fit residuals. Keep unlocatable frames unknown.
+Manual centres still need valid reach evidence. No such confirmation run has begun.
+
+### Resume sequence
 
 Entry: the user resumes work. Inspect the actual camera pose and configuration;
 the previous distance and mappings do not automatically qualify a moved base.

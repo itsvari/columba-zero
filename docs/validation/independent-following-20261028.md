@@ -2,8 +2,12 @@
 
 Status: paused at the user’s request on 29 October 2026. The current branch is
 `feat/independent-verification-and-zone`. These changes have not been merged.
-The requested independent Opus review was cancelled during immediate wrap-up;
-no independent review of this new implementation is claimed.
+The first independent Opus review was cancelled during immediate wrap-up. A new
+[offline-only review](independent-following-20261028-review.md) is complete at
+`bd6d8a5`: no correctness defect was found in the inspected code paths, and
+226 focused offline tests plus 37 subtests passed. Its scope excludes raw images,
+browser behaviour, some zone internals and live hardware. Implementation remains
+paused; only review and documentation resumed.
 
 ## Implemented
 
@@ -43,9 +47,11 @@ but automatic exposure washed out interior features; controlled exposure restore
 visible detail. This is calibration evidence, not a tracking/performance pass.
 
 The independent Terra audit of the controlled-exposure samples passed 15/16
-standing and 3/4 profile photo-corner checks under the declared criterion:
+standing and 3/4 profile photo-corner sample rows under the declared criterion:
 maximum nominal residual plus sqrt(2) times the subjective 3 px per-axis camera
-allowance must not exceed 7 px. Failures are retained. These are unpowered
+allowance must not exceed 7 px. Ten standing and two profile annotations are
+distinct; coordinates are reused across the remaining static sample rows.
+Failures are retained. These are unpowered
 rest-pose observations only. They do not qualify full source-edge uncertainty,
 interior extrapolation, comparable-area bounds or moving-camera behaviour.
 
@@ -58,8 +64,9 @@ identity without publishing raw recordings or private calibration.
 
 ## Resume points
 
-1. Independently review the new source changes and retained pilot evidence.
-2. Choose a defensible scoped calibration or per-frame manual-pixel truth method;
+1. Close review A1–A3 and B1–B5: scene-area gates, fixture labels and event windows,
+   current-layout reach, comparable/pale truth, moving-camera scope and policy.
+2. Prefer the existing per-frame manual-pixel truth method;
    avoid transplanting the old pose’s qualification or globally promoting assets.
 3. Complete independently supported source uncertainty and powered-pose coverage,
    then freeze a new confirmation policy and collect fresh following evidence.
@@ -68,6 +75,14 @@ identity without publishing raw recordings or private calibration.
    do not constitute the working fixed-zone feature.
 5. Keep physical-zone validation deferred: the user currently has no flat textured
    surface and explicitly requested software/offline checks first.
+
+With fully qualified truth, current allowances cap the nominal centring lower
+bound at 0.824 and require 97.1% definite occupancy. Leaving the comparable-size
+scene unknown lowers that cap to 0.723; leaving pale scenes unknown gives 0.731.
+Those lower caps describe incomplete qualification, not an inherent failure of
+the truth method or a measured control result. The current old-layout reach
+policy would leave every expected target reach-unresolved. The review therefore
+does not approve a confirmation run or claim a centring/selection/zone pass.
 
 The earlier accepted demonstration and its frozen failed hour assessment remain
 unchanged. No new centring, selection, zone or global acceptance pass is claimed.

@@ -4,8 +4,11 @@
 
 The user requested immediate wrap-up to free the computer. Current work is saved
 on `feat/independent-verification-and-zone`; do not resume without instruction.
-The pending Opus review was cancelled before completion, so this new work is not
-independently reviewed. Results and evidence hashes are saved in
+The first Opus review was cancelled during wrap-up. A fresh offline-only review
+has now completed at `bd6d8a5`, with no correctness defect found in the inspected
+code paths. Fixture and qualification blockers remain; implementation is still
+paused. The [review](docs/validation/independent-following-20261028-review.md)
+and results are saved in the repository. Evidence hashes are saved in
 [the campaign handover](docs/validation/independent-following-20261028.md).
 Owned test browsers and the SSH master were closed. The final Pi check found no
 camera owner and both servo outputs FULL_OFF. No physical-zone tests are planned
@@ -17,8 +20,8 @@ The monitor-validation changes are merged into `main` through
 The user requested a follow-up plan for independent centring and target-selection
 verification, followed by the fixed-zone feature. The plan is in
 [Independent verification and zone plan](docs/independent-verification-and-zone-plan.md).
-The user has now resumed autonomous work. Independent fixture and truth-tool
-changes and isolated zone geometry are in progress on
+Before the pause, autonomous work implemented independent fixture and truth-tool
+changes and isolated zone foundations on
 `feat/independent-verification-and-zone`. A camera-only pilot has fresh raw
 evidence; no new physical-following or zone-activation result is claimed.
 
@@ -27,13 +30,25 @@ freeze are implemented. Three camera-only pilots retain all raw frames and
 rejections. Dark field improves photo-boundary visibility but needs controlled
 exposure; the optional camera setting leaves the default unchanged. At −1.5 EV,
 247 of 250 frames have strict optical identity, and the blind corner criterion
-passes 15/16 standing and 3/4 profile samples. These are rest-pose checks, not
+passes 15/16 standing and 3/4 profile sample rows, representing only ten and two
+distinct corner annotations respectively. These are rest-pose checks, not
 qualification of propagated source uncertainty, centring or moving-camera scope.
 Offline zone geometry, reference artefacts and registration candidates have
 54 focused tests and remain disconnected from runtime activation. Current full
 checks pass 936 desktop tests/387 subtests and 934 Pi tests/391 subtests, with
 six/eight optional skips respectively. Desktop strict mypy covers 138 files and
-Ruff covers 141. The Pi runs clean revision `b0d891e`; its calibration is preserved.
+Ruff covers 141. At the saved deployment check, the Pi ran clean revision
+`b0d891e` and its calibration was preserved; it was not contacted for this review.
+
+Before confirmation, close review findings A1–A3 and B1–B5: enforce scene-area
+qualification, correct acquisition allowances, give loss/negative events scored
+time, replace the old-layout reach policy, resolve the comparable-size and
+pale-field cases, obtain moving-camera coverage and freeze the new policy. The
+review recommends per-frame `manual_pixels` truth as the smallest next route.
+At the current labels even fully qualified truth needs 97.1% definite occupancy;
+the unresolved comparable case caps the lower bound at 0.723. These are fixture
+and qualification limits, not a new measured following result. No new Pi or GUI
+actions were used to finish the review.
 
 ## 1. Delivery status and next-session handover
 

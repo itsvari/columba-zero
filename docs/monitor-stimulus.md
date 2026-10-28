@@ -294,9 +294,10 @@ exercise the intended path must remain visible as unexercised or inconclusive.
 For preparation, keep hardware following disabled. The independent page exposes
 **Calibration pose → Show paused pose**. It seeks to exact static and selection
 annotation-start frames in the first repeat, pauses playback and logs a
-`calibration_pose` event. At 30 Hz the selection poses are frame 0 (incumbent),
-360 (challenge begins), and additionally 450 (sustained response allowance ends).
-The two challenge poses have identical static geometry. The brief frame-360 pose
+`calibration_pose` event. At the pilots' 10 Hz, the selection poses are frame 0
+(incumbent), 120 (challenge begins), and additionally 150 (sustained response
+allowance ends). The default 30 Hz uses frames 0/360/450 instead.
+The two challenge poses have identical static geometry. The brief challenge pose
 stays frozen until resumed, allowing independent inspection without changing its
 0.3-second playback lifetime. These are calibration-only observations: do not
 reuse their frozen duration as confirmation evidence. Reset/replay after preparing
@@ -316,13 +317,14 @@ dark fill and light cross visibility; they do not establish camera qualification
 or detection performance. Preserve the unsuccessful unframed pale-field capture
 and qualify this new presentation independently before any confirmation.
 
-Build the paired dark-field pilot without photograph registration frames:
+Reproduce the captured dark-field pilot without photograph registration frames:
 
 ```sh
 python tools/monitor_stimulus.py --playlist independent \
+  --seed 20261028 --frame-rate-hz 10 --static-duration-s 12 \
   --output outputs/independent-verification-v1-dark/monitor.html \
   --optical-code --registration-grid --display-scale 0.65 \
-  --target-scale 1.25 --horizontal-position 0.5 --vertical-position 0.5
+  --target-scale 1.25 --horizontal-position 0 --vertical-position 1
 ```
 
 Use exactly the same page and display settings for its calibration and future

@@ -37,8 +37,9 @@ physical zone.
 
 `app/zone_registration.py` estimates a current-image-to-reference candidate from
 ORB correspondences. Reference and current bird masks include a descriptor
-footprint margin. A deterministic correspondence subset is held out of the
-RANSAC fit. Screening checks inliers, held-out residuals, spatial coverage,
+footprint margin. Every fifth correspondence from the same match set is held out
+of the RANSAC fit; this is not an independent validation dataset. Screening checks
+inliers, held-out residuals, spatial coverage,
 projected geometry, horizons, local distortion, camera bindings and freshness.
 
 Each call estimates independently. Failure returns an invalid result; it does
