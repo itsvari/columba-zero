@@ -73,6 +73,42 @@ window.monitorTestCompletion = (async () => {
     return intersectionArea(bounds, region) === 0;
   }), "all four camera-visible registration markers lie outside target region");
 
+  if (manifest.photo_registration_frame) {
+    const interiorInsetPx = 2;
+    const sourceLeftPx = Math.ceil(
+      (initialTarget.box_screen_css_px.left_px - layout.bounds.left) * layout.devicePixelRatio);
+    const sourceTopPx = Math.ceil(
+      (initialTarget.box_screen_css_px.top_px - layout.bounds.top) * layout.devicePixelRatio);
+    const interiorWidthPx = Math.floor(initialTarget.box_screen_css_px.width_px *
+      layout.devicePixelRatio) - 2 * interiorInsetPx;
+    const interiorHeightPx = Math.floor(initialTarget.box_screen_css_px.height_px *
+      layout.devicePixelRatio) - 2 * interiorInsetPx;
+    const framedInterior = context.getImageData(sourceLeftPx + interiorInsetPx,
+      sourceTopPx + interiorInsetPx, interiorWidthPx, interiorHeightPx).data;
+    const frameSampleLeftPx = Math.round((initialTarget.box_screen_css_px.left_px -
+      layout.bounds.left - photographFrameInnerPaddingPx / 2 * layout.scale) *
+      layout.devicePixelRatio);
+    const frameSampleTopPx = Math.round((initialTarget.box_screen_css_px.top_px -
+      layout.bounds.top + initialTarget.box_screen_css_px.height_px / 2) * layout.devicePixelRatio);
+    const framedEdge = context.getImageData(frameSampleLeftPx, frameSampleTopPx, 1, 1).data;
+    check(initial.photo_registration_frame && initialTarget.photo_registration_frame_drawn,
+      "calibration frame is declared in the manifest and camera-facing frame record");
+    manifest.photo_registration_frame = false;
+    render(true);
+    const plainInterior = context.getImageData(sourceLeftPx + interiorInsetPx,
+      sourceTopPx + interiorInsetPx, interiorWidthPx, interiorHeightPx).data;
+    const plainEdge = context.getImageData(frameSampleLeftPx, frameSampleTopPx, 1, 1).data;
+    check(framedInterior.every((value, index) => value === plainInterior[index]),
+      "calibration frame leaves the photograph interior unchanged");
+    check(framedEdge[0] === 0 && framedEdge[1] === 0 && framedEdge[2] === 0 && plainEdge[0] > 0,
+      "calibration frame draws a visible black edge outside the photograph");
+    check(JSON.stringify(latestFrame().targets[0].box_screen_css_px) ===
+      JSON.stringify(initialTarget.box_screen_css_px),
+      "calibration frame leaves photograph coordinates unchanged");
+    manifest.photo_registration_frame = true;
+    render(true);
+  }
+
   document.getElementById("play").click();
   advance(1100);
   const beforePause = sequenceFrame;
@@ -120,10 +156,14 @@ window.monitorTestCompletion = (async () => {
   jumpToScene("partial-occlusion", 3.1);
   check(Math.abs(latestFrame().targets[0].visible_fraction - 0.4) < 0.001,
     "partial occlusion exports remaining photograph fraction");
+  check(!latestFrame().targets[0].photo_registration_frame_drawn,
+    "calibration frame is absent during partial occlusion");
   for (const name of ["brief-full-occlusion", "full-occlusion"]) {
     jumpToScene(name, 3.1);
     check(latestFrame().targets[0].visibility === "occluded" &&
       latestFrame().targets[0].visible_fraction === 0, `${name} hides the complete target`);
+    check(!latestFrame().targets[0].photo_registration_frame_drawn,
+      `${name} leaves no calibration frame around the hidden target`);
     jumpToScene(name, 5);
     check(latestFrame().targets[0].visible_fraction === 1, `${name} restores the same identity`);
   }

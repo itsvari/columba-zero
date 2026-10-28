@@ -40,6 +40,20 @@ their paths and relative area ratios. This is useful when reducing the whole
 presentation to keep its markers below the camera overlay. The accepted range is
 0.5 to 2. Check scripted clipping and actual detection again after changing it.
 
+For camera calibration, add `--photo-registration-frame` to expose pale photograph
+boundaries. It draws a black frame with a white outer border outside each fully
+visible photograph. The inner black edge marks the original photograph boundary.
+The photograph coordinates, crops and paths stay unchanged. The option has its
+own presentation identity and appears in the manifest and frame records.
+Partly occluded, fully occluded and clipped photographs receive no frame. The
+target-region clip can also cut a frame's outer border, so inspect each boundary
+before annotating it.
+
+Use framed pages for calibration with following disabled. Collect the separate
+confirmatory following recording without this option, and preserve both pages
+and manifests. Camera annotations must still identify the observed photograph
+corners independently of the matcher.
+
 Add `--optical-code` to display matching machine-readable identity bands above
 and below the target region. This changes the presentation ID and abbreviates
 the lower human caption to run, render and state. See the [offline association

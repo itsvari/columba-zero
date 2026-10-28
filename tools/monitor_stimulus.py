@@ -205,6 +205,7 @@ class Manifest:
     registration_markers: tuple[RegistrationMarker, ...]
     registration_points: tuple[RegistrationPoint, ...]
     optical_code: bool
+    photo_registration_frame: bool
     maximum_log_records: int
     clock_domain: str
     coordinate_system: str
@@ -449,6 +450,7 @@ def build_manifest(
     target_scale: float = 1.0,
     optical_code: bool = False,
     static_duration_s: float = DEFAULT_STATIC_DURATION_S,
+    photo_registration_frame: bool = False,
 ) -> Manifest:
     if playlist not in PLAYLISTS:
         raise ValueError("playlist must be tuning or evaluation")
@@ -546,6 +548,7 @@ def build_manifest(
         markers,
         reference_points,
         optical_code,
+        photo_registration_frame,
         MAXIMUM_LOG_RECORDS,
         "browser performance.now() milliseconds; never Pi exposure timestamps",
         "screen content in browser viewport CSS pixels; origin at viewport top-left",
@@ -582,6 +585,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument("--vertical-position", type=float, default=CENTRED_ALIGNMENT_FRACTION)
     parser.add_argument("--registration-grid", action="store_true")
     parser.add_argument("--optical-code", action="store_true")
+    parser.add_argument("--photo-registration-frame", action="store_true")
     parser.add_argument("--static-duration-s", type=float, default=DEFAULT_STATIC_DURATION_S)
     parser.add_argument("--target-scale", type=float, default=1.0)
     options = parser.parse_args(arguments)
@@ -602,6 +606,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             options.target_scale,
             options.optical_code,
             options.static_duration_s,
+            options.photo_registration_frame,
         )
         html = render_html(manifest)
         output.parent.mkdir(parents=True, exist_ok=True)

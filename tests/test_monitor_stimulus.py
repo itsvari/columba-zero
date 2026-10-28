@@ -67,6 +67,16 @@ class MonitorStimulusTests(unittest.TestCase):
         self.assertNotEqual(original.presentation_id, calibrated.presentation_id)
         self.assertEqual(original.scenes, calibrated.scenes)
 
+    def test_photo_registration_frame_preserves_stimuli_and_has_a_distinct_identity(self) -> None:
+        original = build_manifest("tuning")
+        framed = build_manifest("tuning", photo_registration_frame=True)
+        self.assertFalse(original.photo_registration_frame)
+        self.assertTrue(framed.photo_registration_frame)
+        self.assertEqual(original.scenes, framed.scenes)
+        self.assertEqual(original.assets, framed.assets)
+        self.assertEqual(original.target_region, framed.target_region)
+        self.assertNotEqual(original.presentation_id, framed.presentation_id)
+
     def test_target_scale_preserves_paths_and_area_advantage(self) -> None:
         original = build_manifest("tuning")
         enlarged = build_manifest("tuning", target_scale=1.25)
@@ -277,13 +287,14 @@ class MonitorStimulusTests(unittest.TestCase):
     def test_generated_html_behaviour_in_a_real_browser(self) -> None:
         driver = (REPOSITORY / "tests/monitor_stimulus_browser.js").read_text(encoding="utf-8")
         browser = os.environ["COLUMBA_TEST_BROWSER"]
-        cases: tuple[tuple[Playlist, float], ...] = (
-            ("tuning", 1.0),
-            ("evaluation", 1.0),
-            ("tuning", 0.6),
-            ("evaluation", 0.6),
+        cases: tuple[tuple[Playlist, float, bool], ...] = (
+            ("tuning", 1.0, False),
+            ("evaluation", 1.0, False),
+            ("tuning", 0.6, False),
+            ("evaluation", 0.6, False),
+            ("tuning", 0.65, True),
         )
-        for playlist, display_scale in cases:
+        for playlist, display_scale, photo_registration_frame in cases:
             with (
                 self.subTest(playlist=playlist, display_scale=display_scale),
                 tempfile.TemporaryDirectory() as directory,
@@ -296,6 +307,7 @@ class MonitorStimulusTests(unittest.TestCase):
                     horizontal_position_fraction=0.8,
                     vertical_position_fraction=0.1,
                     registration_grid=display_scale < 1,
+                    photo_registration_frame=photo_registration_frame,
                 )
                 html = render_html(manifest).replace("</html>", f"<script>{driver}</script></html>")
                 output.write_text(html, encoding="utf-8")

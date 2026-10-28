@@ -37,6 +37,8 @@ const logReserveRecords = 10;
 const visibilityToleranceFraction = 1e-9;
 const referenceRadiusPx = 14;
 const referenceOutlineWidthPx = 7;
+const photographFrameInnerPaddingPx = 8;
+const photographFrameOuterPaddingPx = 12;
 const referenceLineWidthPx = 3;
 const photographs = new Map();
 const records = [];
@@ -146,6 +148,16 @@ function intersectionArea(first, second) {
   return widthPx * heightPx;
 }
 
+function drawPhotographFrame(rectangle) {
+  for (const [paddingPx, colour] of [
+    [photographFrameOuterPaddingPx, "white"], [photographFrameInnerPaddingPx, "black"]
+  ]) {
+    context.fillStyle = colour;
+    context.fillRect(rectangle.left_px - paddingPx, rectangle.top_px - paddingPx,
+      rectangle.width_px + 2 * paddingPx, rectangle.height_px + 2 * paddingPx);
+  }
+}
+
 function drawTarget(target, frame, layout) {
   const asset = photographs.get(target.asset_id);
   const pose = interpolatePose(target, frame);
@@ -169,7 +181,9 @@ function drawTarget(target, frame, layout) {
   else if (intersectionArea(rectangle, manifest.target_region) === 0) visibility = "outside_target_region";
   else if (coveredFraction === 1) visibility = "occluded";
   else if (visibleFraction < 1) visibility = "partial";
+  const photographFrameDrawn = manifest.photo_registration_frame === true && visibility === "visible";
   if (present) {
+    if (photographFrameDrawn) drawPhotographFrame(rectangle);
     const crop = asset.photograph.crop;
     context.drawImage(asset.image, crop.left_px, crop.top_px, crop.width_px, crop.height_px,
       rectangle.left_px, rectangle.top_px, rectangle.width_px, rectangle.height_px);
@@ -186,6 +200,7 @@ function drawTarget(target, frame, layout) {
     present,
     visibility,
     visible_fraction: visibleFraction,
+    photo_registration_frame_drawn: photographFrameDrawn,
     covered_fraction: coveredFraction
   };
 }
@@ -361,6 +376,7 @@ function render(force = false, animationFrameBrowserMs = null) {
     viewport_height_css_px: window.innerHeight,
     device_pixel_ratio: layout.devicePixelRatio,
     display_scale: manifest.display_scale,
+    photo_registration_frame: manifest.photo_registration_frame === true,
     horizontal_position_fraction: manifest.horizontal_position_fraction,
     vertical_position_fraction: manifest.vertical_position_fraction,
     fullscreen: document.fullscreenElement !== null,
