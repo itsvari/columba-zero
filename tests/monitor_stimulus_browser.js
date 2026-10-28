@@ -127,6 +127,16 @@ window.monitorTestCompletion = (async () => {
   check(playing && sequenceFrame === 0 && runNumber === 3, "replay starts a fresh running sequence");
   check(JSON.stringify(latestFrame().targets) === JSON.stringify(initial.targets),
     "replay reproduces the exact target identity and geometry");
+  const earlierAnimationBrowserMs = testNowMs - 2;
+  const replayAnimation = nextAnimation;
+  nextAnimation = null;
+  replayAnimation(earlierAnimationBrowserMs);
+  check(sequenceFrame === 0 && latestFrame().repeat_index === 0 &&
+    latestFrame().targets[0].visibility === "visible",
+    "an animation timestamp before replay stays at the first visible frame");
+  check(logged().filter(row => row.kind === "frame").every(row =>
+    row.sequence_frame >= 0 && row.repeat_index >= 0),
+    "replay never exports negative frame or repeat indices");
 
   jumpToScene("stop-reverse", 2);
   const movingLeft = latestFrame().targets[0].box_screen_css_px.left_px;

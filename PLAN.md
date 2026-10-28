@@ -4,6 +4,39 @@
 
 ### Monitor campaign update, 28 October 2026
 
+**The authorised hour completed and failed the frozen engineering gates.** The
+60.4-minute capture ran all 18 playlist repeats. Whole-hot processing was
+9.775 FPS; five of six windows fell below the 10 FPS floor. The recorder rejected
+three frames because its queue was full. Neither failure is waived.
+
+Timing and memory gates passed: hot first-use age was 201.2 ms at p95,
+uncensored tracking/stale age was 261.9 ms, maximum controller interval was
+57.171 ms, and RSS median increase was 0.172 MiB. Independent telemetry peaked
+at 88.65°C with final ten-minute median 85.35°C; median measured ARM clock was
+1.50 GHz and thermal-limit bits were current in 99.6% of capture samples.
+There was no new or current under-voltage. One TERM, no KILL and both FULL_OFF
+were recorded; an additional read-only check confirms no remaining camera owner
+and both outputs disabled. The MP4 decoded independently and the archive hash
+matched. These results establish the measured subgates, not physical smoothness.
+
+A browser clock-ordering bug briefly rendered frame/repeat −1 immediately after
+Replay, so the unchanged runner and assessor also rejected playlist integrity
+despite every real repeat and the final completion being present. The generator
+is repaired for future runs, with a real-browser regression that fails before
+and passes after the fix. The recorded page, raw evidence, frozen policy and
+failed assessment are unchanged. A preserved source snapshot reproduces the
+original assessment byte-for-byte. The current template differs from the frozen
+launch inputs: regenerate pages and freeze a new policy before any further run.
+
+The hour is finished; no repeat is running. Independent centring and expected
+selection remain pending. Next work is recorder-stall instrumentation, a decision
+about cooling or a smaller processing load, and a new-pose selection fixture with
+independent apparent-area truth. Do not infer a centring or global acceptance
+pass from this hour. Details are in `deploy/VALIDATION.md` and the retained
+`outputs/validation/monitor-20261028/hour-observer-report.md`.
+
+The following records the preparation and bounded checks before the hour.
+
 On 28 October the user resumed the campaign, confirmed clear cables and readiness
 to observe, and explicitly permitted movement checks without continuous physical
 supervision. The later explicit reply, “Include the hour this session”, supersedes
@@ -66,12 +99,12 @@ that capture. Manual apparent-area intervals are too wide to qualify the
 similar-size target-selection scene in the new camera view. Centring and
 selection therefore remain pending; the old exploratory pass is not transferred
 to this pose. The one-hour timing, recording and stability subgate is explicitly
-authorised and has not started. Both policy copies now qualify only this bounded
+authorised and was pending at that preparation checkpoint. Both policy copies qualify only this bounded
 hardware setup for that subgate and retain pending centring status. The actor
 rejects a pending setup, changed frozen inputs or a framed following stimulus.
 The hour uses the new default-off frame runtime with unchanged scene geometry;
 the bounded following calibration used the preceding runtime. Browser tests
-verify the new path, but it has not yet driven a following capture.
+verified the new path before it drove the hour's following capture.
 Opus identified an assessor shutdown-edge bug before launch. A 13 ms final-frame
 gap now has coverage within the existing 75 ms controller budget; a 100 ms gap
 remains inconclusive. The assessor also distinguishes measured ARM clock from
@@ -136,7 +169,7 @@ the Kalman box prediction collapsed to one pixel wide before retention expired.
 The earlier processing-age explanation is superseded. There are no software
 shipping blockers. Centring remains exploratory because the profile qualification
 was added after scoring, and the narrow pass needs a fresh confirmatory recording.
-The hour-long test has not yet run; the user explicitly included it in this session.
+The hour's failed result is recorded at the top of this handover.
 
 Review E1–E6 and the subsequent T1, R1 and P1 findings are addressed by the
 current tracker, runner and frozen policy. The post-reboot voltage baseline is

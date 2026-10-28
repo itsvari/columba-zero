@@ -1,6 +1,82 @@
 # Validation status
 
+## One-hour result, 28 October 2026: failed
+
+The user explicitly included the hour in this session. The persistent actor ran
+from 12:37:38Z to 13:41:38Z (20:37–21:41 Singapore time), including export and
+archiving. Capture lasted 3,624.549 seconds, with 3,504.549 seconds after the
+120-second warm-up. The unchanged frozen assessor returns **fail**. Its policy
+SHA-256 is `878e3c857bbdef9040ce3b5736fcf46b37e3fa25fcbd300c7c6f7813abd8a97b`.
+No threshold or original evidence was changed after the data was collected.
+
+| Gate | Observed | Result |
+|---|---|---|
+| Whole-hot processing, ≥10 FPS | 9.775 FPS | Fail |
+| Every hot window, ≥10 FPS | 10.087, 9.697, 9.752, 9.700, 9.688, 9.720 FPS | Five fail |
+| First-use / uncensored age, p95 ≤300 ms | 201.2 / 261.9 ms whole hot; every window below 300 ms | Pass |
+| Sensor stale fraction, ≤10% | 8.486% whole hot; every window below 10% | Pass |
+| Controller interval, ≤75 ms | 57.171 ms maximum | Pass |
+| RSS median increase, ≤32 MiB | 180,224 bytes (0.172 MiB) | Pass |
+| Recording drops, zero | Three queue rejections | Fail |
+| Playlist integrity | All repeats 0–17 and final completion, plus an invalid −1 frame | Fail |
+| Cleanup | Child 0, one TERM, no KILL, both FULL_OFF | Pass |
+| Recording decode / archive checksum | Independent FFmpeg exit 0 / SHA-256 matches | Pass |
+
+The six windows begin 120 seconds after capture start: five are 600 seconds and
+the last is 504.549 seconds. All are gated. Recording, rendering and log writer
+drops are separate: recording dropped three, rendering and logging dropped zero.
+The 73,164 latest-frame capture overwrites and 17,519 preview overwrites are
+separate counters. The recording rejection times were not logged. A single
+0.801-second retained-frame gap is consistent with three consecutive rejections,
+but its location and the underlying writer stall remain inferential; there is
+no disk-latency or queue-history evidence. Normal drain and successful export
+rule out terminal drain loss. The queue must be instrumented before assigning a
+cause or changing its capacity.
+
+Independent capture-only telemetry spans 65.55–88.65°C; the final 600-second
+temperature median is 85.35°C. Measured ARM clock has median 1.500019 GHz, while
+the cpufreq request remains 2.4 GHz. Current thermal-limit bits occur in 99.635%
+of capture samples. This establishes pervasive thermal limiting, without proving
+it caused every throughput loss or the writer stall. Baseline `0xe0000` and final
+`0xe0008` are on the same boot, with no current or new latched under-voltage.
+Telemetry starts 0.563 seconds after capture; hot sampling coverage passes and
+same-boot baseline/final latch receipts cover the voltage gate. The temperature
+median is descriptive, not independent thermal certification.
+
+The actor exits 1 because its strict repeat set contains −1 as well as 0–17.
+Immediately after Replay, an animation callback timestamp precedes the
+`performance.now()` playback anchor by a few milliseconds. That legitimate
+browser ordering caused a negative elapsed interval and frame. The fix bounds
+elapsed time since the anchor at zero; a real-browser regression reproduces the
+failure before the fix and passes afterwards. The original page, browser JSONL,
+raw camera frames, frozen assessor and failed report remain unchanged. The
+recorder and FPS failures independently prevent a pass. No hardware repeat was
+performed after the repair.
+
+The 65-file capture-source snapshot and its manifest preserve the original
+frozen inputs before the repair. Replaying that assessor from the snapshot
+produces a byte-identical failed report. The historical policy copies remain
+unchanged; the repaired template intentionally fails their frozen-input guard.
+Regenerate stimuli and freeze a new policy before another launch.
+
+Both outputs were read back FULL_OFF, and a fresh read-only check found no
+remaining camera/supervisor owner and both register bits set. No operator
+smoothness or cable-clearance observation is claimed. The hour is complete;
+centring, expected selection and global acceptance remain pending.
+
+Evidence is under `outputs/validation/monitor-20261028/`: `hour-run-pointer.json`,
+`hour-observer-report.md`, `hour-recording-drop-analysis.md`,
+`hour-result/assessment/assessment.json`, `hour-result/assessment/manifest.json`,
+`hour-result/decode-proof.json`, `hour-capture-source-snapshot.json`,
+`hour-frozen-replay-proof.json`, `hour-observer/service-journal.jsonl` and
+`hour-final-readback.json`. The verified archive SHA-256 is
+`82636d8978df972313424f8a03a5b0c156c4356e19144a540852024f80131ea8`;
+the MP4 SHA-256 is
+`57346442d7749cbe8816ec8421e4192f60608f3a471bf0e42e5b77750342f155`.
+
 ## Resumed campaign, 28 October 2026
+
+The following records preparation and bounded checks before the hour above.
 
 The user resumed the work and explicitly permits movement checks without
 continuous physical supervision. The later explicit reply, “Include the hour
@@ -31,7 +107,7 @@ the monitor edge and room rather than the rendered stimulus. Raising the test
 browser and a separate follow-disabled camera recording did not resolve visibility.
 The colour diagnostic proved that the physical monitor follows the test browser.
 The user then confirmed the Pi/base had moved, invalidating the old home and reach
-mapping. No hour run has started. Evidence is in
+mapping. The hour had not started at that checkpoint. Evidence is in
 `outputs/validation/monitor-20261028/`.
 
 Slow servo ramps established new home commands of pan 80.1 and tilt 89.1 nominal
@@ -92,11 +168,11 @@ Both policy copies qualify the current home, bounded travel and visibility only
 for the hour's timing, recording and stability gates. Independent centring and
 selection remain pending, and the old pose's qualification policy is excluded
 from the current frozen inputs. The actor refuses launch for a pending setup,
-changed frozen inputs or a framed following page. The hour is authorised but has
-not started; its numerical engineering criteria are unchanged.
+changed frozen inputs or a framed following page. The hour was authorised and
+pending at this checkpoint; its numerical engineering criteria were unchanged.
 The hour's default-off photograph-frame runtime differs from the earlier bounded
 following runtime. Scene geometry is unchanged and browser regressions pass; the
-new runtime has not yet driven a hardware following capture.
+new runtime had not yet driven a hardware following capture at that checkpoint.
 
 The pre-hour Opus review found a shutdown-edge coverage defect in the assessor.
 The final processed frame can arrive just after the controller closes. Coverage
