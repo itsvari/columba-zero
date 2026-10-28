@@ -1,6 +1,16 @@
 # Columba Zero: pan-tilt integration and demonstration video
 
-## Next work: resumed, independent verification in progress
+## Next work: paused at the user's request, 29 October 2026
+
+The user requested immediate wrap-up to free the computer. Current work is saved
+on `feat/independent-verification-and-zone`; do not resume without instruction.
+The pending Opus review was cancelled before completion, so this new work is not
+independently reviewed. Results and evidence hashes are saved in
+[the campaign handover](docs/validation/independent-following-20261028.md).
+Owned test browsers and the SSH master were closed. The final Pi check found no
+camera owner and both servo outputs FULL_OFF. No physical-zone tests are planned
+until a flat textured surface is available; the user requested software and
+offline checks first.
 
 The monitor-validation changes are merged into `main` through
 [PR #3](https://github.com/itsvari/columba-zero/pull/3), merge `577cf48`.

@@ -1,0 +1,58 @@
+{
+  "status": "paused at user request; incomplete and not independently reviewed",
+  "branch": "feat/independent-verification-and-zone",
+  "tested_runtime_revision": "b0d891e",
+  "desktop_tests": 936,
+  "desktop_subtests": 387,
+  "desktop_skips": 6,
+  "pi_tests": 934,
+  "pi_subtests": 391,
+  "pi_skips": 8,
+  "mypy_files": 138,
+  "ruff_files": 141,
+  "captures": [
+    {
+      "case": "outputs/validation/independent-following-20261028/independent-poses-20261028T150632Z",
+      "archive_sha256": "f88aaec60c5bb8ed6b888c1173073db791cbbede6998398ebf473b4ea1dd6f2b",
+      "child_exit_status": 0,
+      "term_sent_count": 1,
+      "forced_kill": false,
+      "both_full_off": true,
+      "hardware_authorised": false
+    },
+    {
+      "case": "outputs/validation/independent-following-20261028/independent-poses-20261028T152008Z",
+      "archive_sha256": "0827a31b91613f785963ae136d68159abcbe4db439d4718afac5d893cd95c184",
+      "child_exit_status": 0,
+      "term_sent_count": 1,
+      "forced_kill": false,
+      "both_full_off": true,
+      "hardware_authorised": false
+    },
+    {
+      "case": "outputs/validation/independent-following-20261028/independent-poses-20261028T154235Z",
+      "archive_sha256": "b1f58c4f12c01aea18486a7c016c3cef3cdb3c99e8c1c27be6fb49caf23c5d73",
+      "child_exit_status": 0,
+      "term_sent_count": 1,
+      "forced_kill": false,
+      "both_full_off": true,
+      "hardware_authorised": false
+    }
+  ],
+  "local_evidence_sha256": {
+    "outputs/validation/independent-following-20261028/desktop-pre-deploy-full.txt": "ec5d9a3c8d0c2fede7d8a7c0910db9eca3dfc423c6514306254770d02c51bfbf",
+    "outputs/validation/independent-following-20261028/desktop-pre-deploy-ruff.txt": "bc3310b60bfcdb035382e9d2c7106927e5dea0e4001822af699d2c6e0d985e16",
+    "outputs/validation/independent-following-20261028/desktop-pre-deploy-mypy.txt": "7da4513cbed0a524ae5fea19bd9fff2b20cba43c825ac5e99b18ba49b082e355",
+    "outputs/validation/independent-following-20261028/pi-pre-camera-tests.txt": "2392d864420f30b119cefd63c0c17cb63ba1006314461de483a34198745ef5e1",
+    "outputs/validation/independent-following-20261028/pi-deployment.txt": "5b5b4d8fd91c04af3144469a5f7e1d1ceefeefb9f34da16e61ad5bfc89563fa4",
+    "outputs/validation/independent-following-20261028/ev-probe/metadata.json": "cd8ffe6e543a542b77b1aa2301ba9856268f6c6f2b2b2752c99580992d833ff7",
+    "outputs/validation/independent-following-20261028/terra-visual/fresh-unframed/report.md": "f39c3644f7f7bbcf717d9cd888f4f2a5aa7ece9df1d96e71588f64a1ab31f0cc",
+    "outputs/validation/independent-following-20261028/terra-visual/fresh-dark/report.md": "6bf11698cc29d6e775774e4bc48f3bcff8511a2b521cd626335827ecd97c5c43",
+    "outputs/validation/independent-following-20261028/terra-visual/controlled-exposure/report.md": "d82470154b1e9c001c5dd0a5dd822c11d7398c67a0b20cfcd6c7a068ee4d2361",
+    "outputs/validation/independent-following-20261028/terra-visual/controlled-exposure/camera-checks.json": "250fb8b236f2386b31c9746209b8596899c46d6e63424afa6c3d0c094e78cdf8",
+    "outputs/validation/independent-following-20261028/terra-visual/controlled-exposure/attempts.json": "cf2628cac1acb317ed6ca959b3789f235847682145eebe6db1ae91b38e68dce7",
+    "outputs/validation/independent-following-20261028/pre-review-manifest.json": "9a041a828e751a70ffc59c4332fc080160cb21784cd762dbe88d0966753cb51f"
+  },
+  "raw_media": "retained locally under outputs; deliberately not committed",
+  "review": "pending Opus task cancelled during immediate wrap-up"
+}

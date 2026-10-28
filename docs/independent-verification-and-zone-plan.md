@@ -1,6 +1,8 @@
 # Plan independent following verification and a fixed zone
 
-Status: **resumed on 28 October 2026; V1 in progress**.
+Status: **paused at the user's request on 29 October 2026**.
+Save and push the current results; resume only when instructed. Independent Opus
+review was cancelled during wrap-up and is not a completed review of this work.
 The user requested this plan after accepting the measured demonstration and
 authorising its merge into `main` on 28 October 2026. The user subsequently
 resumed the work and requested autonomous progress, including delegation.
@@ -209,11 +211,11 @@ run is a separately planned follow-up, not part of starting this feature.
 
 | Unit | Deliverable | Status |
 |---|---|---|
-| V1 | Qualified camera truth, redesigned ambiguous scenes and frozen confirmation policy | In progress; fixture and tooling implemented, optical pilot retained, qualification incomplete |
+| V1 | Qualified camera truth, redesigned ambiguous scenes and frozen confirmation policy | Paused; fixture and tooling implemented, pilots retained, qualification incomplete |
 | V2 | Independent centring and selection confirmation reports | Not started |
 | Z1 | Zone reference, registration and membership domain logic with offline tests | Offline geometry, reference files and registration candidates implemented; independent qualification pending |
 | Z2 | Browser workflow, selector/controller integration and simulation | Not started |
-| Z3 | Independent planar-zone hardware validation and operating guide | Not started |
+| Z3 | Independent planar-zone hardware validation and operating guide | Deferred; no flat textured surface currently available; software/offline checks first |
 
 Use separate reviewable changes for these units. Preserve failed attempts and
 freeze new tools/policies before new captures. Keep calibration and raw media
