@@ -118,7 +118,15 @@ def test_partial_occlusion_replay_preserves_identity_when_bird_reappears() -> No
 
 @pytest.mark.parametrize(
     ("frame_rate_fps", "walking_speed_px_s", "box_size_px"),
-    ((15.0, 120.0, 40.0), (15.0, 200.0, 80.0), (30.0, 120.0, 40.0), (30.0, 200.0, 80.0)),
+    (
+        (10.0, 120.0, 40.0),
+        (10.0, 200.0, 40.0),
+        (11.0, 200.0, 40.0),
+        (15.0, 120.0, 40.0),
+        (15.0, 200.0, 80.0),
+        (30.0, 120.0, 40.0),
+        (30.0, 200.0, 80.0),
+    ),
 )
 @pytest.mark.parametrize("walking_confidence", (0.8, 0.3))
 def test_walking_from_rest_keeps_the_confirmed_identity(
@@ -153,6 +161,49 @@ def test_walking_from_rest_keeps_the_confirmed_identity(
         )
         observed_identities.add(result.detections[0].track_id)
     assert observed_identities == {1}
+
+
+def test_walking_then_stopping_at_maintenance_confidence_keeps_identity() -> None:
+    motion_tracker = tracker()
+    frame_rate_fps = 11
+    walking_speed_px_s = 200
+    for sequence in range(frame_rate_fps * 5):
+        walking_time_s = min(max(0, sequence / frame_rate_fps - 1), 1)
+        result = update(
+            motion_tracker,
+            [
+                detection(
+                    left_px=40 + walking_time_s * walking_speed_px_s,
+                    confidence=0.8 if sequence < frame_rate_fps * 2 else 0.3,
+                )
+            ],
+            sequence / frame_rate_fps,
+            sequence,
+        )
+        assert identities(result) == [1], sequence
+
+
+@pytest.mark.parametrize("growth_speed_px_s", (20, 40, 80))
+def test_growing_then_holding_at_maintenance_confidence_keeps_identity(
+    growth_speed_px_s: int,
+) -> None:
+    motion_tracker = tracker()
+    frame_rate_fps = 11
+    for sequence in range(frame_rate_fps * 7):
+        growth_time_s = min(sequence / frame_rate_fps, 2)
+        result = update(
+            motion_tracker,
+            [
+                detection(
+                    width_px=40 + growth_time_s * growth_speed_px_s,
+                    height_px=40 + growth_time_s * growth_speed_px_s,
+                    confidence=0.8 if sequence < frame_rate_fps * 2 else 0.3,
+                )
+            ],
+            sequence / frame_rate_fps,
+            sequence,
+        )
+        assert identities(result) == [1], sequence
 
 
 def test_confirmation_reuses_event_shape_and_shared_identity() -> None:
